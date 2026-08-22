@@ -2,31 +2,71 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
+use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, BelongsToTenant;
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_padrao_id',
+        'perfil_id',
+        'name',
+        'email',
+        'telefone',
+        'password',
+        'is_ativo',
+        'mfa_ativo',
+        'mfa_secret',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'mfa_secret',
+    ];
+
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_ativo' => 'boolean',
+            'mfa_ativo' => 'boolean',
         ];
+    }
+
+    public function perfil(): BelongsTo
+    {
+        return $this->belongsTo(Perfil::class, 'perfil_id');
+    }
+
+    public function empresaPadrao(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_padrao_id');
+    }
+
+    public function hasPermission(string $slug): bool
+    {
+        if (!$this->perfil) {
+            return false;
+        }
+
+        if ($this->perfil->is_admin) {
+            return true;
+        }
+
+        return $this->perfil->permissoes->contains('slug', $slug);
     }
 }
