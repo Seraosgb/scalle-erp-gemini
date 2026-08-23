@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/useAuthStore';
 import Login from './pages/Login';
 import AppLayout from './layouts/AppLayout';
+import WmsPage from './pages/wms/WmsPage';
+import PdvPage from './pages/pdv/PdvPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,7 +41,7 @@ export default function App() {
           >
             <Route index element={<Navigate to="/wms" replace />} />
             <Route path="wms" element={<WmsPage />} />
-            <Route path="pdv" element={<div className="text-xl font-bold">Módulo PDV Balcão</div>} />
+            <Route path="pdv" element={<PdvPage />} />
             <Route path="os" element={<div className="text-xl font-bold">Módulo de Ordens de Serviço</div>} />
             <Route path="financeiro" element={<div className="text-xl font-bold">Módulo Financeiro</div>} />
             <Route path="fiscal" element={<div className="text-xl font-bold">Módulo Fiscal</div>} />
