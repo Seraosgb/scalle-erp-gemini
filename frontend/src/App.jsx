@@ -38,7 +38,7 @@ export default function App() {
             }
           >
             <Route index element={<Navigate to="/wms" replace />} />
-            <Route path="wms" element={<div className="text-xl font-bold">Módulo WMS & Estoque (Em carregamento...)</div>} />
+            <Route path="wms" element={<WmsPage />} />
             <Route path="pdv" element={<div className="text-xl font-bold">Módulo PDV Balcão</div>} />
             <Route path="os" element={<div className="text-xl font-bold">Módulo de Ordens de Serviço</div>} />
             <Route path="financeiro" element={<div className="text-xl font-bold">Módulo Financeiro</div>} />

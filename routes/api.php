@@ -32,4 +32,15 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // Ordens de Serviço (OS)
     Route::apiResource('ordens-servico', OrdemServicoController::class);
     Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);
+
+    // Itens & WMS
+    Route::get('/itens', [ItemController::class, 'index']);
+    Route::post('/itens', [ItemController::class, 'store']);
+    Route::get('/itens/{id}/kardex', [ItemController::class, 'kardex']);
+    Route::get('/wms/depositos', [ItemController::class, 'depositos']);
+    Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);
+
+    // Comercial & OS
+    Route::post('/vendas/faturar', [VendaController::class, 'faturar']);
+    Route::apiResource('ordens-servico', OrdemServicoController::class);
 });
