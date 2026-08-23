@@ -17,7 +17,7 @@ Route::get('/', function () {
     return redirect('/app/');
 });
 
-// Serve o index.html para qualquer subrota do SPA
+// Fallback explícito para carregar o SPA React
 Route::get('/app/{any?}', function () {
     $indexPath = public_path('app/index.html');
     if (file_exists($indexPath)) {
