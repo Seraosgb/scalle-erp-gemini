@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Deposito;
 use App\Models\EstoqueDeposito;
-use App\Models\EstoqueMovimento;
 use App\Models\Item;
+use App\Models\MovimentacaoEstoque;
 use App\Services\EstoqueService;
 use App\Services\ImportadorXmlNfeService;
 use Illuminate\Http\JsonResponse;
@@ -58,9 +58,9 @@ class ItemController extends Controller
 
     public function kardex(string $id): JsonResponse
     {
-        $movimentos = EstoqueMovimento::where('item_id', $id)
-            ->with(['deposito', 'usuario'])
-            ->orderByDesc('data_movimento')
+        // Consulta no model correto (MovimentacaoEstoque) ordenado por created_at
+        $movimentos = MovimentacaoEstoque::where('item_id', $id)
+            ->with(['deposito'])
             ->orderByDesc('created_at')
             ->limit(50)
             ->get();
@@ -77,18 +77,18 @@ class ItemController extends Controller
     public function importarXml(Request $request): JsonResponse
     {
         $request->validate([
-            'xml_file' => 'required|file|mimes:xml',
+            'xml_file' => 'required|file|mimes:xml,txt',
             'deposito_id' => 'required|uuid|exists:wms_depositos,id',
         ]);
 
         $xmlConteudo = file_get_contents($request->file('xml_file')->getRealPath());
         $empresaId = $request->user()->empresa_padrao_id ?? Deposito::find($request->deposito_id)->empresa_id;
 
-        $resultado = ImportadorXmlNfeService::importar(
+        $resultado = ImportadorXmlNfeService::processarXml(
             $xmlConteudo,
             $empresaId,
             $request->deposito_id,
-            $request->user()
+            $request->user()->id
         );
 
         return response()->json([
