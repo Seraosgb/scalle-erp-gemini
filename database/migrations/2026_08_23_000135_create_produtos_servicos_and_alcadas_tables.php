@@ -44,13 +44,13 @@ return new class extends Migration
             $table->index(['tenant_id', 'tipo_item', 'is_ativo']);
         });
 
-        // 2. Tabela de Motor de Alçadas e Aprovações
+       // 2. Tabela de Motor de Alçadas e Aprovações
         Schema::create('sis_alcadas_aprovacoes', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
-// Alteração para bigint compatível com users:
-$table->foreignId('solicitante_id')->constrained('users')->cascadeOnDelete();
-$table->foreignId('aprovador_id')->nullable()->constrained('users')->nullOnDelete();            $table->string('tipo_operacao', 50); // DESCONTO_VENDA, COMPRA_VALOR, CANCELAMENTO_NF
+            $table->foreignUuid('solicitante_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignUuid('aprovador_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('tipo_operacao', 50); // DESCONTO_VENDA, COMPRA_VALOR, CANCELAMENTO_NF
             $table->string('entidade_origem', 50); // pedidos, compras, os
             $table->uuid('registro_origem_id');
             $table->decimal('valor_solicitado', 15, 2)->default(0.00);
