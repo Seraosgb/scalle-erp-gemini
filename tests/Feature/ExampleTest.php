@@ -2,18 +2,24 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    /**
-     * A basic test example.
-     */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_rota_raiz_redireciona_para_app_spa(): void
     {
         $response = $this->get('/');
+        $response->assertRedirect('/app/');
+    }
 
-        $response->assertStatus(200);
+    public function test_health_check_retorna_status_200(): void
+    {
+        $response = $this->get('/health');
+        $response->assertStatus(200)
+            ->assertJson([
+                'status' => 'OK',
+                'sistema' => 'Scalle ERP',
+                'versao' => '2.0.0 Enterprise'
+            ]);
     }
 }
