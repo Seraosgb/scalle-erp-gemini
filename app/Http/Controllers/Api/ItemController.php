@@ -52,6 +52,7 @@ class ItemController extends Controller
         ]);
 
         $validated['id'] = (string) Str::uuid();
+        $validated['tenant_id'] = $request->user()->tenant_id;
         $item = Item::create($validated);
 
         return response()->json(['data' => $item], 201);
@@ -70,12 +71,15 @@ class ItemController extends Controller
 
     public function depositos(Request $request): JsonResponse
     {
-        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::first()?->id;
+        $tenantId = $request->user()->tenant_id;
+        $empresa = $request->user()->empresaPadrao ?? Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
+        $empresaId = $empresa?->id;
 
-        // Auto-provisiona o depósito padrão caso o tenant ainda não tenha nenhum
+        // Auto-provisionamento resiliente do depósito padrão
         if ($empresaId && Deposito::where('empresa_id', $empresaId)->count() === 0) {
             Deposito::create([
                 'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
                 'empresa_id' => $empresaId,
                 'nome' => 'Depósito Central / Matriz',
                 'codigo' => 'DEP-01',
@@ -100,22 +104,35 @@ class ItemController extends Controller
             'nome' => 'required|string|max:100',
             'codigo' => 'required|string|max:30',
             'descricao' => 'nullable|string|max:255',
-            'is_padrao' => 'boolean',
+            'is_padrao' => 'nullable|boolean',
         ]);
 
-        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::first()->id;
+        $tenantId = $request->user()->tenant_id;
+        $empresa = $request->user()->empresaPadrao ?? Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
+        
+        if (!$empresa) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_NOT_FOUND',
+                    'message' => 'Nenhuma empresa ativa vinculada ao usuário para cadastrar o depósito.',
+                ]
+            ], 422);
+        }
 
-        if (!empty($validated['is_padrao']) && $validated['is_padrao']) {
-            Deposito::where('empresa_id', $empresaId)->update(['is_padrao' => false]);
+        $isPadrao = !empty($validated['is_padrao']) && $validated['is_padrao'];
+
+        if ($isPadrao) {
+            Deposito::where('empresa_id', $empresa->id)->update(['is_padrao' => false]);
         }
 
         $deposito = Deposito::create([
             'id' => (string) Str::uuid(),
-            'empresa_id' => $empresaId,
+            'tenant_id' => $tenantId,
+            'empresa_id' => $empresa->id,
             'nome' => $validated['nome'],
             'codigo' => strtoupper($validated['codigo']),
             'descricao' => $validated['descricao'] ?? null,
-            'is_padrao' => $validated['is_padrao'] ?? false,
+            'is_padrao' => $isPadrao,
             'is_ativo' => true,
         ]);
 
