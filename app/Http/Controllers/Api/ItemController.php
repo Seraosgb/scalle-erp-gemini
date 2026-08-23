@@ -72,11 +72,26 @@ class ItemController extends Controller
     public function depositos(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresa = $request->user()->empresaPadrao ?? Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
-        $empresaId = $empresa?->id;
+        
+        // Garante que a empresa exista
+        $empresa = $request->user()->empresaPadrao 
+                ?? Empresa::where('tenant_id', $tenantId)->first()
+                ?? Empresa::firstOrCreate(
+                    ['tenant_id' => $tenantId],
+                    [
+                        'id' => (string) Str::uuid(),
+                        'razao_social' => 'Scalle Enterprise Matriz',
+                        'nome_fantasia' => 'Scalle Matriz',
+                        'cnpj' => '00.000.000/0001-91',
+                        'regime_tributario' => 'simples_nacional',
+                        'is_matriz' => true,
+                    ]
+                );
 
-        // Auto-provisionamento resiliente do depósito padrão
-        if ($empresaId && Deposito::where('empresa_id', $empresaId)->count() === 0) {
+        $empresaId = $empresa->id;
+
+        // Auto-provisiona o depósito padrão caso não exista nenhum
+        if (Deposito::where('empresa_id', $empresaId)->count() === 0) {
             Deposito::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $tenantId,
@@ -89,7 +104,8 @@ class ItemController extends Controller
             ]);
         }
 
-        $depositos = Deposito::where('is_ativo', true)
+        $depositos = Deposito::where('empresa_id', $empresaId)
+            ->where('is_ativo', true)
             ->withCount('saldos')
             ->orderByDesc('is_padrao')
             ->orderBy('nome')
@@ -100,6 +116,22 @@ class ItemController extends Controller
 
     public function storeDeposito(Request $request): JsonResponse
     {
+        $tenantId = $request->user()->tenant_id;
+        
+        $empresa = $request->user()->empresaPadrao 
+                ?? Empresa::where('tenant_id', $tenantId)->first()
+                ?? Empresa::firstOrCreate(
+                    ['tenant_id' => $tenantId],
+                    [
+                        'id' => (string) Str::uuid(),
+                        'razao_social' => 'Scalle Enterprise Matriz',
+                        'nome_fantasia' => 'Scalle Matriz',
+                        'cnpj' => '00.000.000/0001-91',
+                        'regime_tributario' => 'simples_nacional',
+                        'is_matriz' => true,
+                    ]
+                );
+
         $validated = $request->validate([
             'nome' => 'required|string|max:100',
             'codigo' => 'required|string|max:30',
@@ -107,14 +139,18 @@ class ItemController extends Controller
             'is_padrao' => 'nullable|boolean',
         ]);
 
-        $tenantId = $request->user()->tenant_id;
-        $empresa = $request->user()->empresaPadrao ?? Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
-        
-        if (!$empresa) {
+        $codigoFormatado = strtoupper(trim($validated['codigo']));
+
+        // Verifica se o código já existe para a mesma empresa
+        $jaExiste = Deposito::where('empresa_id', $empresa->id)
+            ->where('codigo', $codigoFormatado)
+            ->exists();
+
+        if ($jaExiste) {
             return response()->json([
                 'error' => [
-                    'code' => 'COMPANY_NOT_FOUND',
-                    'message' => 'Nenhuma empresa ativa vinculada ao usuário para cadastrar o depósito.',
+                    'code' => 'DUPLICATE_CODE',
+                    'message' => "Já existe um depósito com o código '{$codigoFormatado}' nesta empresa.",
                 ]
             ], 422);
         }
@@ -130,7 +166,7 @@ class ItemController extends Controller
             'tenant_id' => $tenantId,
             'empresa_id' => $empresa->id,
             'nome' => $validated['nome'],
-            'codigo' => strtoupper($validated['codigo']),
+            'codigo' => $codigoFormatado,
             'descricao' => $validated['descricao'] ?? null,
             'is_padrao' => $isPadrao,
             'is_ativo' => true,
