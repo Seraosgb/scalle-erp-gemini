@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Deposito;
+use App\Models\Empresa;
 use App\Models\EstoqueDeposito;
 use App\Models\Item;
 use App\Models\MovimentacaoEstoque;
@@ -58,7 +59,6 @@ class ItemController extends Controller
 
     public function kardex(string $id): JsonResponse
     {
-        // Consulta no model correto (MovimentacaoEstoque) ordenado por created_at
         $movimentos = MovimentacaoEstoque::where('item_id', $id)
             ->with(['deposito'])
             ->orderByDesc('created_at')
@@ -68,16 +68,64 @@ class ItemController extends Controller
         return response()->json(['data' => $movimentos]);
     }
 
-    public function depositos(): JsonResponse
+    public function depositos(Request $request): JsonResponse
     {
-        $depositos = Deposito::where('is_ativo', true)->orderBy('nome')->get();
+        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::first()?->id;
+
+        // Auto-provisiona o depósito padrão caso o tenant ainda não tenha nenhum
+        if ($empresaId && Deposito::where('empresa_id', $empresaId)->count() === 0) {
+            Deposito::create([
+                'id' => (string) Str::uuid(),
+                'empresa_id' => $empresaId,
+                'nome' => 'Depósito Central / Matriz',
+                'codigo' => 'DEP-01',
+                'descricao' => 'Almoxarifado Geral de Operações',
+                'is_padrao' => true,
+                'is_ativo' => true,
+            ]);
+        }
+
+        $depositos = Deposito::where('is_ativo', true)
+            ->withCount('saldos')
+            ->orderByDesc('is_padrao')
+            ->orderBy('nome')
+            ->get();
+
         return response()->json(['data' => $depositos]);
+    }
+
+    public function storeDeposito(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'codigo' => 'required|string|max:30',
+            'descricao' => 'nullable|string|max:255',
+            'is_padrao' => 'boolean',
+        ]);
+
+        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::first()->id;
+
+        if (!empty($validated['is_padrao']) && $validated['is_padrao']) {
+            Deposito::where('empresa_id', $empresaId)->update(['is_padrao' => false]);
+        }
+
+        $deposito = Deposito::create([
+            'id' => (string) Str::uuid(),
+            'empresa_id' => $empresaId,
+            'nome' => $validated['nome'],
+            'codigo' => strtoupper($validated['codigo']),
+            'descricao' => $validated['descricao'] ?? null,
+            'is_padrao' => $validated['is_padrao'] ?? false,
+            'is_ativo' => true,
+        ]);
+
+        return response()->json(['data' => $deposito], 201);
     }
 
     public function importarXml(Request $request): JsonResponse
     {
         $request->validate([
-            'xml_file' => 'required|file|mimes:xml,txt',
+            'xml_file' => 'required|file',
             'deposito_id' => 'required|uuid|exists:wms_depositos,id',
         ]);
 
