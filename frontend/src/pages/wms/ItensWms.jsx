@@ -131,7 +131,7 @@ export default function ItensWms() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto relative z-10">
       {/* Header Corporativo */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
@@ -145,15 +145,19 @@ export default function ItensWms() {
         </div>
         <div className="flex items-center gap-2.5">
           <button 
+            type="button"
             onClick={() => setModalXml(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 transition"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 cursor-pointer transition"
           >
             <UploadCloud className="h-4 w-4 text-indigo-400" />
             Importar XML NF-e
           </button>
           <button 
-            onClick={() => setModalCadastro(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 transition"
+            type="button"
+            onClick={() => {
+              setModalCadastro(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
           >
             <Plus className="h-4 w-4" />
             Novo Item
@@ -168,7 +172,7 @@ export default function ItensWms() {
             {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
             <span className="text-sm font-medium">{feedback.msg}</span>
           </div>
-          <button onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -256,8 +260,9 @@ export default function ItensWms() {
                       <td className="py-3 px-4 text-center font-sans">
                         {item.controla_estoque && (
                           <button
+                            type="button"
                             onClick={() => abrirKardex(item)}
-                            className="px-2.5 py-1 text-xs rounded bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 transition"
+                            className="px-2.5 py-1 text-xs rounded bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 cursor-pointer transition"
                           >
                             Kardex
                           </button>
@@ -272,13 +277,22 @@ export default function ItensWms() {
         </div>
       </div>
 
-      {/* Modal de Cadastro */}
+      {/* Modal de Cadastro com z-index alto e foco garantido */}
       {modalCadastro && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800">
-              <h2 className="text-lg font-bold text-white">Novo Item no Catálogo</h2>
-              <button onClick={() => setModalCadastro(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto animate-in fade-in duration-150">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Package className="h-5 w-5 text-indigo-400" />
+                Novo Item no Catálogo
+              </h2>
+              <button 
+                type="button" 
+                onClick={() => setModalCadastro(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
             <form onSubmit={handleSalvarItem} className="p-6 space-y-4 text-sm">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -289,6 +303,7 @@ export default function ItensWms() {
                     required 
                     value={formData.nome}
                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    placeholder="Ex: Sensor de Temperatura NTC 10k"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -299,6 +314,7 @@ export default function ItensWms() {
                     required 
                     value={formData.codigo_sku}
                     onChange={(e) => setFormData({ ...formData, codigo_sku: e.target.value })}
+                    placeholder="Ex: SEN-001"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -330,6 +346,7 @@ export default function ItensWms() {
                     type="text" 
                     value={formData.ncm}
                     onChange={(e) => setFormData({ ...formData, ncm: e.target.value })}
+                    placeholder="Ex: 85414032"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -340,6 +357,7 @@ export default function ItensWms() {
                     step="0.01" 
                     value={formData.preco_custo}
                     onChange={(e) => setFormData({ ...formData, preco_custo: e.target.value })}
+                    placeholder="0.00"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -351,13 +369,25 @@ export default function ItensWms() {
                     required 
                     value={formData.preco_venda}
                     onChange={(e) => setFormData({ ...formData, preco_venda: e.target.value })}
+                    placeholder="0.00"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-                <button type="button" onClick={() => setModalCadastro(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">Salvar Registro</button>
+                <button 
+                  type="button" 
+                  onClick={() => setModalCadastro(false)} 
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer"
+                >
+                  Salvar Registro
+                </button>
               </div>
             </form>
           </div>
@@ -366,14 +396,20 @@ export default function ItensWms() {
 
       {/* Modal Kardex */}
       {modalKardex && itemSelecionado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
               <div>
                 <h2 className="text-lg font-bold text-white">Extrato de Movimentação (Kardex)</h2>
                 <p className="text-xs text-indigo-400 mt-0.5">{itemSelecionado.nome} (SKU: {itemSelecionado.codigo_sku})</p>
               </div>
-              <button onClick={() => setModalKardex(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+              <button 
+                type="button" 
+                onClick={() => setModalKardex(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
             <div className="p-5 max-h-96 overflow-y-auto">
               {kardexList.length === 0 ? (
@@ -411,14 +447,20 @@ export default function ItensWms() {
 
       {/* Modal Importar XML */}
       {modalXml && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <UploadCloud className="h-5 w-5 text-indigo-400" />
                 Importar XML de NF-e
               </h2>
-              <button onClick={() => setModalXml(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+              <button 
+                type="button" 
+                onClick={() => setModalXml(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
             <form onSubmit={handleImportarXml} className="p-6 space-y-4 text-sm">
               <div>
@@ -441,12 +483,23 @@ export default function ItensWms() {
                   required 
                   accept=".xml"
                   onChange={(e) => setXmlFile(e.target.files[0])}
-                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500"
+                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-                <button type="button" onClick={() => setModalXml(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">Processar Entrada</button>
+                <button 
+                  type="button" 
+                  onClick={() => setModalXml(false)} 
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer"
+                >
+                  Processar Entrada
+                </button>
               </div>
             </form>
           </div>
