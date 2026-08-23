@@ -13,10 +13,27 @@ const api = axios.create({
   }
 });
 
+// Interceptor universal para capturar o Bearer Token de qualquer chave de armazenamento
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token') || localStorage.getItem('scalle_token');
+  let token = localStorage.getItem('token') 
+           || localStorage.getItem('scalle_token') 
+           || localStorage.getItem('auth_token');
+
+  // Fallback para Zustand persist (se o token estiver serializado em JSON)
+  if (!token) {
+    const authStorage = localStorage.getItem('auth-storage') || localStorage.getItem('scalle-auth');
+    if (authStorage) {
+      try {
+        const parsed = JSON.parse(authStorage);
+        token = parsed?.state?.token || parsed?.state?.user?.token;
+      } catch (e) {
+        // Ignora erro de parse
+      }
+    }
+  }
+
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = `Bearer ${token.replace(/^"|"$/g, '')}`;
   }
   return config;
 });
