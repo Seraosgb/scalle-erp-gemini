@@ -8,6 +8,7 @@ import WmsPage from './pages/wms/WmsPage';
 import PdvPage from './pages/pdv/PdvPage';
 import OsPage from './pages/os/OsPage';
 import FinanceiroPage from './pages/financeiro/FinanceiroPage';
+import FiscalPage from './pages/fiscal/FiscalPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,7 +47,7 @@ export default function App() {
             <Route path="pdv" element={<PdvPage />} />
             <Route path="os" element={<OsPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
-            <Route path="fiscal" element={<div className="text-xl font-bold">Módulo Fiscal</div>} />
+            <Route path="fiscal" element={<FiscalPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
