@@ -54,4 +54,8 @@ class Item extends Model
     {
         return $this->belongsTo(TabelaDominio::class, 'categoria_id');
     }
+    public function saldosPorDeposito(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(EstoqueDeposito::class, 'item_id');
+    }
 }
