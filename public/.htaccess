@@ -5,16 +5,16 @@
 
     RewriteEngine On
 
-    # Authorization Header
+    # Repasse explícito do cabeçalho de autenticação Bearer para o LiteSpeed/Apache
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-    # Redirecionar trailing slashes se não for pasta
+    # Redireciona para Trailing Slash se não for pasta
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
 
-    # Enviar requisições para o index.php
+    # Redireciona tudo para index.php
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]

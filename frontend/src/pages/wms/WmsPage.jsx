@@ -13,27 +13,30 @@ const api = axios.create({
   }
 });
 
-// Interceptor universal para capturar o Bearer Token de qualquer chave de armazenamento
 api.interceptors.request.use((config) => {
+  // Procura o token em todas as chaves comuns
   let token = localStorage.getItem('token') 
            || localStorage.getItem('scalle_token') 
-           || localStorage.getItem('auth_token');
+           || sessionStorage.getItem('token')
+           || sessionStorage.getItem('scalle_token');
 
-  // Fallback para Zustand persist (se o token estiver serializado em JSON)
   if (!token) {
-    const authStorage = localStorage.getItem('auth-storage') || localStorage.getItem('scalle-auth');
-    if (authStorage) {
-      try {
-        const parsed = JSON.parse(authStorage);
-        token = parsed?.state?.token || parsed?.state?.user?.token;
-      } catch (e) {
-        // Ignora erro de parse
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      const val = localStorage.getItem(key);
+      if (val && (val.includes('|') || val.includes('scalle_auth_token'))) {
+        try {
+          const parsed = JSON.parse(val);
+          token = parsed?.state?.token || parsed?.token || parsed?.state?.user?.token;
+        } catch (e) {
+          if (val.length > 20 && !val.startsWith('{')) token = val;
+        }
       }
     }
   }
 
   if (token) {
-    config.headers.Authorization = `Bearer ${token.replace(/^"|"$/g, '')}`;
+    config.headers.Authorization = `Bearer ${token.replace(/^"|"$/g, '').trim()}`;
   }
   return config;
 });
