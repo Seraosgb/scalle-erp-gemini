@@ -1,88 +1,101 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { ShieldAlert, ArrowRight, Lock, Mail } from 'lucide-react';
+import { Layers, Lock, Mail, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const { login, isLoading } = useAuthStore();
+  const [email, setEmail] = useState('admin@scalle.com.br');
+  const [password, setPassword] = useState('Scalle@2026');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const { login } = useAuthStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    const res = await login(email, password);
-    if (res.success) {
-      navigate('/wms');
-    } else {
-      setError(res.message);
+    setLoading(true);
+    setError(null);
+
+    try {
+      await login(email, password);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(
+        err.response?.data?.error?.message || 
+        err.response?.data?.message || 
+        err.message || 
+        'Credenciais incorretas ou falha no servidor.'
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 mb-4">
-            <ShieldAlert className="w-7 h-7" />
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600 mx-auto flex items-center justify-center shadow-lg shadow-indigo-600/30">
+            <Layers className="h-6 w-6 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Scalle ERP</h1>
-          <p className="text-sm text-slate-400 mt-1">Plataforma Empresarial Multi-Tenant</p>
+          <p className="text-xs font-mono text-indigo-400">v2.0.0 Enterprise</p>
         </div>
 
+        {/* Alerta de Erro */}
         {error && (
-          <div className="mb-6 p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm">
-            {error}
+          <div className="p-3.5 bg-rose-950/80 border border-rose-800 rounded-xl flex items-center gap-2.5 text-xs sm:text-sm text-rose-300">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Formulário */}
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              E-mail Corporativo
-            </label>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">E-mail Corporativo</label>
             <div className="relative">
-              <Mail className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="usuario@scalle.com.br"
-                className="w-full pl-11 pr-4 py-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                placeholder="seu.email@empresa.com.br"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              Senha de Acesso
-            </label>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Senha de Acesso</label>
             <div className="relative">
-              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-11 pr-4 py-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            disabled={isLoading}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium rounded-xl transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer mt-6"
+            disabled={loading}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center justify-center gap-2 mt-2"
           >
-            {isLoading ? 'Autenticando...' : (
+            {loading ? (
               <>
-                <span>Acessar Painel</span>
-                <ArrowRight className="w-4 h-4" />
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Autenticando...
               </>
+            ) : (
+              'Entrar no Sistema'
             )}
           </button>
         </form>

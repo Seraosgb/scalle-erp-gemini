@@ -1,42 +1,62 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { api } from '../services/api';
 
-export const useAuthStore = create((set) => ({
-  user: JSON.parse(localStorage.getItem('@scalle:user')) || null,
-  token: localStorage.getItem('@scalle:token') || null,
-  isAuthenticated: !!localStorage.getItem('@scalle:token'),
-  isLoading: false,
+export const useAuthStore = create(
+  persist(
+    (set) => ({
+      user: null,
+      token: null,
+      isAuthenticated: false,
 
-  login: async (email, password) => {
-    set({ isLoading: true });
-    try {
-      const response = await api.post('/auth/login', { email, password });
-      const { token, user } = response.data.data;
+      setAuth: (user, token) => {
+        const cleanToken = String(token).replace(/^"|"$/g, '').trim();
+        localStorage.setItem('token', cleanToken);
+        localStorage.setItem('scalle_token', cleanToken);
+        set({ user, token: cleanToken, isAuthenticated: true });
+      },
 
-      localStorage.setItem('@scalle:token', token);
-      localStorage.setItem('@scalle:user', JSON.stringify(user));
+      login: async (email, password) => {
+        const response = await api.post('/auth/login', { email, password });
+        
+        // Tratamento para extrair token independentemente de data.data.token ou data.token
+        const payload = response.data?.data || response.data;
+        const token = payload.token || response.data.token;
+        const user = payload.user || response.data.user;
 
-      set({ token, user, isAuthenticated: true, isLoading: false });
-      return { success: true };
-    } catch (error) {
-      set({ isLoading: false });
-      return {
-        success: false,
-        message: error.response?.data?.error?.message || 'Erro ao realizar login.'
-      };
+        if (!token) {
+          throw new Error('Token de autenticação não retornado pelo servidor.');
+        }
+
+        const cleanToken = String(token).replace(/^"|"$/g, '').trim();
+        localStorage.setItem('token', cleanToken);
+        localStorage.setItem('scalle_token', cleanToken);
+
+        set({
+          user,
+          token: cleanToken,
+          isAuthenticated: true,
+        });
+
+        return response.data;
+      },
+
+      logout: async () => {
+        try {
+          await api.post('/auth/logout');
+        } catch (e) {
+          // Ignora falhas de rede no logout
+        } finally {
+          localStorage.removeItem('token');
+          localStorage.removeItem('scalle_token');
+          localStorage.removeItem('auth-storage');
+          set({ user: null, token: null, isAuthenticated: false });
+        }
+      },
+    }),
+    {
+      name: 'auth-storage',
+      storage: createJSONStorage(() => localStorage),
     }
-  },
-
-  logout: async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch (e) {
-      // Falha silenciosa
-    } finally {
-      localStorage.removeItem('@scalle:token');
-      localStorage.removeItem('@scalle:user');
-      set({ user: null, token: null, isAuthenticated: false });
-      window.location.href = '/login';
-    }
-  }
-}));
+  )
+);
