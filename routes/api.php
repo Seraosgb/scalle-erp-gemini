@@ -54,4 +54,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/fiscal/documentos', [FiscalController::class, 'index']);
     Route::get('/fiscal/regras', [FiscalController::class, 'regras']);
     Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
+
+    // Rota Pública do Portal do Cliente
+Route::get('/portal/os/{token}', [App\Http\Controllers\Api\PortalClienteController::class, 'consultarOs']);
 });

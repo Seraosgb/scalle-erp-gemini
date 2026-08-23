@@ -10,6 +10,7 @@ import PdvPage from './pages/pdv/PdvPage';
 import OsPage from './pages/os/OsPage';
 import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
+import PortalClientePage from './pages/portal/PortalClientePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +35,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/portal/os/:token" element={<PortalClientePage />} />
           
           <Route 
             path="/" 
