@@ -1,45 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api } from '../../services/api';
 import { 
   Package, Plus, Search, UploadCloud, RefreshCw, 
-  Warehouse, FileText, CheckCircle2, AlertTriangle, X 
+  CheckCircle2, AlertTriangle, X 
 } from 'lucide-react';
-
-const api = axios.create({
-  baseURL: '/api',
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  }
-});
-
-api.interceptors.request.use((config) => {
-  // Procura o token em todas as chaves comuns
-  let token = localStorage.getItem('token') 
-           || localStorage.getItem('scalle_token') 
-           || sessionStorage.getItem('token')
-           || sessionStorage.getItem('scalle_token');
-
-  if (!token) {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      const val = localStorage.getItem(key);
-      if (val && (val.includes('|') || val.includes('scalle_auth_token'))) {
-        try {
-          const parsed = JSON.parse(val);
-          token = parsed?.state?.token || parsed?.token || parsed?.state?.user?.token;
-        } catch (e) {
-          if (val.length > 20 && !val.startsWith('{')) token = val;
-        }
-      }
-    }
-  }
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token.replace(/^"|"$/g, '').trim()}`;
-  }
-  return config;
-});
 
 export default function WmsPage() {
   const [itens, setItens] = useState([]);
@@ -47,19 +11,16 @@ export default function WmsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   
-  // Modais de Controle
   const [modalCadastro, setModalCadastro] = useState(false);
   const [modalKardex, setModalKardex] = useState(false);
   const [modalXml, setModalXml] = useState(false);
   
-  // Seleção e Histórico
   const [itemSelecionado, setItemSelecionado] = useState(null);
   const [kardexList, setKardexList] = useState([]);
   const [xmlFile, setXmlFile] = useState(null);
   const [depositoXmlId, setDepositoXmlId] = useState('');
   const [feedback, setFeedback] = useState(null);
 
-  // Formulário de Cadastro
   const [formData, setFormData] = useState({
     nome: '',
     codigo_sku: '',
@@ -142,7 +103,7 @@ export default function WmsPage() {
       });
       setModalXml(false);
       setXmlFile(null);
-      setFeedback({ tipo: 'sucesso', msg: 'XML importado e estoque provisionado com sucesso!' });
+      setFeedback({ tipo: 'sucesso', msg: 'XML importado com sucesso!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao importar XML.' });
@@ -150,31 +111,31 @@ export default function WmsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto relative z-10">
-      {/* Header Corporativo Idêntico ao Layout */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
+      {/* Header Responsivo */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
-            <Package className="h-7 w-7 text-indigo-500" />
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <Package className="h-6 w-6 sm:h-7 sm:w-7 text-indigo-500" />
             Almoxarifado & WMS
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
             Controle de saldos fracionados, depósitos e movimentações
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <button 
             type="button"
             onClick={() => setModalXml(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 cursor-pointer transition"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium border border-slate-700 cursor-pointer transition"
           >
             <UploadCloud className="h-4 w-4 text-indigo-400" />
-            Importar XML NF-e
+            Importar XML
           </button>
           <button 
             type="button"
             onClick={() => setModalCadastro(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
           >
             <Plus className="h-4 w-4" />
             Novo Item
@@ -182,31 +143,83 @@ export default function WmsPage() {
         </div>
       </div>
 
-      {/* Alerta de Feedback */}
+      {/* Feedback Toast */}
       {feedback && (
-        <div className={`p-4 rounded-lg flex items-center justify-between ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
-          <div className="flex items-center gap-2">
-            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
-            <span className="text-sm font-medium">{feedback.msg}</span>
+        <div className={`p-3.5 rounded-lg flex items-center justify-between text-xs sm:text-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span className="truncate">{feedback.msg}</span>
           </div>
-          <button type="button" onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white p-1 cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
       )}
 
-      {/* Barra de Busca */}
+      {/* Campo de Busca */}
       <div className="relative">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         <input 
           type="text" 
-          placeholder="Buscar por descrição, código SKU ou código de barras..."
+          placeholder="Buscar por descrição, SKU ou código de barras..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+          className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
         />
       </div>
 
-      {/* Tabela do WMS */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+      {/* Visualização Mobile: Cards Empilhados */}
+      <div className="block md:hidden space-y-3">
+        {loading ? (
+          <div className="text-center py-10 text-slate-500 text-xs">
+            <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-indigo-500" />
+            Carregando itens...
+          </div>
+        ) : itens.length === 0 ? (
+          <div className="text-center py-10 bg-slate-900 border border-slate-800 rounded-xl text-slate-500 text-xs">
+            Nenhum item localizado no estoque.
+          </div>
+        ) : (
+          itens.map((item) => {
+            const saldoTotal = item.saldos_por_deposito?.reduce((acc, s) => acc + parseFloat(s.quantidade_saldo || 0), 0) ?? 0;
+            return (
+              <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-mono text-indigo-400 font-semibold">{item.codigo_sku || 'SEM SKU'}</span>
+                    <h3 className="text-sm font-semibold text-white truncate">{item.nome}</h3>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
+                    {item.tipo_item}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Preço Venda:</span>
+                    <span className="font-mono text-emerald-400 font-semibold">R$ {parseFloat(item.preco_venda || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-500 block text-[11px]">Saldo em Estoque:</span>
+                    <span className={`font-mono font-bold ${saldoTotal <= 5 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {saldoTotal.toFixed(2)} {item.unidade_medida}
+                    </span>
+                  </div>
+                </div>
+                {item.controla_estoque && (
+                  <button
+                    type="button"
+                    onClick={() => abrirKardex(item)}
+                    className="w-full py-1.5 text-xs rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800 hover:bg-indigo-900/80 font-medium cursor-pointer"
+                  >
+                    Ver Extrato Kardex
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Visualização Desktop/Tablet: Tabela Densa */}
+      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-300">
             <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
@@ -277,33 +290,28 @@ export default function WmsPage() {
         </div>
       </div>
 
-      {/* Modal Cadastro com z-[9999] */}
+      {/* Modal Cadastro Responsivo */}
       {modalCadastro && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <Package className="h-5 w-5 text-indigo-400" />
                 Novo Item no Catálogo
               </h2>
-              <button 
-                type="button" 
-                onClick={() => setModalCadastro(false)} 
-                className="text-slate-400 hover:text-white cursor-pointer p-1"
-              >
+              <button type="button" onClick={() => setModalCadastro(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleSalvarItem} className="p-6 space-y-4 text-sm font-sans">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2">
+            <form onSubmit={handleSalvarItem} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Nome / Descrição *</label>
                   <input 
                     type="text" 
                     required 
                     value={formData.nome}
                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                    placeholder="Ex: Sensor de Temperatura NTC 10k"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -314,7 +322,6 @@ export default function WmsPage() {
                     required 
                     value={formData.codigo_sku}
                     onChange={(e) => setFormData({ ...formData, codigo_sku: e.target.value })}
-                    placeholder="Ex: SEN-001"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -341,12 +348,11 @@ export default function WmsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">NCM</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">NCM Fiscal</label>
                   <input 
                     type="text" 
                     value={formData.ncm}
                     onChange={(e) => setFormData({ ...formData, ncm: e.target.value })}
-                    placeholder="Ex: 85414032"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -357,7 +363,6 @@ export default function WmsPage() {
                     step="0.01" 
                     value={formData.preco_custo}
                     onChange={(e) => setFormData({ ...formData, preco_custo: e.target.value })}
-                    placeholder="0.00"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -369,102 +374,101 @@ export default function WmsPage() {
                     required 
                     value={formData.preco_venda}
                     onChange={(e) => setFormData({ ...formData, preco_venda: e.target.value })}
-                    placeholder="0.00"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-                <button 
-                  type="button" 
-                  onClick={() => setModalCadastro(false)} 
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer"
-                >
-                  Salvar Registro
-                </button>
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800 shrink-0">
+                <button type="button" onClick={() => setModalCadastro(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Salvar</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal Kardex */}
+      {/* Modal Kardex Responsivo */}
       {modalKardex && itemSelecionado && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
-              <div>
-                <h2 className="text-lg font-bold text-white">Extrato de Movimentação (Kardex)</h2>
-                <p className="text-xs text-indigo-400 mt-0.5">{itemSelecionado.nome} (SKU: {itemSelecionado.codigo_sku})</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
+              <div className="min-w-0 pr-2">
+                <h2 className="text-base sm:text-lg font-bold text-white truncate">Kardex: {itemSelecionado.nome}</h2>
+                <p className="text-xs text-indigo-400 font-mono">SKU: {itemSelecionado.codigo_sku}</p>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setModalKardex(false)} 
-                className="text-slate-400 hover:text-white cursor-pointer p-1"
-              >
+              <button type="button" onClick={() => setModalKardex(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="p-5 max-h-96 overflow-y-auto">
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1">
               {kardexList.length === 0 ? (
-                <p className="text-center py-6 text-slate-500 text-sm">Nenhuma movimentação registrada no Kardex.</p>
+                <p className="text-center py-6 text-slate-500 text-xs sm:text-sm">Nenhuma movimentação registrada.</p>
               ) : (
-                <table className="w-full text-left text-xs font-mono text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 uppercase font-semibold">
-                    <tr>
-                      <th className="p-2.5">Data</th>
-                      <th className="p-2.5">Tipo</th>
-                      <th className="p-2.5 text-right">Qtd</th>
-                      <th className="p-2.5 text-right">Saldo Ant.</th>
-                      <th className="p-2.5 text-right">Saldo Atual</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                <div className="space-y-2 sm:space-y-0">
+                  <div className="hidden sm:block overflow-x-auto">
+                    <table className="w-full text-left text-xs font-mono text-slate-300">
+                      <thead className="bg-slate-950 text-slate-400 uppercase font-semibold">
+                        <tr>
+                          <th className="p-2.5">Data</th>
+                          <th className="p-2.5">Tipo</th>
+                          <th className="p-2.5 text-right">Qtd</th>
+                          <th className="p-2.5 text-right">Saldo Final</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {kardexList.map((m) => (
+                          <tr key={m.id} className="hover:bg-slate-800/30">
+                            <td className="p-2.5 text-slate-400">{new Date(m.created_at).toLocaleDateString('pt-BR')}</td>
+                            <td className="p-2.5 font-sans text-slate-200">{m.tipo_movimento}</td>
+                            <td className={`p-2.5 text-right font-bold ${m.tipo_movimento.includes('ENTRADA') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {m.tipo_movimento.includes('ENTRADA') ? '+' : '-'}{parseFloat(m.quantidade).toFixed(2)}
+                            </td>
+                            <td className="p-2.5 text-right font-bold text-white">{parseFloat(m.saldo_posterior).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="sm:hidden space-y-2">
                     {kardexList.map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-800/30">
-                        <td className="p-2.5 text-slate-400">{new Date(m.created_at).toLocaleDateString('pt-BR')}</td>
-                        <td className="p-2.5 font-sans font-medium text-slate-200">{m.tipo_movimento}</td>
-                        <td className={`p-2.5 text-right font-bold ${m.tipo_movimento.includes('ENTRADA') ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {m.tipo_movimento.includes('ENTRADA') ? '+' : '-'}{parseFloat(m.quantidade).toFixed(2)}
-                        </td>
-                        <td className="p-2.5 text-right text-slate-400">{parseFloat(m.saldo_anterior).toFixed(2)}</td>
-                        <td className="p-2.5 text-right font-bold text-white">{parseFloat(m.saldo_posterior).toFixed(2)}</td>
-                      </tr>
+                      <div key={m.id} className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg text-xs space-y-1">
+                        <div className="flex justify-between font-semibold">
+                          <span className="text-slate-300">{m.tipo_movimento}</span>
+                          <span className={m.tipo_movimento.includes('ENTRADA') ? 'text-emerald-400' : 'text-rose-400'}>
+                            {m.tipo_movimento.includes('ENTRADA') ? '+' : '-'}{parseFloat(m.quantidade).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-[11px] text-slate-500">
+                          <span>{new Date(m.created_at).toLocaleDateString('pt-BR')}</span>
+                          <span>Saldo: <strong className="text-slate-300">{parseFloat(m.saldo_posterior).toFixed(2)}</strong></span>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Importar XML */}
+      {/* Modal Importar XML Responsivo */}
       {modalXml && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl my-auto">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <UploadCloud className="h-5 w-5 text-indigo-400" />
                 Importar XML de NF-e
               </h2>
-              <button 
-                type="button" 
-                onClick={() => setModalXml(false)} 
-                className="text-slate-400 hover:text-white cursor-pointer p-1"
-              >
+              <button type="button" onClick={() => setModalXml(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleImportarXml} className="p-6 space-y-4 text-sm font-sans">
+            <form onSubmit={handleImportarXml} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Depósito de Destino *</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Depósito de Entrada *</label>
                 <select 
                   required
                   value={depositoXmlId}
@@ -477,29 +481,18 @@ export default function WmsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Arquivo XML da Nota Fiscal *</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Arquivo XML *</label>
                 <input 
                   type="file" 
                   required 
                   accept=".xml"
                   onChange={(e) => setXmlFile(e.target.files[0])}
-                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+                  className="w-full text-xs text-slate-400 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-                <button 
-                  type="button" 
-                  onClick={() => setModalXml(false)} 
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer"
-                >
-                  Processar Entrada
-                </button>
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalXml(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Processar</button>
               </div>
             </form>
           </div>
