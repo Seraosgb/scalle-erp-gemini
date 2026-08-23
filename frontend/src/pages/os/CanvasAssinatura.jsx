@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { RotateCcw, Check, PenTool } from 'lucide-react';
+import { RotateCcw, PenTool } from 'lucide-react';
 
 export default function CanvasAssinatura({ onSalvar, onLimpar }) {
   const canvasRef = useRef(null);
@@ -9,7 +9,7 @@ export default function CanvasAssinatura({ onSalvar, onLimpar }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
-      canvas.width = canvas.parentElement.offsetWidth;
+      canvas.width = canvas.parentElement.offsetWidth || 400;
       canvas.height = 200;
       const ctx = canvas.getContext('2d');
       ctx.lineWidth = 2.5;
