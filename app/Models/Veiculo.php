@@ -36,16 +36,6 @@ class Veiculo extends Model
         'is_ativo' => 'boolean',
     ];
 
-    public function empresa(): BelongsTo
-    {
-        return $this->belongsTo(Empresa::class, 'empresa_id');
-    }
-
-    public function motorista(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'motorista_padrao_id');
-    }
-
     public function manutencoes(): HasMany
     {
         return $this->hasMany(ManutencaoVeiculo::class, 'veiculo_id');

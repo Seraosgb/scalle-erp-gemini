@@ -2,24 +2,28 @@
 
 use Illuminate\Support\Facades\Route;
 
-// Rota de Health Check da API
+// Health Check
 Route::get('/health', function () {
     return response()->json([
         'status' => 'OK',
         'sistema' => 'Scalle ERP',
         'versao' => '2.0.0 Enterprise',
-        'database' => 'PostgreSQL 16',
         'timestamp' => now()->toIso8601String(),
     ]);
 });
 
-// Fallback para o SPA React (Carrega index.html para qualquer rota não-API)
-Route::fallback(function () {
+// Redireciona a raiz para /app/
+Route::get('/', function () {
+    return redirect('/app/');
+});
+
+// Serve o index.html para qualquer subrota do SPA
+Route::get('/app/{any?}', function () {
     $indexPath = public_path('app/index.html');
     if (file_exists($indexPath)) {
         return response()->file($indexPath);
     }
     return response()->json([
-        'error' => 'Frontend SPA build não encontrado em public/app. Execute npm run build.'
+        'error' => 'Build SPA não encontrado em public/app/index.html'
     ], 404);
-});
+})->where('any', '.*');
