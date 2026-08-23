@@ -7,11 +7,12 @@ import AppLayout from './layouts/AppLayout';
 import WmsPage from './pages/wms/WmsPage';
 import PdvPage from './pages/pdv/PdvPage';
 import OsPage from './pages/os/OsPage';
+import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutos de cache
+      staleTime: 1000 * 60 * 5,
       refetchOnWindowFocus: false,
     },
   },
@@ -44,7 +45,7 @@ export default function App() {
             <Route path="wms" element={<WmsPage />} />
             <Route path="pdv" element={<PdvPage />} />
             <Route path="os" element={<OsPage />} />
-            <Route path="financeiro" element={<div className="text-xl font-bold">Módulo Financeiro</div>} />
+            <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="fiscal" element={<div className="text-xl font-bold">Módulo Fiscal</div>} />
           </Route>
 

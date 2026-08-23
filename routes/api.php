@@ -43,4 +43,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // Comercial & OS
     Route::post('/vendas/faturar', [VendaController::class, 'faturar']);
     Route::apiResource('ordens-servico', OrdemServicoController::class);
+
+    // Financeiro & Tesouraria
+    Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);
+    Route::get('/financeiro/contas', [FinanceiroController::class, 'contas']);
+    Route::get('/financeiro/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
+    Route::post('/financeiro/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
 });
