@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { 
+  LayoutDashboard,
   Boxes, 
   ShoppingCart, 
   Wrench, 
@@ -16,6 +17,7 @@ export default function AppLayout() {
   const location = useLocation();
 
   const menu = [
+    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'WMS & Estoque', path: '/wms', icon: Boxes },
     { name: 'PDV Balcão', path: '/pdv', icon: ShoppingCart },
     { name: 'Ordens de Serviço', path: '/os', icon: Wrench },

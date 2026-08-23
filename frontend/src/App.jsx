@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/useAuthStore';
 import Login from './pages/Login';
 import AppLayout from './layouts/AppLayout';
+import DashboardPage from './pages/dashboard/DashboardPage';
 import WmsPage from './pages/wms/WmsPage';
 import PdvPage from './pages/pdv/PdvPage';
 import OsPage from './pages/os/OsPage';
@@ -42,7 +43,8 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/wms" replace />} />
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
             <Route path="wms" element={<WmsPage />} />
             <Route path="pdv" element={<PdvPage />} />
             <Route path="os" element={<OsPage />} />
