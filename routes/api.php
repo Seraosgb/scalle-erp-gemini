@@ -38,6 +38,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Itens, Catálogo e WMS Estoque
     Route::get('/wms/depositos', [ItemController::class, 'depositos']);
     Route::post('/wms/depositos', [ItemController::class, 'storeDeposito']);
+    Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
+    Route::post('/wms/transferir', [ItemController::class, 'transferir']);
     Route::get('/itens/{id}/kardex', [ItemController::class, 'kardex']);
     Route::post('/itens/importar-xml', [ItemController::class, 'importarXml']);
     Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);

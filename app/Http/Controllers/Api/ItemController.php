@@ -10,8 +10,10 @@ use App\Models\Item;
 use App\Models\MovimentacaoEstoque;
 use App\Services\EstoqueService;
 use App\Services\ImportadorXmlNfeService;
+use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ItemController extends Controller
@@ -73,7 +75,6 @@ class ItemController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
         
-        // Garante que a empresa exista
         $empresa = $request->user()->empresaPadrao 
                 ?? Empresa::where('tenant_id', $tenantId)->first()
                 ?? Empresa::firstOrCreate(
@@ -90,7 +91,6 @@ class ItemController extends Controller
 
         $empresaId = $empresa->id;
 
-        // Auto-provisiona o depósito padrão caso não exista nenhum
         if (Deposito::where('empresa_id', $empresaId)->count() === 0) {
             Deposito::create([
                 'id' => (string) Str::uuid(),
@@ -141,7 +141,6 @@ class ItemController extends Controller
 
         $codigoFormatado = strtoupper(trim($validated['codigo']));
 
-        // Verifica se o código já existe para a mesma empresa
         $jaExiste = Deposito::where('empresa_id', $empresa->id)
             ->where('codigo', $codigoFormatado)
             ->exists();
@@ -173,6 +172,143 @@ class ItemController extends Controller
         ]);
 
         return response()->json(['data' => $deposito], 201);
+    }
+
+    public function ajustarSaldo(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'item_id' => 'required|uuid|exists:pro_itens,id',
+            'novo_saldo' => 'required|numeric|min:0',
+            'motivo' => 'required|string|max:255',
+            'lote' => 'nullable|string|max:50',
+            'data_validade' => 'nullable|date',
+            'localizacao_rua' => 'nullable|string|max:20',
+            'localizacao_predio' => 'nullable|string|max:20',
+            'localizacao_nivel' => 'nullable|string|max:20',
+            'localizacao_vao' => 'nullable|string|max:20',
+        ]);
+
+        try {
+            DB::transaction(function () use ($validated, $request) {
+                $saldoAtual = EstoqueDeposito::where('deposito_id', $validated['deposito_id'])
+                    ->where('item_id', $validated['item_id'])
+                    ->when(!empty($validated['lote']), fn($q) => $q->where('lote', $validated['lote']))
+                    ->lockForUpdate()
+                    ->first();
+
+                $quantidadeAtual = $saldoAtual ? (float) $saldoAtual->quantidade_saldo : 0.00;
+                $novoSaldo = (float) $validated['novo_saldo'];
+                $diferenca = $novoSaldo - $quantidadeAtual;
+
+                if ($diferenca == 0) {
+                    return;
+                }
+
+                $tipoMovimento = 'AJUSTE_INVENTARIO';
+                $quantidadeMovimentar = abs($diferenca);
+
+                if (!$saldoAtual) {
+                    $saldoAtual = EstoqueDeposito::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => $request->user()->tenant_id,
+                        'deposito_id' => $validated['deposito_id'],
+                        'item_id' => $validated['item_id'],
+                        'lote' => $validated['lote'] ?? null,
+                        'data_validade' => $validated['data_validade'] ?? null,
+                        'localizacao_rua' => $validated['localizacao_rua'] ?? null,
+                        'localizacao_predio' => $validated['localizacao_predio'] ?? null,
+                        'localizacao_nivel' => $validated['localizacao_nivel'] ?? null,
+                        'localizacao_vao' => $validated['localizacao_vao'] ?? null,
+                        'quantidade_saldo' => 0.0000,
+                        'quantidade_reservada' => 0.0000,
+                    ]);
+                } else {
+                    $saldoAtual->update([
+                        'localizacao_rua' => $validated['localizacao_rua'] ?? $saldoAtual->localizacao_rua,
+                        'localizacao_predio' => $validated['localizacao_predio'] ?? $saldoAtual->localizacao_predio,
+                        'localizacao_nivel' => $validated['localizacao_nivel'] ?? $saldoAtual->localizacao_nivel,
+                        'localizacao_vao' => $validated['localizacao_vao'] ?? $saldoAtual->localizacao_vao,
+                    ]);
+                }
+
+                $saldoAtual->update(['quantidade_saldo' => $novoSaldo]);
+
+                MovimentacaoEstoque::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $request->user()->tenant_id,
+                    'deposito_id' => $validated['deposito_id'],
+                    'item_id' => $validated['item_id'],
+                    'usuario_id' => $request->user()->id,
+                    'tipo_movimento' => $tipoMovimento,
+                    'quantidade' => $quantidadeMovimentar,
+                    'saldo_anterior' => $quantidadeAtual,
+                    'saldo_posterior' => $novoSaldo,
+                    'custo_unitario' => 0.00,
+                    'documento_origem_tipo' => 'inventario',
+                    'motivo' => $validated['motivo'] . ' (Ajuste de ' . ($diferenca > 0 ? '+' : '-') . $quantidadeMovimentar . ')',
+                    'created_at' => now(),
+                ]);
+            });
+
+            return response()->json(['data' => ['message' => 'Inventário atualizado com sucesso!']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function transferir(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_origem_id' => 'required|uuid|exists:wms_depositos,id|different:deposito_destino_id',
+            'deposito_destino_id' => 'required|uuid|exists:wms_depositos,id',
+            'item_id' => 'required|uuid|exists:pro_itens,id',
+            'quantidade' => 'required|numeric|min:0.0001',
+            'modalidade' => 'required|string|in:DIRETO,EM_TRANSITO',
+            'observacoes' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            DB::transaction(function () use ($validated, $request) {
+                $origemId = $validated['deposito_origem_id'];
+                $destinoId = $validated['deposito_destino_id'];
+                $itemId = $validated['item_id'];
+                $qtd = (float) $validated['quantidade'];
+                $userId = $request->user()->id;
+
+                // 1. Baixa no depósito de origem
+                EstoqueService::movimentar(
+                    $origemId,
+                    $itemId,
+                    $qtd,
+                    'TRANSFERENCIA_SAIDA',
+                    $userId,
+                    'transferencias',
+                    null,
+                    null,
+                    0.00
+                );
+
+                // 2. Se for DIRETO, dá entrada imediata no destino
+                if ($validated['modalidade'] === 'DIRETO') {
+                    EstoqueService::movimentar(
+                        $destinoId,
+                        $itemId,
+                        $qtd,
+                        'TRANSFERENCIA_ENTRADA',
+                        $userId,
+                        'transferencias',
+                        null,
+                        null,
+                        0.00
+                    );
+                }
+            });
+
+            return response()->json(['data' => ['message' => 'Transferência executada com sucesso!']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
     }
 
     public function importarXml(Request $request): JsonResponse

@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { 
   Package, Plus, Search, UploadCloud, RefreshCw, 
-  Warehouse, CheckCircle2, AlertTriangle, X, Check
+  Warehouse, ArrowRightLeft, SlidersHorizontal, 
+  CheckCircle2, AlertTriangle, X, Check, MapPin, Tag
 } from 'lucide-react';
 
 export default function WmsPage() {
-  const [activeTab, setActiveTab] = useState('itens'); // 'itens' ou 'depositos'
+  const [activeTab, setActiveTab] = useState('itens');
   const [itens, setItens] = useState([]);
   const [depositos, setDepositos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,17 +16,19 @@ export default function WmsPage() {
   // Modais
   const [modalCadastroItem, setModalCadastroItem] = useState(false);
   const [modalCadastroDeposito, setModalCadastroDeposito] = useState(false);
+  const [modalAjuste, setModalAjuste] = useState(false);
+  const [modalTransferencia, setModalTransferencia] = useState(false);
   const [modalKardex, setModalKardex] = useState(false);
   const [modalXml, setModalXml] = useState(false);
   
-  // Estados auxiliares
+  // Estados de Operação
   const [itemSelecionado, setItemSelecionado] = useState(null);
   const [kardexList, setKardexList] = useState([]);
   const [xmlFile, setXmlFile] = useState(null);
   const [depositoXmlId, setDepositoXmlId] = useState('');
   const [feedback, setFeedback] = useState(null);
 
-  // Forms
+  // Formulários
   const [formItem, setFormItem] = useState({
     nome: '',
     codigo_sku: '',
@@ -44,6 +47,28 @@ export default function WmsPage() {
     is_padrao: false
   });
 
+  const [formAjuste, setFormAjuste] = useState({
+    deposito_id: '',
+    item_id: '',
+    novo_saldo: '',
+    motivo: 'Inventário Periódico de Almoxarifado',
+    lote: '',
+    data_validade: '',
+    localizacao_rua: '',
+    localizacao_predio: '',
+    localizacao_nivel: '',
+    localizacao_vao: '',
+  });
+
+  const [formTransferencia, setFormTransferencia] = useState({
+    deposito_origem_id: '',
+    deposito_destino_id: '',
+    item_id: '',
+    quantidade: '',
+    modalidade: 'DIRETO',
+    observacoes: '',
+  });
+
   const carregarDados = async () => {
     setLoading(true);
     try {
@@ -55,7 +80,6 @@ export default function WmsPage() {
       const deps = resDeps.data.data || resDeps.data || [];
       setDepositos(deps);
       
-      // Pré-seleciona o depósito padrão ou o primeiro disponível
       const padrao = deps.find(d => d.is_padrao) || deps[0];
       if (padrao) {
         setDepositoXmlId(padrao.id);
@@ -80,6 +104,41 @@ export default function WmsPage() {
     } catch (err) {
       setKardexList([]);
     }
+  };
+
+  const abrirModalAjuste = (item) => {
+    setItemSelecionado(item);
+    const depPadrao = depositos.find(d => d.is_padrao) || depositos[0];
+    const saldoAtual = item.saldos_por_deposito?.find(s => s.deposito_id === depPadrao?.id);
+    
+    setFormAjuste({
+      deposito_id: depPadrao?.id || '',
+      item_id: item.id,
+      novo_saldo: saldoAtual ? saldoAtual.quantidade_saldo : '0',
+      motivo: 'Inventário Geral e Contagem Física',
+      lote: saldoAtual?.lote || '',
+      data_validade: saldoAtual?.data_validade || '',
+      localizacao_rua: saldoAtual?.localizacao_rua || '',
+      localizacao_predio: saldoAtual?.localizacao_predio || '',
+      localizacao_nivel: saldoAtual?.localizacao_nivel || '',
+      localizacao_vao: saldoAtual?.localizacao_vao || '',
+    });
+    setModalAjuste(true);
+  };
+
+  const abrirModalTransferencia = (item) => {
+    setItemSelecionado(item);
+    const depOrigem = depositos[0]?.id || '';
+    const depDestino = depositos[1]?.id || depositos[0]?.id || '';
+    setFormTransferencia({
+      deposito_origem_id: depOrigem,
+      deposito_destino_id: depDestino,
+      item_id: item.id,
+      quantidade: '1',
+      modalidade: 'DIRETO',
+      observacoes: 'Transferência operacional interna',
+    });
+    setModalTransferencia(true);
   };
 
   const handleSalvarItem = async (e) => {
@@ -118,7 +177,31 @@ export default function WmsPage() {
       setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado cadastrado com sucesso!' });
       carregarDados();
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: err.response?.data?.message || 'Erro ao cadastrar depósito.' });
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || err.response?.data?.message || 'Erro ao cadastrar depósito.' });
+    }
+  };
+
+  const handleExecutarAjuste = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/wms/ajustar-saldo', formAjuste);
+      setModalAjuste(false);
+      setFeedback({ tipo: 'sucesso', msg: 'Inventário e saldo físico atualizados com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao ajustar saldo.' });
+    }
+  };
+
+  const handleExecutarTransferencia = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/wms/transferir', formTransferencia);
+      setModalTransferencia(false);
+      setFeedback({ tipo: 'sucesso', msg: 'Transferência de estoque realizada com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao transferir estoque.' });
     }
   };
 
@@ -153,7 +236,7 @@ export default function WmsPage() {
             Almoxarifado & WMS
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Controle de catálogo, depósitos físicos, saldos fracionados e trilha Kardex
+            Gestão física, endereçamento logístico, transferências e trilha Kardex
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -226,7 +309,7 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Conteúdo da Aba 1: Itens & Saldos */}
+      {/* Conteúdo Aba 1: Itens e Saldos */}
       {activeTab === 'itens' && (
         <div className="space-y-4">
           <div className="relative">
@@ -255,7 +338,7 @@ export default function WmsPage() {
               itens.map((item) => {
                 const saldoTotal = item.saldos_por_deposito?.reduce((acc, s) => acc + parseFloat(s.quantidade_saldo || 0), 0) ?? 0;
                 return (
-                  <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2.5">
+                  <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <span className="text-[11px] font-mono text-indigo-400 font-semibold">{item.codigo_sku || 'SEM SKU'}</span>
@@ -278,13 +361,31 @@ export default function WmsPage() {
                       </div>
                     </div>
                     {item.controla_estoque && (
-                      <button
-                        type="button"
-                        onClick={() => abrirKardex(item)}
-                        className="w-full py-1.5 text-xs rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800 hover:bg-indigo-900/80 font-medium cursor-pointer"
-                      >
-                        Ver Extrato Kardex
-                      </button>
+                      <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-800/50">
+                        <button
+                          type="button"
+                          onClick={() => abrirModalAjuste(item)}
+                          className="py-1.5 text-[11px] rounded bg-slate-800 text-slate-200 hover:bg-slate-700 font-medium flex items-center justify-center gap-1"
+                        >
+                          <SlidersHorizontal className="h-3 w-3 text-indigo-400" />
+                          Inventário
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirModalTransferencia(item)}
+                          className="py-1.5 text-[11px] rounded bg-slate-800 text-slate-200 hover:bg-slate-700 font-medium flex items-center justify-center gap-1"
+                        >
+                          <ArrowRightLeft className="h-3 w-3 text-indigo-400" />
+                          Transferir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirKardex(item)}
+                          className="py-1.5 text-[11px] rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800 font-medium"
+                        >
+                          Kardex
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
@@ -303,7 +404,7 @@ export default function WmsPage() {
                     <th className="py-3 px-4">TIPO</th>
                     <th className="py-3 px-4 text-right">PREÇO VENDA</th>
                     <th className="py-3 px-4 text-right">SALDO FÍSICO</th>
-                    <th className="py-3 px-4 text-center">AÇÕES</th>
+                    <th className="py-3 px-4 text-center">AÇÕES OPERACIONAIS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
@@ -346,13 +447,33 @@ export default function WmsPage() {
                           </td>
                           <td className="py-3 px-4 text-center">
                             {item.controla_estoque && (
-                              <button
-                                type="button"
-                                onClick={() => abrirKardex(item)}
-                                className="px-2.5 py-1 text-xs rounded bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 cursor-pointer transition"
-                              >
-                                Kardex
-                              </button>
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => abrirModalAjuste(item)}
+                                  title="Ajustar Inventário e Endereçamento"
+                                  className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer flex items-center gap-1"
+                                >
+                                  <SlidersHorizontal className="h-3.5 w-3.5 text-indigo-400" />
+                                  Inventário
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => abrirModalTransferencia(item)}
+                                  title="Transferir entre Depósitos"
+                                  className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer flex items-center gap-1"
+                                >
+                                  <ArrowRightLeft className="h-3.5 w-3.5 text-indigo-400" />
+                                  Transferir
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => abrirKardex(item)}
+                                  className="px-2.5 py-1 text-xs rounded bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 cursor-pointer transition"
+                                >
+                                  Kardex
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -366,7 +487,7 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Conteúdo da Aba 2: Depósitos & Almoxarifados */}
+      {/* Conteúdo Aba 2: Depósitos */}
       {activeTab === 'depositos' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {depositos.map((dep) => (
@@ -394,6 +515,201 @@ export default function WmsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal Ajuste de Inventário e Endereçamento */}
+      {modalAjuste && itemSelecionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <SlidersHorizontal className="h-5 w-5 text-indigo-400" />
+                  Ajuste de Inventário / Saldo Físico
+                </h2>
+                <p className="text-xs text-indigo-400 font-mono mt-0.5">{itemSelecionado.nome} (SKU: {itemSelecionado.codigo_sku})</p>
+              </div>
+              <button type="button" onClick={() => setModalAjuste(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleExecutarAjuste} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Depósito Alvo *</label>
+                  <select 
+                    required
+                    value={formAjuste.deposito_id}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, deposito_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    {depositos.map(d => (
+                      <option key={d.id} value={d.id}>{d.nome} ({d.codigo})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Novo Saldo Físico Apurado *</label>
+                  <input 
+                    type="number" 
+                    step="0.0001"
+                    required 
+                    value={formAjuste.novo_saldo}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, novo_saldo: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono font-bold text-indigo-300 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Motivo / Justificativa do Ajuste *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={formAjuste.motivo}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, motivo: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Lote</label>
+                  <input 
+                    type="text" 
+                    value={formAjuste.lote}
+                    placeholder="Ex: LOTE-2026-A"
+                    onChange={(e) => setFormAjuste({ ...formAjuste, lote: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white uppercase focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Validade</label>
+                  <input 
+                    type="date" 
+                    value={formAjuste.data_validade}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, data_validade: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Endereçamento Físico */}
+              <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-indigo-400" /> Endereçamento Logístico
+                </span>
+                <div className="grid grid-cols-4 gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Rua" 
+                    value={formAjuste.localizacao_rua}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, localizacao_rua: e.target.value })}
+                    className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-xs text-white text-center"
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Prédio" 
+                    value={formAjuste.localizacao_predio}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, localizacao_predio: e.target.value })}
+                    className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-xs text-white text-center"
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Nível" 
+                    value={formAjuste.localizacao_nivel}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, localizacao_nivel: e.target.value })}
+                    className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-xs text-white text-center"
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Vão" 
+                    value={formAjuste.localizacao_vao}
+                    onChange={(e) => setFormAjuste({ ...formAjuste, localizacao_vao: e.target.value })}
+                    className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-xs text-white text-center"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalAjuste(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Salvar Ajuste</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Transferência Interna */}
+      {modalTransferencia && itemSelecionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <ArrowRightLeft className="h-5 w-5 text-indigo-400" />
+                  Transferência Interna
+                </h2>
+                <p className="text-xs text-indigo-400 font-mono mt-0.5">{itemSelecionado.nome}</p>
+              </div>
+              <button type="button" onClick={() => setModalTransferencia(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleExecutarTransferencia} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Depósito de Origem (Saída) *</label>
+                <select 
+                  required
+                  value={formTransferencia.deposito_origem_id}
+                  onChange={(e) => setFormTransferencia({ ...formTransferencia, deposito_origem_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {depositos.map(d => (
+                    <option key={d.id} value={d.id}>{d.nome} ({d.codigo})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Depósito de Destino (Entrada) *</label>
+                <select 
+                  required
+                  value={formTransferencia.deposito_destino_id}
+                  onChange={(e) => setFormTransferencia({ ...formTransferencia, deposito_destino_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {depositos.map(d => (
+                    <option key={d.id} value={d.id}>{d.nome} ({d.codigo})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Quantidade *</label>
+                  <input 
+                    type="number" 
+                    step="0.0001"
+                    required 
+                    value={formTransferencia.quantidade}
+                    onChange={(e) => setFormTransferencia({ ...formTransferencia, quantidade: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono font-bold text-indigo-300 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Modalidade</label>
+                  <select 
+                    value={formTransferencia.modalidade}
+                    onChange={(e) => setFormTransferencia({ ...formTransferencia, modalidade: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="DIRETO">Direto (Instantâneo)</option>
+                    <option value="EM_TRANSITO">Em Trânsito</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalTransferencia(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Executar Transferência</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -513,7 +829,7 @@ export default function WmsPage() {
                 <input 
                   type="text" 
                   required 
-                  placeholder="Ex: Almoxarifado de Peças"
+                  placeholder="Ex: Almoxarifado Central"
                   value={formDeposito.nome}
                   onChange={(e) => setFormDeposito({ ...formDeposito, nome: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -524,7 +840,7 @@ export default function WmsPage() {
                 <input 
                   type="text" 
                   required 
-                  placeholder="Ex: ALMOX-02"
+                  placeholder="Ex: ALMOX-03"
                   value={formDeposito.codigo}
                   onChange={(e) => setFormDeposito({ ...formDeposito, codigo: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white uppercase focus:outline-none focus:border-indigo-500"
@@ -543,12 +859,12 @@ export default function WmsPage() {
               <div className="flex items-center gap-2 pt-1">
                 <input 
                   type="checkbox" 
-                  id="dep_padrao"
+                  id="dep_padrao_modal"
                   checked={formDeposito.is_padrao}
                   onChange={(e) => setFormDeposito({ ...formDeposito, is_padrao: e.target.checked })}
                   className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0"
                 />
-                <label htmlFor="dep_padrao" className="text-xs text-slate-300 font-medium cursor-pointer">
+                <label htmlFor="dep_padrao_modal" className="text-xs text-slate-300 font-medium cursor-pointer">
                   Definir como Depósito Principal da Empresa
                 </label>
               </div>
@@ -585,6 +901,7 @@ export default function WmsPage() {
                         <tr>
                           <th className="p-2.5">Data</th>
                           <th className="p-2.5">Tipo</th>
+                          <th className="p-2.5">Depósito</th>
                           <th className="p-2.5 text-right">Qtd</th>
                           <th className="p-2.5 text-right">Saldo Final</th>
                         </tr>
@@ -594,6 +911,7 @@ export default function WmsPage() {
                           <tr key={m.id} className="hover:bg-slate-800/30">
                             <td className="p-2.5 text-slate-400">{new Date(m.created_at).toLocaleDateString('pt-BR')}</td>
                             <td className="p-2.5 font-sans text-slate-200">{m.tipo_movimento}</td>
+                            <td className="p-2.5 font-sans text-slate-400">{m.deposito?.nome || '-'}</td>
                             <td className={`p-2.5 text-right font-bold ${m.tipo_movimento.includes('ENTRADA') ? 'text-emerald-400' : 'text-rose-400'}`}>
                               {m.tipo_movimento.includes('ENTRADA') ? '+' : '-'}{parseFloat(m.quantidade).toFixed(2)}
                             </td>
@@ -614,7 +932,7 @@ export default function WmsPage() {
                           </span>
                         </div>
                         <div className="flex justify-between text-[11px] text-slate-500">
-                          <span>{new Date(m.created_at).toLocaleDateString('pt-BR')}</span>
+                          <span>{new Date(m.created_at).toLocaleDateString('pt-BR')} ({m.deposito?.codigo || '-'})</span>
                           <span>Saldo: <strong className="text-slate-300">{parseFloat(m.saldo_posterior).toFixed(2)}</strong></span>
                         </div>
                       </div>
@@ -627,7 +945,7 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Modal Importar XML com Depósito Pré-selecionado */}
+      {/* Modal Importar XML */}
       {modalXml && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl my-auto">
