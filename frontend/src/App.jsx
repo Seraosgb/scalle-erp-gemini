@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import AppLayout from './layouts/AppLayout';
 import WmsPage from './pages/wms/WmsPage';
 import PdvPage from './pages/pdv/PdvPage';
+import OsPage from './pages/os/OsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,7 +43,7 @@ export default function App() {
             <Route index element={<Navigate to="/wms" replace />} />
             <Route path="wms" element={<WmsPage />} />
             <Route path="pdv" element={<PdvPage />} />
-            <Route path="os" element={<div className="text-xl font-bold">Módulo de Ordens de Serviço</div>} />
+            <Route path="os" element={<OsPage />} />
             <Route path="financeiro" element={<div className="text-xl font-bold">Módulo Financeiro</div>} />
             <Route path="fiscal" element={<div className="text-xl font-bold">Módulo Fiscal</div>} />
           </Route>
