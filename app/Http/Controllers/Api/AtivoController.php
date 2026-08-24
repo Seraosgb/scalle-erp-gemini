@@ -18,8 +18,12 @@ class AtivoController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $tenantId = $request->user()->tenant_id;
-            $query = PatrimonioBem::where('tenant_id', $tenantId)->with('responsavel');
+            $user = $request->user();
+            $query = PatrimonioBem::query()->with('responsavel');
+
+            if ($user && $user->tenant_id) {
+                $query->where('tenant_id', $user->tenant_id);
+            }
 
             if ($request->filled('search')) {
                 $search = $request->get('search');
@@ -42,7 +46,7 @@ class AtivoController extends Controller
         $tenantId = $request->user()->tenant_id;
         $empresaId = $request->user()->empresa_padrao_id 
                   ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
-                  ?? Empresa::first()->id;
+                  ?? Empresa::first()?->id;
 
         $validated = $request->validate([
             'descricao' => 'required|string|max:200',
@@ -76,11 +80,14 @@ class AtivoController extends Controller
                 return response()->json(['data' => []]);
             }
 
-            $tenantId = $request->user()->tenant_id;
-            $planos = PlanoPreventivo::where('tenant_id', $tenantId)
-                ->with(['cliente', 'ativo', 'tecnicoPadrao'])
-                ->orderBy('proxima_execucao')
-                ->get();
+            $user = $request->user();
+            $query = PlanoPreventivo::query()->with(['cliente', 'ativo', 'tecnicoPadrao']);
+
+            if ($user && $user->tenant_id) {
+                $query->where('tenant_id', $user->tenant_id);
+            }
+
+            $planos = $query->orderBy('proxima_execucao')->get();
 
             return response()->json(['data' => $planos]);
         } catch (Exception $e) {
@@ -93,7 +100,7 @@ class AtivoController extends Controller
         $tenantId = $request->user()->tenant_id;
         $empresaId = $request->user()->empresa_padrao_id 
                   ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
-                  ?? Empresa::first()->id;
+                  ?? Empresa::first()?->id;
 
         $validated = $request->validate([
             'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
@@ -125,14 +132,15 @@ class AtivoController extends Controller
     public function prioridades(Request $request): JsonResponse
     {
         $padroes = [
-            ['codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem' => 1],
-            ['codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem' => 2],
-            ['codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem' => 3],
-            ['codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem' => 4],
+            ['codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem_exibicao' => 1],
+            ['codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem_exibicao' => 2],
+            ['codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem_exibicao' => 3],
+            ['codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem_exibicao' => 4],
         ];
 
         try {
-            $tenantId = $request->user()?->tenant_id;
+            $user = $request->user();
+            $tenantId = $user?->tenant_id;
 
             if ($tenantId && Schema::hasTable('sis_tabelas_dominio')) {
                 $existentes = TabelaDominio::withoutGlobalScopes()
@@ -149,7 +157,7 @@ class AtivoController extends Controller
                             'codigo' => $p['codigo'],
                             'nome' => $p['nome'],
                             'cor_hex' => $p['cor_hex'],
-                            'ordem_exibicao' => $p['ordem'],
+                            'ordem_exibicao' => $p['ordem_exibicao'],
                             'is_ativo' => true,
                             'is_sistema' => true,
                         ]);
@@ -162,10 +170,12 @@ class AtivoController extends Controller
                     ->orderBy('ordem_exibicao')
                     ->get();
 
-                return response()->json(['data' => $prioridades]);
+                if ($prioridades->isNotEmpty()) {
+                    return response()->json(['data' => $prioridades]);
+                }
             }
         } catch (Exception $e) {
-            // Fallback seguro caso o banco ainda esteja migrando
+            // Em caso de exceção, cai no retorno padrão
         }
 
         return response()->json(['data' => $padroes]);
