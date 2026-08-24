@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\PedidoVenda;
 use App\Models\Pessoa;
+use App\Services\MotorFiscalService;
 use App\Services\VendaService;
 use Exception;
 use Illuminate\Http\JsonResponse;
@@ -32,9 +33,23 @@ class VendaController extends Controller
             $query->where('status', $request->get('status'));
         }
 
+        if ($request->filled('tipo_documento')) {
+            $query->where('tipo_documento', $request->get('tipo_documento'));
+        }
+
         $vendas = $query->orderByDesc('created_at')->paginate(15);
 
         return response()->json($vendas);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $pedido = PedidoVenda::where('tenant_id', $tenantId)
+            ->with(['cliente', 'vendedor', 'deposito', 'itens.item', 'pagamentos'])
+            ->findOrFail($id);
+
+        return response()->json(['data' => $pedido]);
     }
 
     public function faturar(Request $request): JsonResponse
@@ -56,24 +71,7 @@ class VendaController extends Controller
         ]);
 
         $tenantId = $request->user()->tenant_id;
-
-        // Fallback automático para Consumidor Final padrão
-        $clienteId = $validated['cliente_id'] ?? null;
-        if (empty($clienteId)) {
-            $consumidor = Pessoa::where('tenant_id', $tenantId)->where('cpf_cnpj', '00000000000')->first();
-            if (!$consumidor) {
-                $consumidor = Pessoa::create([
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                    'tipo_pessoa' => 'PF',
-                    'nome_razao_social' => 'Consumidor Final',
-                    'cpf_cnpj' => '00000000000',
-                    'is_cliente' => true,
-                    'is_ativo' => true,
-                ]);
-            }
-            $clienteId = $consumidor->id;
-        }
+        $clienteId = self::resolverClienteId($validated['cliente_id'] ?? null, $tenantId);
 
         $empresaId = $request->user()->empresa_padrao_id 
                   ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
@@ -105,5 +103,154 @@ class VendaController extends Controller
                 ]
             ], 422);
         }
+    }
+
+    public function orcamento(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
+            'desconto_geral' => 'nullable|numeric|min:0',
+            'data_validade' => 'nullable|date',
+            'itens' => 'required|array|min:1',
+            'itens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'itens.*.quantidade' => 'required|numeric|min:0.0001',
+            'itens.*.preco_unitario' => 'required|numeric|min:0',
+            'itens.*.desconto_unitario' => 'nullable|numeric|min:0',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()->id;
+
+        try {
+            $orcamento = VendaService::criarOrcamento(
+                $empresaId,
+                $validated['cliente_id'],
+                $validated['deposito_id'],
+                $request->user(),
+                $validated['itens'],
+                (float) ($validated['desconto_geral'] ?? 0.00),
+                $validated['data_validade'] ?? null
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => "Orçamento #{$orcamento->numero_pedido} registrado com sucesso!",
+                    'orcamento' => $orcamento->load('itens.item', 'cliente'),
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function converter(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pedido = PedidoVenda::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'pagamentos' => 'required|array|min:1',
+            'pagamentos.*.forma_pagamento' => 'required|string',
+            'pagamentos.*.valor_pago' => 'required|numeric|min:0.01',
+            'pagamentos.*.valor_troco' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $pedidoConvertido = VendaService::converterOrcamento($pedido, $validated['pagamentos'], $request->user());
+
+            return response()->json([
+                'data' => [
+                    'message' => "Orçamento #{$pedidoConvertido->numero_pedido} convertido em venda faturada!",
+                    'pedido' => $pedidoConvertido->load('itens.item', 'pagamentos', 'cliente'),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function cancelar(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pedido = PedidoVenda::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'motivo' => 'required|string|max:255',
+        ]);
+
+        try {
+            $pedidoCancelado = VendaService::cancelarVenda($pedido, $validated['motivo'], $request->user());
+
+            return response()->json([
+                'data' => [
+                    'message' => "Pedido #{$pedidoCancelado->numero_pedido} cancelado e estoque estornado com sucesso!",
+                    'pedido' => $pedidoCancelado,
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function emitirFiscal(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pedido = PedidoVenda::where('tenant_id', $tenantId)
+            ->with(['cliente', 'itens.item'])
+            ->findOrFail($id);
+
+        $empresa = Empresa::findOrFail($pedido->empresa_id);
+
+        $itensFiscal = $pedido->itens->map(function ($i) {
+            return [
+                'tipo_item' => 'PRODUTO',
+                'cfop' => $i->item->cfop_padrao ?? '5102',
+                'valor_total' => (float) $i->valor_total_liquido,
+            ];
+        })->toArray();
+
+        try {
+            $docFiscal = MotorFiscalService::emitirDocumento(
+                $empresa,
+                $pedido->cliente,
+                '65', // NFC-e
+                $itensFiscal,
+                'vendas',
+                $pedido->id
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => "NFC-e autorizada com sucesso sob a chave {$docFiscal->chave_acesso}",
+                    'documento' => $docFiscal,
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    private static function resolverClienteId(?string $clienteId, string $tenantId): string
+    {
+        if (!empty($clienteId)) {
+            return $clienteId;
+        }
+
+        $consumidor = Pessoa::where('tenant_id', $tenantId)->where('cpf_cnpj', '00000000000')->first();
+        if (!$consumidor) {
+            $consumidor = Pessoa::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'tipo_pessoa' => 'PF',
+                'nome_razao_social' => 'Consumidor Final',
+                'cpf_cnpj' => '00000000000',
+                'is_cliente' => true,
+                'is_ativo' => true,
+            ]);
+        }
+        return $consumidor->id;
     }
 }

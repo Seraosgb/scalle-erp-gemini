@@ -70,9 +70,14 @@ Route::post('/itens/importar-xml', [ItemController::class, 'importarXml']);
 Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);
 Route::apiResource('itens', ItemController::class);
 
-    // Comercial, Vendas e PDV
-    Route::post('/vendas/faturar', [VendaController::class, 'faturar']);
-    Route::apiResource('vendas', VendaController::class);
+// Vendas & Comercial
+Route::get('/vendas', [VendaController::class, 'index']);
+Route::get('/vendas/{id}', [VendaController::class, 'show']);
+Route::post('/vendas/faturar', [VendaController::class, 'faturar']);
+Route::post('/vendas/orcamento', [VendaController::class, 'orcamento']);
+Route::post('/vendas/{id}/converter', [VendaController::class, 'converter']);
+Route::post('/vendas/{id}/cancelar', [VendaController::class, 'cancelar']);
+Route::post('/vendas/{id}/emitir-fiscal', [VendaController::class, 'emitirFiscal']);
 
     // Ordens de Serviço (OS)
     Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, Boxes, ShoppingCart, Wrench, 
+  LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench, 
   DollarSign, FileText, Users, LogOut, Menu, X, 
   Building2, ChevronDown
 } from 'lucide-react';
@@ -60,6 +60,7 @@ export default function AppLayout() {
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'WMS & Estoque', path: '/wms', icon: Boxes },
     { name: 'Compras & Suprimentos', path: '/compras', icon: ShoppingCart },
+    { name: 'Pedidos & Vendas', path: '/vendas', icon: ShoppingBag },
     { name: 'PDV Balcão', path: '/pdv', icon: ShoppingCart },
     { name: 'Ordens de Serviço', path: '/os', icon: Wrench },
     { name: 'Financeiro', path: '/financeiro', icon: DollarSign },
