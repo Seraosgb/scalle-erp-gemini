@@ -70,8 +70,9 @@ export default function OrdensServicoPage() {
     ],
   });
 
-  // Form Ativo Completo
+  // Form Ativo Completo (Vinculado ao Cliente)
   const [formAtivo, setFormAtivo] = useState({
+    cliente_id: '',
     descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '',
     localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10),
   });
@@ -160,6 +161,11 @@ export default function OrdensServicoPage() {
       setAtivos([...ativos, res.data.data]);
       handleSelecionarAtivo(res.data.data.id);
       setModalNovoAtivo(false);
+      setFormAtivo({
+        cliente_id: '',
+        descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '',
+        localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10),
+      });
       setFeedback({ tipo: 'sucesso', msg: 'Ativo patrimonial cadastrado com sucesso!' });
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.message || 'Erro ao cadastrar ativo.' });
@@ -308,7 +314,7 @@ export default function OrdensServicoPage() {
             Ordens de Serviço & CMMS 100%
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Manutenção de campo, ativos tombados, PMOC (Lei 13.589/2018), SLA dinâmico e assinatura digital (MP 2.200-2)
+            Manutenção de campo, ativos tombados por cliente, PMOC (Lei 13.589/2018), SLA dinâmico e assinatura digital (MP 2.200-2)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -525,7 +531,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Visualização 3: Ativos Cadastrados */}
+      {/* Visualização 3: Ativos Cadastrados (Com Cliente/Proprietário) */}
       {abaAtiva === 'ativos' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-left text-sm text-slate-300">
@@ -533,20 +539,22 @@ export default function OrdensServicoPage() {
               <tr>
                 <th className="py-3 px-4">TAG / PATRIMÔNIO</th>
                 <th className="py-3 px-4">DESCRIÇÃO DO ATIVO</th>
+                <th className="py-3 px-4">CLIENTE / PROPRIETÁRIO</th>
                 <th className="py-3 px-4">MARCA / MODELO</th>
                 <th className="py-3 px-4">Nº DE SÉRIE</th>
-                <th className="py-3 px-4">LOCALIZAÇÃO / SETOR</th>
+                <th className="py-3 px-4">LOCALIZAÇÃO / SALA</th>
                 <th className="py-3 px-4 text-center">STATUS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono text-xs font-sans">
               {ativos.length === 0 ? (
-                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhum ativo tombado cadastrado.</td></tr>
+                <tr><td colSpan="7" className="text-center py-10 text-slate-500">Nenhum ativo tombado cadastrado.</td></tr>
               ) : (
                 ativos.map((a) => (
                   <tr key={a.id} className="hover:bg-slate-800/40 transition">
                     <td className="py-3 px-4 font-bold text-indigo-400 font-mono">{a.codigo_patrimonio}</td>
                     <td className="py-3 px-4 font-medium text-white">{a.descricao}</td>
+                    <td className="py-3 px-4 text-indigo-300 font-semibold">{a.cliente?.nome_razao_social || 'Equipamento Próprio'}</td>
                     <td className="py-3 px-4 text-slate-300">{a.marca_modelo || '-'}</td>
                     <td className="py-3 px-4 font-mono text-slate-400">{a.numero_serie || '-'}</td>
                     <td className="py-3 px-4 text-slate-300">{a.localizacao_fisica || '-'}</td>
@@ -597,7 +605,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Abertura de OS */}
+      {/* Modal Abertura de OS (Com Ativos filtrados pelo Cliente) */}
       {modalNovaOs && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
@@ -611,7 +619,7 @@ export default function OrdensServicoPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Cliente *</label>
-                  <select required value={formOs.cliente_id} onChange={(e) => setFormOs({ ...formOs, cliente_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  <select required value={formOs.cliente_id} onChange={(e) => setFormOs({ ...formOs, cliente_id: e.target.value, ativo_id: '' })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
                     <option value="">Selecione o Cliente...</option>
                     {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
                   </select>
@@ -619,12 +627,14 @@ export default function OrdensServicoPage() {
 
                 <div className="sm:col-span-2">
                   <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs font-semibold text-slate-400">Ativo Tombado / Máquina (Opcional)</label>
-                    <button type="button" onClick={() => setModalNovoAtivo(true)} className="text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer">+ Cadastrar Ativo</button>
+                    <label className="block text-xs font-semibold text-slate-400">Ativo Tombado / Máquina (Do Cliente)</label>
+                    <button type="button" onClick={() => { setFormAtivo(prev => ({ ...prev, cliente_id: formOs.cliente_id })); setModalNovoAtivo(true); }} className="text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer">+ Cadastrar Ativo</button>
                   </div>
                   <select value={formOs.ativo_id} onChange={(e) => handleSelecionarAtivo(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
                     <option value="">Nenhum Ativo Selecionado (Digitar Manualmente)</option>
-                    {ativos.map(a => <option key={a.id} value={a.id}>{a.descricao} — Patr: {a.codigo_patrimonio}</option>)}
+                    {ativos
+                      .filter(a => !formOs.cliente_id || !a.cliente_id || a.cliente_id === formOs.cliente_id)
+                      .map(a => <option key={a.id} value={a.id}>{a.descricao} — Patr: {a.codigo_patrimonio}</option>)}
                   </select>
                 </div>
 
@@ -664,7 +674,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Cadastro de Ativo Completo */}
+      {/* Modal Cadastro de Ativo Completo (Com Vínculo de Cliente) */}
       {modalNovoAtivo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-auto p-5 space-y-4">
@@ -674,6 +684,13 @@ export default function OrdensServicoPage() {
             </div>
             <form onSubmit={handleSalvarAtivoRapido} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block font-semibold text-slate-400 mb-1">Cliente / Proprietário do Equipamento</label>
+                  <select value={formAtivo.cliente_id} onChange={(e) => setFormAtivo({ ...formAtivo, cliente_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Equipamento Próprio da Empresa</option>
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
+                  </select>
+                </div>
                 <div className="col-span-2">
                   <label className="block font-semibold text-slate-400 mb-1">Descrição do Ativo *</label>
                   <input type="text" required placeholder="Ex: Chiller Condensação a Água 50TR" value={formAtivo.descricao} onChange={(e) => setFormAtivo({ ...formAtivo, descricao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
@@ -728,16 +745,18 @@ export default function OrdensServicoPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Cliente *</label>
-                  <select required value={formPmoc.cliente_id} onChange={(e) => setFormPmoc({ ...formPmoc, cliente_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  <select required value={formPmoc.cliente_id} onChange={(e) => setFormPmoc({ ...formPmoc, cliente_id: e.target.value, ativo_id: '' })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
                     <option value="">Selecione o Cliente...</option>
                     {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Ativo Vinculado</label>
+                  <label className="block font-semibold text-slate-400 mb-1">Ativo Vinculado (Do Cliente)</label>
                   <select value={formPmoc.ativo_id} onChange={(e) => setFormPmoc({ ...formPmoc, ativo_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
                     <option value="">Equipamento Geral do Local</option>
-                    {ativos.map(a => <option key={a.id} value={a.id}>{a.descricao} ({a.codigo_patrimonio})</option>)}
+                    {ativos
+                      .filter(a => !formPmoc.cliente_id || !a.cliente_id || a.cliente_id === formPmoc.cliente_id)
+                      .map(a => <option key={a.id} value={a.id}>{a.descricao} ({a.codigo_patrimonio})</option>)}
                   </select>
                 </div>
                 <div>
