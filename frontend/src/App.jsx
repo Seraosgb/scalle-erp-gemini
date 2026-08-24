@@ -7,7 +7,6 @@ import AppLayout from './layouts/AppLayout';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import WmsPage from './pages/wms/WmsPage';
 import PdvPage from './pages/pdv/PdvPage';
-import OsPage from './pages/os/OsPage';
 import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import PortalClientePage from './pages/portal/PortalClientePage';
@@ -15,6 +14,7 @@ import ComprasPage from './pages/compras/ComprasPage';
 import UsuariosEmpresasPage from './pages/configuracoes/UsuariosEmpresasPage';
 import VendasPage from './pages/vendas/VendasPage';
 import MasterDashboardPage from './pages/master/MasterDashboardPage';
+import OrdensServicoPage from './pages/os/OrdensServicoPage';
 
 // Instância estável do QueryClient fora do ciclo de render
 const queryClient = new QueryClient({
@@ -77,7 +77,7 @@ export default function App() {
             <Route path="compras" element={<ComprasPage />} />
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />
-            <Route path="os" element={<OsPage />} />
+            <Route path="os" element={<OrdensServicoPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="configuracoes" element={<UsuariosEmpresasPage />} />
