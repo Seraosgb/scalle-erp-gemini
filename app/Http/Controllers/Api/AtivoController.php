@@ -49,7 +49,9 @@ class AtivoController extends Controller
     public function store(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresa = Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()?->id;
 
         $validated = $request->validate([
             'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
@@ -66,7 +68,7 @@ class AtivoController extends Controller
         $ativo = PatrimonioBem::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'empresa_id' => $empresa?->id,
+            'empresa_id' => $empresaId,
             'cliente_id' => $validated['cliente_id'] ?? null,
             'descricao' => $validated['descricao'],
             'codigo_patrimonio' => strtoupper($validated['codigo_patrimonio']),
@@ -81,7 +83,7 @@ class AtivoController extends Controller
 
         return response()->json(['data' => $ativo->load(['cliente', 'responsavel'])], 201);
     }
-    
+
     public function planosPreventivos(Request $request): JsonResponse
     {
         try {
@@ -102,7 +104,9 @@ class AtivoController extends Controller
     public function storePlanoPreventivo(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresa = Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()?->id;
 
         $validated = $request->validate([
             'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
@@ -118,7 +122,7 @@ class AtivoController extends Controller
         $plano = PlanoPreventivo::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'empresa_id' => $empresa?->id,
+            'empresa_id' => $empresaId,
             'cliente_id' => $validated['cliente_id'],
             'ativo_id' => $validated['ativo_id'] ?? null,
             'tecnico_padrao_id' => $validated['tecnico_padrao_id'] ?? null,
@@ -133,13 +137,41 @@ class AtivoController extends Controller
         return response()->json(['data' => $plano->load(['cliente', 'ativo', 'tecnicoPadrao'])], 201);
     }
 
+    public function updatePlanoPreventivo(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $plano = PlanoPreventivo::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
+            'ativo_id' => 'nullable|uuid|exists:pat_bens,id',
+            'tecnico_padrao_id' => 'nullable|uuid|exists:users,id',
+            'titulo_plano' => 'required|string|max:150',
+            'frequencia' => 'required|string',
+            'proxima_execucao' => 'required|date',
+            'instrucoes_tecnicas' => 'nullable|string',
+        ]);
+
+        $plano->update($validated);
+        return response()->json(['data' => $plano->load(['cliente', 'ativo', 'tecnicoPadrao'])]);
+    }
+
+    public function alterarStatusPlanoPreventivo(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $plano = PlanoPreventivo::where('tenant_id', $tenantId)->findOrFail($id);
+        $plano->update(['is_ativo' => !$plano->is_ativo]);
+
+        return response()->json(['data' => $plano]);
+    }
+
     public function prioridades(Request $request): JsonResponse
     {
         $padroes = [
-            ['id' => 'p-baixa', 'codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem_exibicao' => 1, 'metadados' => ['horas_sla' => 72]],
-            ['id' => 'p-normal', 'codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem_exibicao' => 2, 'metadados' => ['horas_sla' => 24]],
-            ['id' => 'p-alta', 'codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem_exibicao' => 3, 'metadados' => ['horas_sla' => 12]],
-            ['id' => 'p-urgente', 'codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem_exibicao' => 4, 'metadados' => ['horas_sla' => 6]],
+            ['id' => 'p-baixa', 'codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem_exibicao' => 1, 'metadados' => ['horas_sla' => 72], 'is_ativo' => true],
+            ['id' => 'p-normal', 'codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem_exibicao' => 2, 'metadados' => ['horas_sla' => 24], 'is_ativo' => true],
+            ['id' => 'p-alta', 'codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem_exibicao' => 3, 'metadados' => ['horas_sla' => 12], 'is_ativo' => true],
+            ['id' => 'p-urgente', 'codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem_exibicao' => 4, 'metadados' => ['horas_sla' => 6], 'is_ativo' => true],
         ];
 
         try {
@@ -177,7 +209,7 @@ class AtivoController extends Controller
                 return response()->json(['data' => $existentes]);
             }
         } catch (Exception $e) {
-            // Retorna padrão em caso de erro
+            // Em caso de falha, retorna coleção padrão
         }
 
         return response()->json(['data' => $padroes]);
@@ -208,5 +240,31 @@ class AtivoController extends Controller
         ]);
 
         return response()->json(['data' => $prioridade], 201);
+    }
+
+    public function updatePrioridade(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $prioridade = TabelaDominio::where('tenant_id', $tenantId)
+            ->where('tipo_lista', 'PRIORIDADE_OS')
+            ->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'required|string|max:10',
+            'horas_sla' => 'required|integer|min:1',
+            'ordem_exibicao' => 'nullable|integer',
+            'is_ativo' => 'boolean',
+        ]);
+
+        $prioridade->update([
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'],
+            'ordem_exibicao' => $validated['ordem_exibicao'] ?? $prioridade->ordem_exibicao,
+            'metadados' => ['horas_sla' => (int)$validated['horas_sla']],
+            'is_ativo' => $validated['is_ativo'] ?? $prioridade->is_ativo,
+        ]);
+
+        return response()->json(['data' => $prioridade]);
     }
 }

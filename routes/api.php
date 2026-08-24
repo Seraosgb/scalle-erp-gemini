@@ -120,6 +120,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ordens-servico/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
     Route::post('/os/{id}/concluir', [OrdemServicoController::class, 'concluir']);
     Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);
+    Route::put('/os/planos-preventivos/{id}', [AtivoController::class, 'updatePlanoPreventivo']);
+    Route::put('/os/planos-preventivos/{id}/status', [AtivoController::class, 'alterarStatusPlanoPreventivo']);
+    Route::put('/os/prioridades/{id}', [AtivoController::class, 'updatePrioridade']);
 
     // Financeiro & Tesouraria
     Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);
