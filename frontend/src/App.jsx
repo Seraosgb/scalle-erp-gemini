@@ -16,7 +16,6 @@ import MasterDashboardPage from './pages/master/MasterDashboardPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
 import PortalOsPage from './pages/portal/PortalOsPage';
 
-// Instância estável do QueryClient fora do ciclo de render
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -30,7 +29,6 @@ const queryClient = new QueryClient({
 function ProtectedRoute({ children }) {
   const { isAuthenticated, token } = useAuthStore();
   
-  // Validação híbrida (Zustand State + LocalStorage) para evitar falso negativo na montagem
   const storedToken = localStorage.getItem('token') 
                    || localStorage.getItem('scalle_token') 
                    || localStorage.getItem('auth_token');
@@ -56,13 +54,14 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/app">
+      <BrowserRouter>
         <Routes>
-          {/* Rotas Públicas (Sem Layout e Sem Autenticação) */}
+          {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
+          <Route path="/app/portal/os/:token" element={<PortalOsPage />} />
           
-          {/* Rotas Privadas */}
+          {/* Rotas Privadas Raiz */}
           <Route 
             path="/" 
             element={
@@ -84,7 +83,29 @@ export default function App() {
             <Route path="master" element={<MasterDashboardPage />} />
           </Route>
 
-          {/* Rota Fallback */}
+          {/* Rotas Privadas sob prefixo /app */}
+          <Route 
+            path="/app" 
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/app/dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="wms" element={<WmsPage />} />
+            <Route path="compras" element={<ComprasPage />} />
+            <Route path="vendas" element={<VendasPage />} />
+            <Route path="pdv" element={<PdvPage />} />
+            <Route path="os" element={<OrdensServicoPage />} />
+            <Route path="financeiro" element={<FinanceiroPage />} />
+            <Route path="fiscal" element={<FiscalPage />} />
+            <Route path="configuracoes" element={<UsuariosEmpresasPage />} />
+            <Route path="master" element={<MasterDashboardPage />} />
+          </Route>
+
+          {/* Fallback Global */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
