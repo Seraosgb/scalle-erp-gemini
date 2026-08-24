@@ -3,8 +3,38 @@ import { api } from '../../services/api';
 import { 
   Wrench, Plus, Search, RefreshCw, CheckCircle2, AlertTriangle, 
   X, Camera, PenTool, Printer, Clock, User, Building2, Eye, Upload,
-  Kanban, Calendar, ShieldCheck, Tag
+  Kanban, Calendar, ShieldCheck, Tag, Share2, Activity, Gauge, TrendingUp
 } from 'lucide-react';
+
+function SlaTimerBadge({ prazo }) {
+  if (!prazo) return null;
+
+  const diffMs = new Date(prazo) - new Date();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (diffMs <= 0) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">
+        SLA Estourado
+      </span>
+    );
+  }
+
+  if (diffHours < 2) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+        Risco ({diffHours}h {diffMins}m)
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+      {diffHours}h {diffMins}m
+    </span>
+  );
+}
 
 export default function OrdensServicoPage() {
   const [abaAtiva, setAbaAtiva] = useState('kanban'); // 'kanban' | 'lista' | 'pmoc'
@@ -12,6 +42,13 @@ export default function OrdensServicoPage() {
   const [planosPmoc, setPlanosPmoc] = useState([]);
   const [ativos, setAtivos] = useState([]);
   const [prioridades, setPrioridades] = useState([]);
+  const [metricasCmms, setMetricasCmms] = useState({
+    mttr_horas: 0,
+    mtbf_dias: 0,
+    sla_conformidade_percent: 100,
+    total_concluidas: 0,
+    total_corretivas: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -81,7 +118,7 @@ export default function OrdensServicoPage() {
   const carregarDados = async () => {
     setLoading(true);
     try {
-      const [resOs, resCli, resUsers, resDeps, resItens, resAtivos, resPrios, resPmoc] = await Promise.all([
+      const [resOs, resCli, resUsers, resDeps, resItens, resAtivos, resPrios, resPmoc, resMetricas] = await Promise.all([
         api.get('/os', { params: { search } }),
         api.get('/pessoas', { params: { tipo: 'CLIENTE' } }),
         api.get('/usuarios'),
@@ -89,7 +126,8 @@ export default function OrdensServicoPage() {
         api.get('/itens'),
         api.get('/ativos'),
         api.get('/os/prioridades'),
-        api.get('/os/planos-preventivos')
+        api.get('/os/planos-preventivos'),
+        api.get('/os/metricas-cmms').catch(() => ({ data: { data: null } }))
       ]);
 
       setOrdens(resOs.data.data || []);
@@ -101,6 +139,10 @@ export default function OrdensServicoPage() {
       setAtivos(resAtivos.data.data || []);
       setPrioridades(resPrios.data.data || []);
       setPlanosPmoc(resPmoc.data.data || []);
+
+      if (resMetricas?.data?.data) {
+        setMetricasCmms(resMetricas.data.data);
+      }
 
       if (deps.length > 0 && !formOs.deposito_saida_id) {
         setFormOs(prev => ({ ...prev, deposito_saida_id: deps[0].id }));
@@ -289,6 +331,49 @@ export default function OrdensServicoPage() {
         </div>
       </div>
 
+      {/* Cards de Métricas Analíticas CMMS (MTTR / MTBF / SLA) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold text-slate-400 block">MTTR (Tempo Médio Reparo)</span>
+            <span className="text-lg font-bold font-mono text-white">{metricasCmms.mttr_horas} <span className="text-xs text-slate-500">horas</span></span>
+          </div>
+          <div className="p-2 bg-indigo-950/60 border border-indigo-800/60 rounded-xl text-indigo-400">
+            <Clock className="h-5 w-5" />
+          </div>
+        </div>
+
+        <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold text-slate-400 block">MTBF (Tempo Entre Falhas)</span>
+            <span className="text-lg font-bold font-mono text-white">{metricasCmms.mtbf_dias} <span className="text-xs text-slate-500">dias</span></span>
+          </div>
+          <div className="p-2 bg-emerald-950/60 border border-emerald-800/60 rounded-xl text-emerald-400">
+            <Activity className="h-5 w-5" />
+          </div>
+        </div>
+
+        <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold text-slate-400 block">Conformidade com SLA</span>
+            <span className="text-lg font-bold font-mono text-emerald-400">{metricasCmms.sla_conformidade_percent}%</span>
+          </div>
+          <div className="p-2 bg-amber-950/60 border border-amber-800/60 rounded-xl text-amber-400">
+            <Gauge className="h-5 w-5" />
+          </div>
+        </div>
+
+        <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold text-slate-400 block">OS Concluídas / Mês</span>
+            <span className="text-lg font-bold font-mono text-white">{metricasCmms.total_concluidas}</span>
+          </div>
+          <div className="p-2 bg-blue-950/60 border border-blue-800/60 rounded-xl text-blue-400">
+            <TrendingUp className="h-5 w-5" />
+          </div>
+        </div>
+      </div>
+
       {/* Navegação entre Abas */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
         <div className="flex items-center gap-2">
@@ -367,18 +452,18 @@ export default function OrdensServicoPage() {
                       className="bg-slate-950 border border-slate-800/80 hover:border-indigo-500/50 p-3 rounded-xl cursor-pointer transition shadow-sm space-y-2 group"
                     >
                       <div className="flex justify-between items-center text-xs">
-  <span className="font-mono font-bold text-indigo-400">#{os.numero_os}</span>
-  <div className="flex items-center gap-1.5">
-    <SlaTimerBadge prazo={os.prazo_sla_resolucao} />
-    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-      os.prioridade === 'URGENTE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
-      os.prioridade === 'ALTA' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-      'bg-slate-800 text-slate-300'
-    }`}>
-      {os.prioridade}
-    </span>
-  </div>
-</div>
+                        <span className="font-mono font-bold text-indigo-400">#{os.numero_os}</span>
+                        <div className="flex items-center gap-1.5">
+                          <SlaTimerBadge prazo={os.prazo_sla_resolucao} />
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            os.prioridade === 'URGENTE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+                            os.prioridade === 'ALTA' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                            'bg-slate-800 text-slate-300'
+                          }`}>
+                            {os.prioridade}
+                          </span>
+                        </div>
+                      </div>
 
                       <div className="font-bold text-white text-xs line-clamp-1">{os.equipamento_descricao}</div>
                       <div className="text-[11px] text-slate-400 truncate">{os.cliente?.nome_razao_social}</div>
@@ -618,6 +703,25 @@ export default function OrdensServicoPage() {
                 <div><span className="text-slate-500 block">Total OS:</span><span className="font-mono font-bold text-emerald-400">R$ {parseFloat(osSelecionada.valor_total || 0).toFixed(2)}</span></div>
               </div>
 
+              {/* Botão de Compartilhar Link Público do Portal */}
+              <div className="flex justify-between items-center bg-indigo-950/40 border border-indigo-800/60 p-3 rounded-xl">
+                <div>
+                  <span className="text-white font-bold block">Portal do Cliente (Self-Service)</span>
+                  <span className="text-slate-400 text-[11px]">Envie o link seguro para o cliente aprovar o laudo e pagar via PIX</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const urlPortal = `${window.location.origin}/app/portal/os/${osSelecionada.id}`;
+                    navigator.clipboard.writeText(urlPortal);
+                    setFeedback({ tipo: 'sucesso', msg: 'Link do Portal do Cliente copiado para a área de transferência!' });
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition"
+                >
+                  <Share2 className="h-3.5 w-3.5" /> Copiar Link
+                </button>
+              </div>
+
               {/* Galeria de Fotos */}
               <div>
                 <div className="flex justify-between items-center mb-2">
@@ -782,34 +886,5 @@ export default function OrdensServicoPage() {
         </div>
       )}
     </div>
-  );
-}
-function SlaTimerBadge({ prazo }) {
-  if (!prazo) return null;
-
-  const diffMs = new Date(prazo) - new Date();
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-  if (diffMs <= 0) {
-    return (
-      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">
-        SLA Estourado
-      </span>
-    );
-  }
-
-  if (diffHours < 2) {
-    return (
-      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
-        Risco ({diffHours}h {diffMins}m)
-      </span>
-    );
-  }
-
-  return (
-    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
-      {diffHours}h {diffMins}m
-    </span>
   );
 }
