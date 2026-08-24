@@ -61,6 +61,7 @@ Route::get('/wms/depositos', [ItemController::class, 'depositos']);
 Route::post('/wms/depositos', [ItemController::class, 'storeDeposito']);
 Route::put('/wms/depositos/{id}', [ItemController::class, 'updateDeposito']);
 Route::delete('/wms/depositos/{id}', [ItemController::class, 'destroyDeposito']);
+Route::get('/wms/posicao-estoque', [ItemController::class, 'saldosPorDeposito']);
 
 Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
 Route::post('/wms/transferir', [ItemController::class, 'transferir']);

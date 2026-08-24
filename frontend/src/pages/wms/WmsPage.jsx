@@ -3,13 +3,16 @@ import { api } from '../../services/api';
 import { 
   Package, Plus, Search, UploadCloud, RefreshCw, 
   Warehouse, ArrowRightLeft, SlidersHorizontal, 
-  CheckCircle2, AlertTriangle, X, Check, MapPin, Edit2, Trash2
+  CheckCircle2, AlertTriangle, X, Check, MapPin, Edit2, Trash2, 
+  Layers, Filter
 } from 'lucide-react';
 
 export default function WmsPage() {
   const [activeTab, setActiveTab] = useState('itens');
   const [itens, setItens] = useState([]);
   const [depositos, setDepositos] = useState([]);
+  const [posicoesEstoque, setPosicoesEstoque] = useState([]);
+  const [depositoFiltroId, setDepositoFiltroId] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   
@@ -73,13 +76,20 @@ export default function WmsPage() {
   const carregarDados = async () => {
     setLoading(true);
     try {
-      const [resItens, resDeps] = await Promise.all([
-        api.get('/itens', { params: { search } }),
-        api.get('/wms/depositos', { params: { search: activeTab === 'depositos' ? search : '' } })
+      const [resItens, resDeps, resPosicoes] = await Promise.all([
+        api.get('/itens', { params: { search: activeTab === 'itens' ? search : '' } }),
+        api.get('/wms/depositos', { params: { search: activeTab === 'depositos' ? search : '' } }),
+        api.get('/wms/posicao-estoque', { 
+          params: { 
+            deposito_id: depositoFiltroId, 
+            search: activeTab === 'posicoes' ? search : '' 
+          } 
+        })
       ]);
       setItens(resItens.data.data || resItens.data || []);
       const deps = resDeps.data.data || resDeps.data || [];
       setDepositos(deps);
+      setPosicoesEstoque(resPosicoes.data.data || []);
       
       const padrao = deps.find(d => d.is_padrao) || deps[0];
       if (padrao && !depositoXmlId) {
@@ -94,7 +104,7 @@ export default function WmsPage() {
 
   useEffect(() => {
     carregarDados();
-  }, [search, activeTab]);
+  }, [search, activeTab, depositoFiltroId]);
 
   const abrirKardex = async (item) => {
     setItemSelecionado(item);
@@ -281,7 +291,7 @@ export default function WmsPage() {
             Almoxarifado & WMS
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Gestão física, endereçamento logístico, transferências e trilha Kardex
+            Gestão física por depósito, endereçamento logístico, transferências e trilha Kardex
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -306,7 +316,7 @@ export default function WmsPage() {
               <Plus className="h-4 w-4" />
               Novo Item
             </button>
-          ) : (
+          ) : activeTab === 'depositos' ? (
             <button 
               type="button"
               onClick={() => {
@@ -319,43 +329,72 @@ export default function WmsPage() {
               <Plus className="h-4 w-4" />
               Novo Depósito
             </button>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {/* Navegação e Busca */}
+      {/* Navegação por Abas */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('itens')}
-            className={`px-4 py-2 text-xs sm:text-sm font-semibold border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+            className={`px-4 py-2 text-xs sm:text-sm font-semibold border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
               activeTab === 'itens' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Package className="h-4 w-4" />
-            Itens & Saldos Físicos
+            Catálogo Consolidado
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('posicoes')}
+            className={`px-4 py-2 text-xs sm:text-sm font-semibold border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
+              activeTab === 'posicoes' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            Posição por Depósito ({posicoesEstoque.length})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('depositos')}
-            className={`px-4 py-2 text-xs sm:text-sm font-semibold border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+            className={`px-4 py-2 text-xs sm:text-sm font-semibold border-b-2 transition-colors cursor-pointer flex items-center gap-2 shrink-0 ${
               activeTab === 'depositos' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Warehouse className="h-4 w-4" />
-            Depósitos & Almoxarifados ({depositos.length})
+            Almoxarifados ({depositos.length})
           </button>
         </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Buscar por descrição, SKU..." 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
-          />
+
+        {/* Filtros e Busca */}
+        <div className="flex items-center gap-2">
+          {activeTab === 'posicoes' && (
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1.5 rounded-lg text-xs">
+              <Filter className="h-3.5 w-3.5 text-indigo-400" />
+              <select
+                value={depositoFiltroId}
+                onChange={(e) => setDepositoFiltroId(e.target.value)}
+                className="bg-transparent text-white focus:outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-900">Todos os Depósitos</option>
+                {depositos.map(d => (
+                  <option key={d.id} value={d.id} className="bg-slate-900">{d.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Buscar..." 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+          </div>
         </div>
       </div>
 
@@ -370,7 +409,7 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Conteúdo Aba 1: Itens */}
+      {/* Conteúdo Aba 1: Itens Consolidados */}
       {activeTab === 'itens' && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
@@ -390,7 +429,7 @@ export default function WmsPage() {
                   <tr>
                     <td colSpan="6" className="text-center py-12 text-slate-500 font-sans">
                       <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-indigo-500" />
-                      Carregando estoque...
+                      Carregando catálogo...
                     </td>
                   </tr>
                 ) : itens.length === 0 ? (
@@ -482,7 +521,95 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Conteúdo Aba 2: Depósitos */}
+      {/* Conteúdo Aba 2: Posição de Estoque por Depósito */}
+      {activeTab === 'posicoes' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-300">
+              <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+                <tr>
+                  <th className="py-3 px-4">DEPÓSITO / ALMOXARIFADO</th>
+                  <th className="py-3 px-4">ITEM / SKU</th>
+                  <th className="py-3 px-4">LOTE / VALIDADE</th>
+                  <th className="py-3 px-4">ENDEREÇO LOGÍSTICO</th>
+                  <th className="py-3 px-4 text-right">SALDO FÍSICO</th>
+                  <th className="py-3 px-4 text-right">RESERVADO</th>
+                  <th className="py-3 px-4 text-right">DISPONÍVEL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
+                {loading ? (
+                  <tr>
+                    <td colSpan="7" className="text-center py-12 text-slate-500 font-sans">
+                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-indigo-500" />
+                      Carregando posições de estoque...
+                    </td>
+                  </tr>
+                ) : posicoesEstoque.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="text-center py-12 text-slate-500 font-sans">
+                      Nenhuma posição de saldo registrada para este filtro.
+                    </td>
+                  </tr>
+                ) : (
+                  posicoesEstoque.map((pos) => {
+                    const saldoFisico = parseFloat(pos.quantidade_saldo || 0);
+                    const saldoReservado = parseFloat(pos.quantidade_reservada || 0);
+                    const saldoDisponivel = Math.max(0, saldoFisico - saldoReservado);
+                    return (
+                      <tr key={pos.id} className="hover:bg-slate-800/40 transition font-sans">
+                        <td className="py-3 px-4 text-white font-medium flex items-center gap-2">
+                          <Warehouse className="h-4 w-4 text-indigo-400 shrink-0" />
+                          <div>
+                            <div>{pos.deposito?.nome}</div>
+                            <span className="text-[11px] text-slate-500 font-mono">{pos.deposito?.codigo}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-slate-200">{pos.item?.nome}</div>
+                          <span className="text-[11px] text-indigo-400 font-mono">{pos.item?.codigo_sku}</span>
+                        </td>
+                        <td className="py-3 px-4 font-mono">
+                          {pos.lote ? (
+                            <div>
+                              <span className="text-slate-200 font-semibold">{pos.lote}</span>
+                              {pos.data_validade && (
+                                <div className="text-[11px] text-slate-400">Val: {new Date(pos.data_validade).toLocaleDateString('pt-BR')}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-500">Sem Lote</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-xs">
+                          {(pos.localizacao_rua || pos.localizacao_predio || pos.localizacao_nivel || pos.localizacao_vao) ? (
+                            <span className="px-2 py-0.5 bg-slate-950 border border-slate-800 rounded text-slate-300">
+                              R:{pos.localizacao_rua || '-'} P:{pos.localizacao_predio || '-'} N:{pos.localizacao_nivel || '-'} V:{pos.localizacao_vao || '-'}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-sans">Não endereçado</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold font-mono text-white">
+                          {saldoFisico.toFixed(2)} {pos.item?.unidade_medida}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-amber-400">
+                          {saldoReservado.toFixed(2)} {pos.item?.unidade_medida}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold font-mono text-emerald-400">
+                          {saldoDisponivel.toFixed(2)} {pos.item?.unidade_medida}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Conteúdo Aba 3: Depósitos */}
       {activeTab === 'depositos' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {depositos.map((dep) => (
@@ -530,6 +657,7 @@ export default function WmsPage() {
         </div>
       )}
 
+      {/* Modais existentes (Item, Depósito, Ajuste, Transferência, Kardex, XML) mantidos idênticos */}
       {/* Modal Item */}
       {modalItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">

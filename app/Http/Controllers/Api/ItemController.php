@@ -431,4 +431,28 @@ class ItemController extends Controller
             ]
         ]);
     }
+    public function saldosPorDeposito(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $query = EstoqueDeposito::where('tenant_id', $tenantId)
+            ->with(['item', 'deposito']);
+
+        if ($request->filled('deposito_id')) {
+            $query->where('deposito_id', $request->get('deposito_id'));
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->whereHas('item', function ($q) use ($search) {
+                $q->where('nome', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo_sku', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo_barras_ean', 'ILIKE', "%{$search}%");
+            })->orWhere('lote', 'ILIKE', "%{$search}%");
+        }
+
+        $posicoes = $query->orderByDesc('quantidade_saldo')->paginate(20);
+
+        return response()->json($posicoes);
+    }
 }
