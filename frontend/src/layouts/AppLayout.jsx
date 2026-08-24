@@ -1,22 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Boxes, 
-  ShoppingCart, 
-  Wrench, 
-  DollarSign, 
-  FileText, 
-  Users, 
-  LogOut, 
-  Menu, 
-  X 
+  LayoutDashboard, Boxes, ShoppingCart, Wrench, 
+  DollarSign, FileText, Users, LogOut, Menu, X, 
+  Building2, ChevronDown
 } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [empresas, setEmpresas] = useState([]);
+  const [empresaAtivaId, setEmpresaAtivaId] = useState('');
+  const [usuario, setUsuario] = useState(null);
   const navigate = useNavigate();
+
+  const carregarContexto = async () => {
+    try {
+      const [resMe, resEmps] = await Promise.all([
+        api.get('/auth/me'),
+        api.get('/empresas')
+      ]);
+      const user = resMe.data.data;
+      const emps = resEmps.data.data || [];
+      setUsuario(user);
+      setEmpresas(emps);
+      setEmpresaAtivaId(user.empresa_padrao_id || (emps[0]?.id ?? ''));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    carregarContexto();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -27,6 +43,16 @@ export default function AppLayout() {
       localStorage.removeItem('scalle_token');
       localStorage.removeItem('scalle_user');
       navigate('/login');
+    }
+  };
+
+  const handleTrocarEmpresa = async (novaId) => {
+    try {
+      await api.post('/empresas/trocar-contexto', { empresa_id: novaId });
+      setEmpresaAtivaId(novaId);
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -106,21 +132,47 @@ export default function AppLayout() {
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Topbar Mobile */}
-        <header className="h-16 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-900/60 backdrop-blur-md lg:hidden shrink-0">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg text-slate-400 hover:text-white"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-          <span className="font-bold text-base text-white">Scalle ERP</span>
-          <div className="w-6" />
+        {/* Topbar Header */}
+        <header className="h-16 flex items-center justify-between px-4 sm:px-6 border-b border-slate-800 bg-slate-900/60 backdrop-blur-md shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 rounded-lg text-slate-400 hover:text-white lg:hidden"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+
+            {/* Context Switcher de Empresa / Filial */}
+            <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl">
+              <Building2 className="h-4 w-4 text-indigo-400 shrink-0" />
+              <select
+                value={empresaAtivaId}
+                onChange={(e) => handleTrocarEmpresa(e.target.value)}
+                className="bg-transparent text-xs sm:text-sm text-white font-medium focus:outline-none cursor-pointer pr-2"
+              >
+                {empresas.map((emp) => (
+                  <option key={emp.id} value={emp.id} className="bg-slate-900 text-white">
+                    {emp.nome_fantasia} {emp.is_matriz ? '(Matriz)' : '(Filial)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-bold text-white">{usuario?.name || 'Carregando...'}</div>
+              <div className="text-[11px] text-indigo-400 font-medium">{usuario?.perfil?.nome || 'Operador'}</div>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center font-bold text-indigo-400 text-xs shadow-inner">
+              {usuario?.name?.charAt(0) || 'U'}
+            </div>
+          </div>
         </header>
 
         {/* Content Outlet */}
-        <main className="flex-1 overflow-y-auto p-2 sm:p-4">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5">
           <Outlet />
         </main>
       </div>

@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\CompraController;
 use App\Http\Controllers\Api\EmpresaController;
 use App\Http\Controllers\Api\UsuarioController;
+use App\Http\Controllers\Api\PerfilController;
 
 /*
 |--------------------------------------------------------------------------
@@ -39,6 +40,10 @@ Route::post('/empresas/trocar-contexto', [EmpresaController::class, 'trocarConte
 
 Route::get('/usuarios', [UsuarioController::class, 'index']);
 Route::post('/usuarios', [UsuarioController::class, 'store']);
+
+// Dentro do grupo Route::middleware('auth:sanctum')
+Route::get('/perfis', [PerfilController::class, 'index']);
+Route::post('/perfis', [PerfilController::class, 'store']);
 
     // Dashboard Consolidado
     Route::get('/dashboard/metricas', [DashboardController::class, 'metricas']);
