@@ -30,7 +30,8 @@ class AtivoController extends Controller
                 $query->where(function ($q) use ($search) {
                     $q->where('descricao', 'ILIKE', "%{$search}%")
                       ->orWhere('codigo_patrimonio', 'ILIKE', "%{$search}%")
-                      ->orWhere('numero_serie', 'ILIKE', "%{$search}%");
+                      ->orWhere('numero_serie', 'ILIKE', "%{$search}%")
+                      ->orWhere('marca_modelo', 'ILIKE', "%{$search}%");
                 });
             }
 
@@ -44,9 +45,7 @@ class AtivoController extends Controller
     public function store(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
-                  ?? Empresa::first()?->id;
+        $empresa = Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
 
         $validated = $request->validate([
             'descricao' => 'required|string|max:200',
@@ -55,18 +54,22 @@ class AtivoController extends Controller
             'numero_serie' => 'nullable|string|max:100',
             'localizacao_fisica' => 'nullable|string|max:150',
             'responsavel_atual_id' => 'nullable|uuid|exists:users,id',
+            'valor_aquisicao' => 'nullable|numeric',
+            'data_aquisicao' => 'nullable|date',
         ]);
 
         $ativo = PatrimonioBem::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'empresa_id' => $empresaId,
+            'empresa_id' => $empresa?->id,
             'descricao' => $validated['descricao'],
             'codigo_patrimonio' => strtoupper($validated['codigo_patrimonio']),
             'marca_modelo' => $validated['marca_modelo'] ?? null,
             'numero_serie' => $validated['numero_serie'] ?? null,
             'localizacao_fisica' => $validated['localizacao_fisica'] ?? null,
             'responsavel_atual_id' => $validated['responsavel_atual_id'] ?? null,
+            'valor_aquisicao' => $validated['valor_aquisicao'] ?? null,
+            'data_aquisicao' => $validated['data_aquisicao'] ?? now()->toDateString(),
             'status' => 'ATIVO',
         ]);
 
@@ -76,10 +79,6 @@ class AtivoController extends Controller
     public function planosPreventivos(Request $request): JsonResponse
     {
         try {
-            if (!Schema::hasTable('os_planos_preventivos')) {
-                return response()->json(['data' => []]);
-            }
-
             $user = $request->user();
             $query = PlanoPreventivo::query()->with(['cliente', 'ativo', 'tecnicoPadrao']);
 
@@ -88,7 +87,6 @@ class AtivoController extends Controller
             }
 
             $planos = $query->orderBy('proxima_execucao')->get();
-
             return response()->json(['data' => $planos]);
         } catch (Exception $e) {
             return response()->json(['data' => []]);
@@ -98,24 +96,23 @@ class AtivoController extends Controller
     public function storePlanoPreventivo(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
-                  ?? Empresa::first()?->id;
+        $empresa = Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
 
         $validated = $request->validate([
             'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
             'ativo_id' => 'nullable|uuid|exists:pat_bens,id',
             'tecnico_padrao_id' => 'nullable|uuid|exists:users,id',
             'titulo_plano' => 'required|string|max:150',
-            'frequencia' => 'required|string|in:MENSAL,BIMESTRAL,TRIMESTRAL,SEMESTRAL,ANUAL',
+            'frequencia' => 'required|string|in:SEMANAL,QUINZENAL,MENSAL,BIMESTRAL,TRIMESTRAL,SEMESTRAL,ANUAL',
             'proxima_execucao' => 'required|date',
             'instrucoes_tecnicas' => 'nullable|string',
+            'checklist_itens' => 'nullable|array',
         ]);
 
         $plano = PlanoPreventivo::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'empresa_id' => $empresaId,
+            'empresa_id' => $empresa?->id,
             'cliente_id' => $validated['cliente_id'],
             'ativo_id' => $validated['ativo_id'] ?? null,
             'tecnico_padrao_id' => $validated['tecnico_padrao_id'] ?? null,
@@ -123,6 +120,7 @@ class AtivoController extends Controller
             'frequencia' => $validated['frequencia'],
             'proxima_execucao' => $validated['proxima_execucao'],
             'instrucoes_tecnicas' => $validated['instrucoes_tecnicas'] ?? null,
+            'checklist_itens' => $validated['checklist_itens'] ?? [],
             'is_ativo' => true,
         ]);
 
@@ -132,10 +130,10 @@ class AtivoController extends Controller
     public function prioridades(Request $request): JsonResponse
     {
         $padroes = [
-            ['codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem_exibicao' => 1],
-            ['codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem_exibicao' => 2],
-            ['codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem_exibicao' => 3],
-            ['codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem_exibicao' => 4],
+            ['id' => 'p-baixa', 'codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem_exibicao' => 1, 'metadados' => ['horas_sla' => 72]],
+            ['id' => 'p-normal', 'codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem_exibicao' => 2, 'metadados' => ['horas_sla' => 24]],
+            ['id' => 'p-alta', 'codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem_exibicao' => 3, 'metadados' => ['horas_sla' => 12]],
+            ['id' => 'p-urgente', 'codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem_exibicao' => 4, 'metadados' => ['horas_sla' => 6]],
         ];
 
         try {
@@ -146,6 +144,7 @@ class AtivoController extends Controller
                 $existentes = TabelaDominio::withoutGlobalScopes()
                     ->where('tenant_id', $tenantId)
                     ->where('tipo_lista', 'PRIORIDADE_OS')
+                    ->orderBy('ordem_exibicao')
                     ->get();
 
                 if ($existentes->isEmpty()) {
@@ -158,26 +157,50 @@ class AtivoController extends Controller
                             'nome' => $p['nome'],
                             'cor_hex' => $p['cor_hex'],
                             'ordem_exibicao' => $p['ordem_exibicao'],
+                            'metadados' => $p['metadados'],
                             'is_ativo' => true,
                             'is_sistema' => true,
                         ]);
                     }
+                    $existentes = TabelaDominio::where('tenant_id', $tenantId)
+                        ->where('tipo_lista', 'PRIORIDADE_OS')
+                        ->orderBy('ordem_exibicao')
+                        ->get();
                 }
 
-                $prioridades = TabelaDominio::where('tenant_id', $tenantId)
-                    ->where('tipo_lista', 'PRIORIDADE_OS')
-                    ->where('is_ativo', true)
-                    ->orderBy('ordem_exibicao')
-                    ->get();
-
-                if ($prioridades->isNotEmpty()) {
-                    return response()->json(['data' => $prioridades]);
-                }
+                return response()->json(['data' => $existentes]);
             }
         } catch (Exception $e) {
-            // Em caso de exceção, cai no retorno padrão
+            // Retorna padrão em caso de erro
         }
 
         return response()->json(['data' => $padroes]);
+    }
+
+    public function storePrioridade(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'codigo' => 'required|string|max:50',
+            'cor_hex' => 'required|string|max:10',
+            'horas_sla' => 'required|integer|min:1',
+            'ordem_exibicao' => 'nullable|integer',
+        ]);
+
+        $prioridade = TabelaDominio::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'tipo_lista' => 'PRIORIDADE_OS',
+            'codigo' => strtoupper($validated['codigo']),
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'],
+            'ordem_exibicao' => $validated['ordem_exibicao'] ?? 1,
+            'metadados' => ['horas_sla' => (int)$validated['horas_sla']],
+            'is_ativo' => true,
+            'is_sistema' => false,
+        ]);
+
+        return response()->json(['data' => $prioridade], 201);
     }
 }

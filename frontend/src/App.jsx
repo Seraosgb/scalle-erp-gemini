@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/useAuthStore';
@@ -9,7 +9,6 @@ import WmsPage from './pages/wms/WmsPage';
 import PdvPage from './pages/pdv/PdvPage';
 import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
-import PortalClientePage from './pages/portal/PortalClientePage';
 import ComprasPage from './pages/compras/ComprasPage';
 import UsuariosEmpresasPage from './pages/configuracoes/UsuariosEmpresasPage';
 import VendasPage from './pages/vendas/VendasPage';
@@ -57,11 +56,11 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename="/app">
         <Routes>
-          {/* Rotas Públicas */}
+          {/* Rotas Públicas (Sem Layout e Sem Autenticação) */}
           <Route path="/login" element={<Login />} />
-          <Route path="/portal/os/:token" element={<PortalClientePage />} />
+          <Route path="/portal/os/:token" element={<PortalOsPage />} />
           
           {/* Rotas Privadas */}
           <Route 
@@ -79,16 +78,14 @@ export default function App() {
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />
             <Route path="os" element={<OrdensServicoPage />} />
-            <Route path="/portal/os/:token" element={<PortalOsPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="configuracoes" element={<UsuariosEmpresasPage />} />
-            // Na rota protegida:
-<Route path="master" element={<MasterDashboardPage />} />
+            <Route path="master" element={<MasterDashboardPage />} />
           </Route>
 
           {/* Rota Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

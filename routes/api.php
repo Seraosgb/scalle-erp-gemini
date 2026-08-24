@@ -112,6 +112,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/ordens-servico', [OrdemServicoController::class, 'index']);
     Route::post('/os', [OrdemServicoController::class, 'store']);
     Route::post('/ordens-servico', [OrdemServicoController::class, 'store']);
+    Route::post('/os/prioridades', [AtivoController::class, 'storePrioridade']);
 
     Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
     Route::get('/ordens-servico/{id}', [OrdemServicoController::class, 'show']);

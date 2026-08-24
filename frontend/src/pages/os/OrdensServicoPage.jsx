@@ -3,52 +3,32 @@ import { api } from '../../services/api';
 import { 
   Wrench, Plus, Search, RefreshCw, CheckCircle2, AlertTriangle, 
   X, Camera, PenTool, Printer, Clock, User, Building2, Eye, Upload,
-  Kanban, Calendar, ShieldCheck, Tag, Share2, Activity, Gauge, TrendingUp
+  Kanban, Calendar, ShieldCheck, Tag, Share2, Activity, Gauge, TrendingUp,
+  Settings, CheckSquare, Zap, MapPin
 } from 'lucide-react';
 
 function SlaTimerBadge({ prazo }) {
   if (!prazo) return null;
-
   const diffMs = new Date(prazo) - new Date();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
   if (diffMs <= 0) {
-    return (
-      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">
-        SLA Estourado
-      </span>
-    );
+    return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">SLA Estourado</span>;
   }
-
   if (diffHours < 2) {
-    return (
-      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
-        Risco ({diffHours}h {diffMins}m)
-      </span>
-    );
+    return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">Risco ({diffHours}h {diffMins}m)</span>;
   }
-
-  return (
-    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
-      {diffHours}h {diffMins}m
-    </span>
-  );
+  return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">{diffHours}h {diffMins}m</span>;
 }
 
 export default function OrdensServicoPage() {
-  const [abaAtiva, setAbaAtiva] = useState('kanban'); // 'kanban' | 'lista' | 'pmoc'
+  const [abaAtiva, setAbaAtiva] = useState('kanban'); // 'kanban' | 'lista' | 'pmoc' | 'ativos'
   const [ordens, setOrdens] = useState([]);
   const [planosPmoc, setPlanosPmoc] = useState([]);
   const [ativos, setAtivos] = useState([]);
   const [prioridades, setPrioridades] = useState([]);
-  const [metricasCmms, setMetricasCmms] = useState({
-    mttr_horas: 0,
-    mtbf_dias: 0,
-    sla_conformidade_percent: 100,
-    total_concluidas: 0,
-    total_corretivas: 0,
-  });
+  const [metricasCmms, setMetricasCmms] = useState({ mttr_horas: 0, mtbf_dias: 0, sla_conformidade_percent: 100, total_concluidas: 0, total_corretivas: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -56,6 +36,7 @@ export default function OrdensServicoPage() {
   const [modalNovaOs, setModalNovaOs] = useState(false);
   const [modalNovoPmoc, setModalNovoPmoc] = useState(false);
   const [modalNovoAtivo, setModalNovoAtivo] = useState(false);
+  const [modalNovaPrioridade, setModalNovaPrioridade] = useState(false);
   const [modalDetalhes, setModalDetalhes] = useState(false);
   const [modalConcluir, setModalConcluir] = useState(false);
   const [modalFoto, setModalFoto] = useState(false);
@@ -70,36 +51,34 @@ export default function OrdensServicoPage() {
 
   // Form Abertura OS
   const [formOs, setFormOs] = useState({
-    cliente_id: '',
-    ativo_id: '',
-    tecnico_responsavel_id: '',
-    deposito_saida_id: '',
-    equipamento_descricao: '',
-    equipamento_marca_modelo: '',
-    equipamento_numero_serie: '',
-    defeito_reclamado: '',
-    prioridade: 'NORMAL',
-    tipo_manutencao: 'CORRETIVA',
+    cliente_id: '', ativo_id: '', tecnico_responsavel_id: '', deposito_saida_id: '',
+    equipamento_descricao: '', equipamento_marca_modelo: '', equipamento_numero_serie: '',
+    defeito_reclamado: '', prioridade: 'NORMAL', tipo_manutencao: 'CORRETIVA',
   });
 
-  // Form PMOC
+  // Form PMOC Avançado (Lei 13.589/2018)
   const [formPmoc, setFormPmoc] = useState({
-    cliente_id: '',
-    ativo_id: '',
-    tecnico_padrao_id: '',
-    titulo_plano: '',
-    frequencia: 'MENSAL',
-    proxima_execucao: new Date().toISOString().substring(0, 10),
+    cliente_id: '', ativo_id: '', tecnico_padrao_id: '',
+    titulo_plano: '', frequencia: 'MENSAL', proxima_execucao: new Date().toISOString().substring(0, 10),
     instrucoes_tecnicas: '',
+    checklist_itens: [
+      'Higienização de bandejas e serpentinas',
+      'Verificação de pressão de sucção e descarga de gás',
+      'Limpeza e troca de filtros de ar (G4/F7)',
+      'Medição de corrente e tensão elétrica dos motores',
+      'Checagem de drenos e bombas de condensado'
+    ],
   });
 
-  // Form Ativo Rápido
+  // Form Ativo Completo
   const [formAtivo, setFormAtivo] = useState({
-    descricao: '',
-    codigo_patrimonio: '',
-    marca_modelo: '',
-    numero_serie: '',
-    localizacao_fisica: '',
+    descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '',
+    localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10),
+  });
+
+  // Form Nova Prioridade
+  const [formPrioridade, setFormPrioridade] = useState({
+    nome: '', codigo: '', cor_hex: '#3b82f6', horas_sla: 24, ordem_exibicao: 1,
   });
 
   // Form Conclusão
@@ -114,6 +93,7 @@ export default function OrdensServicoPage() {
   const [tipoEtapaFoto, setTipoEtapaFoto] = useState('ANTES');
   const [arquivoFoto, setArquivoFoto] = useState(null);
   const [descFoto, setDescFoto] = useState('');
+  const fileInputRef = useRef(null);
 
   const carregarDados = async () => {
     setLoading(true);
@@ -158,7 +138,6 @@ export default function OrdensServicoPage() {
     carregarDados();
   }, [search]);
 
-  // Handler seleção de ativo
   const handleSelecionarAtivo = (ativoId) => {
     const ativo = ativos.find(a => a.id === ativoId);
     if (ativo) {
@@ -181,9 +160,21 @@ export default function OrdensServicoPage() {
       setAtivos([...ativos, res.data.data]);
       handleSelecionarAtivo(res.data.data.id);
       setModalNovoAtivo(false);
-      setFeedback({ tipo: 'sucesso', msg: 'Ativo patrimonial cadastrado!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Ativo patrimonial cadastrado com sucesso!' });
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: 'Erro ao cadastrar ativo.' });
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.message || 'Erro ao cadastrar ativo.' });
+    }
+  };
+
+  const handleSalvarNovaPrioridade = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/os/prioridades', formPrioridade);
+      setPrioridades([...prioridades, res.data.data]);
+      setModalNovaPrioridade(false);
+      setFeedback({ tipo: 'sucesso', msg: 'Nova regra de prioridade e SLA configurada!' });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao salvar prioridade.' });
     }
   };
 
@@ -204,7 +195,7 @@ export default function OrdensServicoPage() {
     try {
       const res = await api.post('/os/planos-preventivos', formPmoc);
       setModalNovoPmoc(false);
-      setFeedback({ tipo: 'sucesso', msg: 'Plano Preventivo PMOC cadastrado!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Plano Preventivo PMOC cadastrado com sucesso!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao cadastrar PMOC.' });
@@ -275,21 +266,28 @@ export default function OrdensServicoPage() {
 
   const handleUploadFoto = async (e) => {
     e.preventDefault();
-    if (!arquivoFoto) return;
+    if (!arquivoFoto) {
+      alert('Por favor, selecione uma foto.');
+      return;
+    }
 
     const data = new FormData();
     data.append('foto', arquivoFoto);
     data.append('tipo_etapa', tipoEtapaFoto);
-    data.append('descricao', descFoto);
+    data.append('descricao', descFoto || `Evidência (${tipoEtapaFoto})`);
 
     try {
-      const res = await api.post(`/os/${osSelecionada.id}/fotos`, data);
+      const res = await api.post(`/os/${osSelecionada.id}/fotos`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       setModalFoto(false);
+      setArquivoFoto(null);
+      setDescFoto('');
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
       const resUpdated = await api.get(`/os/${osSelecionada.id}`);
       setOsSelecionada(resUpdated.data.data);
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: 'Erro ao enviar foto.' });
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.message || 'Erro ao enviar foto. Verifique o formato.' });
     }
   };
 
@@ -310,10 +308,24 @@ export default function OrdensServicoPage() {
             Ordens de Serviço & CMMS 100%
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Manutenção de campo, ativos tombados, planos preventivos PMOC e assinatura digital (MP 2.200-2)
+            Manutenção de campo, ativos tombados, PMOC (Lei 13.589/2018), SLA dinâmico e assinatura digital (MP 2.200-2)
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalNovaPrioridade(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Settings className="h-4 w-4 text-indigo-400" /> Configurar SLAs
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalNovoAtivo(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4" /> Novo Ativo
+          </button>
           <button
             type="button"
             onClick={() => setModalNovoPmoc(true)}
@@ -331,46 +343,35 @@ export default function OrdensServicoPage() {
         </div>
       </div>
 
-      {/* Cards de Métricas Analíticas CMMS (MTTR / MTBF / SLA) */}
+      {/* Cards de Métricas Analíticas CMMS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
           <div>
             <span className="text-[11px] font-semibold text-slate-400 block">MTTR (Tempo Médio Reparo)</span>
             <span className="text-lg font-bold font-mono text-white">{metricasCmms.mttr_horas} <span className="text-xs text-slate-500">horas</span></span>
           </div>
-          <div className="p-2 bg-indigo-950/60 border border-indigo-800/60 rounded-xl text-indigo-400">
-            <Clock className="h-5 w-5" />
-          </div>
+          <div className="p-2 bg-indigo-950/60 border border-indigo-800/60 rounded-xl text-indigo-400"><Clock className="h-5 w-5" /></div>
         </div>
-
         <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
           <div>
             <span className="text-[11px] font-semibold text-slate-400 block">MTBF (Tempo Entre Falhas)</span>
             <span className="text-lg font-bold font-mono text-white">{metricasCmms.mtbf_dias} <span className="text-xs text-slate-500">dias</span></span>
           </div>
-          <div className="p-2 bg-emerald-950/60 border border-emerald-800/60 rounded-xl text-emerald-400">
-            <Activity className="h-5 w-5" />
-          </div>
+          <div className="p-2 bg-emerald-950/60 border border-emerald-800/60 rounded-xl text-emerald-400"><Activity className="h-5 w-5" /></div>
         </div>
-
         <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
           <div>
             <span className="text-[11px] font-semibold text-slate-400 block">Conformidade com SLA</span>
             <span className="text-lg font-bold font-mono text-emerald-400">{metricasCmms.sla_conformidade_percent}%</span>
           </div>
-          <div className="p-2 bg-amber-950/60 border border-amber-800/60 rounded-xl text-amber-400">
-            <Gauge className="h-5 w-5" />
-          </div>
+          <div className="p-2 bg-amber-950/60 border border-amber-800/60 rounded-xl text-amber-400"><Gauge className="h-5 w-5" /></div>
         </div>
-
         <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
           <div>
             <span className="text-[11px] font-semibold text-slate-400 block">OS Concluídas / Mês</span>
             <span className="text-lg font-bold font-mono text-white">{metricasCmms.total_concluidas}</span>
           </div>
-          <div className="p-2 bg-blue-950/60 border border-blue-800/60 rounded-xl text-blue-400">
-            <TrendingUp className="h-5 w-5" />
-          </div>
+          <div className="p-2 bg-blue-950/60 border border-blue-800/60 rounded-xl text-blue-400"><TrendingUp className="h-5 w-5" /></div>
         </div>
       </div>
 
@@ -402,7 +403,16 @@ export default function OrdensServicoPage() {
               abaAtiva === 'pmoc' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
             }`}
           >
-            <ShieldCheck className="h-3.5 w-3.5" /> Cronograma PMOC ({planosPmoc.length})
+            <ShieldCheck className="h-3.5 w-3.5" /> Cronogramas PMOC ({planosPmoc.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('ativos')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'ativos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            <Wrench className="h-3.5 w-3.5" /> Ativos Cadastrados ({ativos.length})
           </button>
         </div>
         <div className="relative w-full sm:w-72">
@@ -439,9 +449,7 @@ export default function OrdensServicoPage() {
               <div key={col.id} className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 flex flex-col min-h-[500px]">
                 <div className={`flex justify-between items-center pb-2.5 mb-2 border-b-2 ${col.cor}`}>
                   <span className="text-xs font-bold text-white uppercase tracking-wider">{col.titulo}</span>
-                  <span className="text-xs font-mono font-bold bg-slate-800 px-2 py-0.5 rounded-full text-slate-300">
-                    {ordensColuna.length}
-                  </span>
+                  <span className="text-xs font-mono font-bold bg-slate-800 px-2 py-0.5 rounded-full text-slate-300">{ordensColuna.length}</span>
                 </div>
 
                 <div className="space-y-2.5 overflow-y-auto flex-1 pr-1">
@@ -481,7 +489,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Visualização 2: Cronograma PMOC */}
+      {/* Visualização 2: Cronogramas PMOC */}
       {abaAtiva === 'pmoc' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-left text-sm text-slate-300">
@@ -517,7 +525,43 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Visualização 3: Lista Analítica */}
+      {/* Visualização 3: Ativos Cadastrados */}
+      {abaAtiva === 'ativos' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">TAG / PATRIMÔNIO</th>
+                <th className="py-3 px-4">DESCRIÇÃO DO ATIVO</th>
+                <th className="py-3 px-4">MARCA / MODELO</th>
+                <th className="py-3 px-4">Nº DE SÉRIE</th>
+                <th className="py-3 px-4">LOCALIZAÇÃO / SETOR</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 font-mono text-xs font-sans">
+              {ativos.length === 0 ? (
+                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhum ativo tombado cadastrado.</td></tr>
+              ) : (
+                ativos.map((a) => (
+                  <tr key={a.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-bold text-indigo-400 font-mono">{a.codigo_patrimonio}</td>
+                    <td className="py-3 px-4 font-medium text-white">{a.descricao}</td>
+                    <td className="py-3 px-4 text-slate-300">{a.marca_modelo || '-'}</td>
+                    <td className="py-3 px-4 font-mono text-slate-400">{a.numero_serie || '-'}</td>
+                    <td className="py-3 px-4 text-slate-300">{a.localizacao_fisica || '-'}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">ATIVO</span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Visualização 4: Lista Analítica */}
       {abaAtiva === 'lista' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-left text-sm text-slate-300">
@@ -620,19 +664,44 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Cadastro de Ativo Rápido */}
+      {/* Modal Cadastro de Ativo Completo */}
       {modalNovoAtivo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white">Cadastrar Novo Ativo / Equipamento</h3>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-auto p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Wrench className="h-4 w-4 text-indigo-400" /> Cadastrar Novo Ativo Patrimonial</h3>
+              <button type="button" onClick={() => setModalNovoAtivo(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
             <form onSubmit={handleSalvarAtivoRapido} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-400 mb-1">Descrição do Ativo *</label>
-                <input type="text" required placeholder="Ex: Fan Coil 15TR" value={formAtivo.descricao} onChange={(e) => setFormAtivo({ ...formAtivo, descricao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-400 mb-1">Código de Patrimônio (TAG) *</label>
-                <input type="text" required placeholder="Ex: EQ-045" value={formAtivo.codigo_patrimonio} onChange={(e) => setFormAtivo({ ...formAtivo, codigo_patrimonio: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block font-semibold text-slate-400 mb-1">Descrição do Ativo *</label>
+                  <input type="text" required placeholder="Ex: Chiller Condensação a Água 50TR" value={formAtivo.descricao} onChange={(e) => setFormAtivo({ ...formAtivo, descricao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Código de Patrimônio (TAG) *</label>
+                  <input type="text" required placeholder="Ex: CH-001" value={formAtivo.codigo_patrimonio} onChange={(e) => setFormAtivo({ ...formAtivo, codigo_patrimonio: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Marca / Modelo</label>
+                  <input type="text" placeholder="Ex: Daikin EWAD-MZ" value={formAtivo.marca_modelo} onChange={(e) => setFormAtivo({ ...formAtivo, marca_modelo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Número de Série</label>
+                  <input type="text" placeholder="Ex: SN-987456321" value={formAtivo.numero_serie} onChange={(e) => setFormAtivo({ ...formAtivo, numero_serie: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Localização Física / Sala</label>
+                  <input type="text" placeholder="Ex: Casa de Máquinas Bloco B" value={formAtivo.localizacao_fisica} onChange={(e) => setFormAtivo({ ...formAtivo, localizacao_fisica: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Valor de Aquisição (R$)</label>
+                  <input type="number" step="0.01" placeholder="0.00" value={formAtivo.valor_aquisicao} onChange={(e) => setFormAtivo({ ...formAtivo, valor_aquisicao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Data de Aquisição</label>
+                  <input type="date" value={formAtivo.data_aquisicao} onChange={(e) => setFormAtivo({ ...formAtivo, data_aquisicao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalNovoAtivo(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
@@ -643,17 +712,18 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Cadastro PMOC */}
+      {/* Modal Cadastro PMOC Avançado */}
       {modalNovoPmoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-auto p-5 space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-indigo-400" /> Cadastrar Plano Preventivo PMOC
-            </h3>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-auto p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><Calendar className="h-5 w-5 text-indigo-400" /> Cadastrar Plano Preventivo PMOC</h3>
+              <button type="button" onClick={() => setModalNovoPmoc(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
             <form onSubmit={handleSalvarPmoc} className="space-y-3 text-xs">
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Título do Plano PMOC *</label>
-                <input type="text" required placeholder="Ex: Plano de Higienização Mensal Bloco A" value={formPmoc.titulo_plano} onChange={(e) => setFormPmoc({ ...formPmoc, titulo_plano: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                <input type="text" required placeholder="Ex: PMOC Mensal Central de Climatização Bloco A" value={formPmoc.titulo_plano} onChange={(e) => setFormPmoc({ ...formPmoc, titulo_plano: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -661,6 +731,13 @@ export default function OrdensServicoPage() {
                   <select required value={formPmoc.cliente_id} onChange={(e) => setFormPmoc({ ...formPmoc, cliente_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
                     <option value="">Selecione o Cliente...</option>
                     {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Ativo Vinculado</label>
+                  <select value={formPmoc.ativo_id} onChange={(e) => setFormPmoc({ ...formPmoc, ativo_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Equipamento Geral do Local</option>
+                    {ativos.map(a => <option key={a.id} value={a.id}>{a.descricao} ({a.codigo_patrimonio})</option>)}
                   </select>
                 </div>
                 <div>
@@ -673,10 +750,52 @@ export default function OrdensServicoPage() {
                     <option value="ANUAL">Anual</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Primeira Execução *</label>
+                  <input type="date" required value={formPmoc.proxima_execucao} onChange={(e) => setFormPmoc({ ...formPmoc, proxima_execucao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
               </div>
+
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Instruções Técnicas & Normas ANVISA</label>
+                <textarea rows="2" placeholder="Descreva os parâmetros de conformidade (vazão de ar, temperatura de bulbo úmido/seco)..." value={formPmoc.instrucoes_tecnicas} onChange={(e) => setFormPmoc({ ...formPmoc, instrucoes_tecnicas: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalNovoPmoc(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
                 <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Cronograma</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Configurar SLAs e Prioridades Dinâmicas */}
+      {modalNovaPrioridade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Settings className="h-4 w-4 text-indigo-400" /> Configurar Regra de SLA</h3>
+              <button type="button" onClick={() => setModalNovaPrioridade(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarNovaPrioridade} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Nome de Exibição *</label>
+                <input type="text" required placeholder="Ex: Emergência Crítica (4h)" value={formPrioridade.nome} onChange={(e) => setFormPrioridade({ ...formPrioridade, nome: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Código Identificador *</label>
+                  <input type="text" required placeholder="Ex: EMERGENCIA" value={formPrioridade.codigo} onChange={(e) => setFormPrioridade({ ...formPrioridade, codigo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Prazo Máximo SLA (Horas) *</label>
+                  <input type="number" min="1" required placeholder="4" value={formPrioridade.horas_sla} onChange={(e) => setFormPrioridade({ ...formPrioridade, horas_sla: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovaPrioridade(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Prioridade</button>
               </div>
             </form>
           </div>
@@ -712,13 +831,13 @@ export default function OrdensServicoPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const urlPortal = `${window.location.origin}/app/portal/os/${osSelecionada.id}`;
+                    const urlPortal = `${window.location.origin}/portal/os/${osSelecionada.id}`;
                     navigator.clipboard.writeText(urlPortal);
                     setFeedback({ tipo: 'sucesso', msg: 'Link do Portal do Cliente copiado para a área de transferência!' });
                   }}
                   className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition"
                 >
-                  <Share2 className="h-3.5 w-3.5" /> Copiar Link
+                  <Share2 className="h-3.5 w-3.5" /> Copiar Link Público
                 </button>
               </div>
 
@@ -867,7 +986,7 @@ export default function OrdensServicoPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-5 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Camera className="h-4 w-4 text-indigo-400" /> Anexar Foto</h3>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Camera className="h-4 w-4 text-indigo-400" /> Anexar Evidência Fotográfica</h3>
               <button type="button" onClick={() => setModalFoto(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
             </div>
             <form onSubmit={handleUploadFoto} className="space-y-3 text-xs">
@@ -875,11 +994,11 @@ export default function OrdensServicoPage() {
                 <button type="button" onClick={() => setTipoEtapaFoto('ANTES')} className={`p-2 rounded-lg border font-bold text-center cursor-pointer ${tipoEtapaFoto === 'ANTES' ? 'bg-indigo-600/20 border-indigo-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>Antes</button>
                 <button type="button" onClick={() => setTipoEtapaFoto('DEPOIS')} className={`p-2 rounded-lg border font-bold text-center cursor-pointer ${tipoEtapaFoto === 'DEPOIS' ? 'bg-indigo-600/20 border-indigo-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>Depois</button>
               </div>
-              <input type="file" accept="image/*" required onChange={(e) => setArquivoFoto(e.target.files[0])} className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white" />
+              <input type="file" ref={fileInputRef} accept="image/*" required onChange={(e) => setArquivoFoto(e.target.files[0])} className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white" />
               <input type="text" placeholder="Descrição da evidência..." value={descFoto} onChange={(e) => setDescFoto(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalFoto(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Enviar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Enviar Evidência</button>
               </div>
             </form>
           </div>
