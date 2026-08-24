@@ -17,9 +17,9 @@ class MasterController extends Controller
     public function metricas(): JsonResponse
     {
         $totalTenants = Tenant::count();
-        $totalUsuarios = User::where('is_master', false)->count();
+        $totalUsuarios = User::withoutGlobalScopes()->where('is_master', false)->count();
         $tenantsAtivos = Tenant::where('status', 'ativo')->count();
-        $totalAssinaturas = Assinatura::where('status', 'ATIVO')->count();
+        $totalAssinaturas = Assinatura::withoutGlobalScopes()->where('status', 'ATIVO')->count();
 
         return response()->json([
             'data' => [
@@ -33,7 +33,11 @@ class MasterController extends Controller
 
     public function tenants(Request $request): JsonResponse
     {
-        $query = Tenant::with(['empresas', 'users']);
+        $query = Tenant::withoutGlobalScopes()->with([
+            'empresas' => fn($q) => $q->withoutGlobalScopes(),
+            'users' => fn($q) => $q->withoutGlobalScopes(),
+            'assinaturas.plano' => fn($q) => $q->withoutGlobalScopes()
+        ]);
 
         if ($request->filled('search')) {
             $search = $request->get('search');
@@ -93,11 +97,10 @@ class MasterController extends Controller
             'status' => 'required|string|in:ativo,trial,suspenso,soft_lock,cancelado',
         ]);
 
-        $tenant = Tenant::findOrFail($id);
+        $tenant = Tenant::withoutGlobalScopes()->findOrFail($id);
         $tenant->update(['status' => $validated['status']]);
 
-        // Sincroniza status na assinatura
-        $assinatura = Assinatura::where('tenant_id', $tenant->id)->first();
+        $assinatura = Assinatura::withoutGlobalScopes()->where('tenant_id', $tenant->id)->first();
         if ($assinatura) {
             $statusAssinatura = match ($validated['status']) {
                 'ativo' => 'ATIVO',

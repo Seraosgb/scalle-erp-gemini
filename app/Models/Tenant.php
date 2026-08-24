@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -35,5 +36,20 @@ class Tenant extends Model
                 $model->id = (string) Str::uuid();
             }
         });
+    }
+
+    public function empresas(): HasMany
+    {
+        return $this->hasMany(Empresa::class, 'tenant_id');
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class, 'tenant_id');
+    }
+
+    public function assinaturas(): HasMany
+    {
+        return $this->hasMany(Assinatura::class, 'tenant_id');
     }
 }
