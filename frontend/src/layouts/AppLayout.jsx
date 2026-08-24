@@ -27,6 +27,7 @@ export default function AppLayout() {
     { name: 'Ordens de Serviço', path: '/os', icon: Wrench },
     { name: 'Financeiro', path: '/financeiro', icon: DollarSign },
     { name: 'Motor Fiscal', path: '/fiscal', icon: FileText },
+    { name: 'Governança & Equipe', path: '/configuracoes', icon: Users },
   ];
 
   return (

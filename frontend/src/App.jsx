@@ -12,6 +12,7 @@ import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import PortalClientePage from './pages/portal/PortalClientePage';
 import ComprasPage from './pages/compras/ComprasPage';
+import UsuariosEmpresasPage from './pages/configuracoes/UsuariosEmpresasPage';
 
 // Instância estável do QueryClient fora do ciclo de render
 const queryClient = new QueryClient({
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="os" element={<OsPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
+            <Route path="configuracoes" element={<UsuariosEmpresasPage />} />
           </Route>
 
           {/* Rota Fallback */}
