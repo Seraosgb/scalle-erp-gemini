@@ -11,6 +11,7 @@ import OsPage from './pages/os/OsPage';
 import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import PortalClientePage from './pages/portal/PortalClientePage';
+import ComprasPage from './pages/compras/ComprasPage';
 
 // Instância estável do QueryClient fora do ciclo de render
 const queryClient = new QueryClient({
@@ -70,6 +71,7 @@ export default function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="wms" element={<WmsPage />} />
+            <Route path="compras" element={<ComprasPage />} />
             <Route path="pdv" element={<PdvPage />} />
             <Route path="os" element={<OsPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />

@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\PessoaController;
 use App\Http\Controllers\Api\PortalClienteController;
 use App\Http\Controllers\Api\VendaController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\CompraController;
 
 /*
 |--------------------------------------------------------------------------
@@ -63,4 +64,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/fiscal/documentos', [FiscalController::class, 'index']);
     Route::get('/fiscal/regras', [FiscalController::class, 'regras']);
     Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
+
+    // Dentro do grupo Route::middleware('auth:sanctum')
+Route::get('/compras', [CompraController::class, 'index']);
+Route::post('/compras', [CompraController::class, 'store']);
 });

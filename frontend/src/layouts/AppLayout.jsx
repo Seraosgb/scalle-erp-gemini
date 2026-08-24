@@ -22,6 +22,7 @@ export default function AppLayout() {
   const menu = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'WMS & Estoque', path: '/wms', icon: Boxes },
+    { name: 'Compras & Suprimentos', path: '/compras', icon: ShoppingCart },
     { name: 'PDV Balcão', path: '/pdv', icon: ShoppingCart },
     { name: 'Ordens de Serviço', path: '/os', icon: Wrench },
     { name: 'Financeiro', path: '/financeiro', icon: DollarSign },
