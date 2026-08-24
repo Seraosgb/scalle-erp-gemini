@@ -15,7 +15,18 @@ class EmpresaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresas = Empresa::where('tenant_id', $tenantId)->orderBy('razao_social')->get();
+        $query = Empresa::where('tenant_id', $tenantId);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome_fantasia', 'ILIKE', "%{$search}%")
+                  ->orWhere('razao_social', 'ILIKE', "%{$search}%")
+                  ->orWhere('cnpj', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $empresas = $query->orderByDesc('is_matriz')->orderBy('razao_social')->get();
 
         return response()->json(['data' => $empresas]);
     }
@@ -24,7 +35,6 @@ class EmpresaController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // 1. Validação de Cotas SaaS do Plano
         $assinatura = Assinatura::where('tenant_id', $tenantId)->with('plano')->first();
         if ($assinatura && $assinatura->plano) {
             $totalEmpresas = Empresa::where('tenant_id', $tenantId)->count();
@@ -53,6 +63,43 @@ class EmpresaController extends Controller
         $empresa = Empresa::create($validated);
 
         return response()->json(['data' => $empresa], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresa = Empresa::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome_fantasia' => 'required|string|max:150',
+            'razao_social' => 'required|string|max:200',
+            'cnpj' => 'required|string|max:20',
+            'inscricao_estadual' => 'nullable|string|max:30',
+            'regime_tributario' => 'required|string',
+        ]);
+
+        $empresa->update($validated);
+
+        return response()->json(['data' => $empresa]);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresa = Empresa::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($empresa->is_matriz) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MATRIZ_DELETE_FORBIDDEN',
+                    'message' => 'Não é permitido excluir a empresa Matriz do tenant.',
+                ]
+            ], 422);
+        }
+
+        $empresa->delete();
+
+        return response()->json(['data' => ['message' => 'Filial removida com sucesso.']]);
     }
 
     public function trocarContexto(Request $request): JsonResponse

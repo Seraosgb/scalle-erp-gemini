@@ -33,17 +33,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
 
-    // Dentro do grupo Route::middleware('auth:sanctum')
+   // Rotas de Governança
 Route::get('/empresas', [EmpresaController::class, 'index']);
 Route::post('/empresas', [EmpresaController::class, 'store']);
+Route::put('/empresas/{id}', [EmpresaController::class, 'update']);
+Route::delete('/empresas/{id}', [EmpresaController::class, 'destroy']);
 Route::post('/empresas/trocar-contexto', [EmpresaController::class, 'trocarContexto']);
 
 Route::get('/usuarios', [UsuarioController::class, 'index']);
 Route::post('/usuarios', [UsuarioController::class, 'store']);
+Route::put('/usuarios/{id}', [UsuarioController::class, 'update']);
+Route::delete('/usuarios/{id}', [UsuarioController::class, 'destroy']);
 
-// Dentro do grupo Route::middleware('auth:sanctum')
 Route::get('/perfis', [PerfilController::class, 'index']);
 Route::post('/perfis', [PerfilController::class, 'store']);
+Route::put('/perfis/{id}', [PerfilController::class, 'update']);
+Route::delete('/perfis/{id}', [PerfilController::class, 'destroy']);
 
     // Dashboard Consolidado
     Route::get('/dashboard/metricas', [DashboardController::class, 'metricas']);
