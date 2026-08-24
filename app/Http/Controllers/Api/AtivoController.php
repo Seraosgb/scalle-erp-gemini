@@ -7,6 +7,7 @@ use App\Models\Empresa;
 use App\Models\PatrimonioBem;
 use App\Models\PlanoPreventivo;
 use App\Models\TabelaDominio;
+use App\Models\Tenant;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -48,8 +49,10 @@ class AtivoController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
+        $user = $request->user();
+        $tenantId = $user->tenant_id ?? Tenant::first()?->id;
+        
+        $empresaId = $user->empresa_padrao_id 
                   ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
                   ?? Empresa::first()?->id;
 
@@ -61,22 +64,27 @@ class AtivoController extends Controller
             'numero_serie' => 'nullable|string|max:100',
             'localizacao_fisica' => 'nullable|string|max:150',
             'responsavel_atual_id' => 'nullable|uuid|exists:users,id',
-            'valor_aquisicao' => 'nullable|numeric',
+            'valor_aquisicao' => 'nullable',
             'data_aquisicao' => 'nullable|date',
         ]);
+
+        // Sanitização de valor numérico
+        $valorAquisicao = (!empty($validated['valor_aquisicao']) && is_numeric($validated['valor_aquisicao'])) 
+            ? (float) $validated['valor_aquisicao'] 
+            : null;
 
         $ativo = PatrimonioBem::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresaId,
-            'cliente_id' => $validated['cliente_id'] ?? null,
+            'cliente_id' => !empty($validated['cliente_id']) ? $validated['cliente_id'] : null,
             'descricao' => $validated['descricao'],
             'codigo_patrimonio' => strtoupper($validated['codigo_patrimonio']),
             'marca_modelo' => $validated['marca_modelo'] ?? null,
             'numero_serie' => $validated['numero_serie'] ?? null,
             'localizacao_fisica' => $validated['localizacao_fisica'] ?? null,
-            'responsavel_atual_id' => $validated['responsavel_atual_id'] ?? null,
-            'valor_aquisicao' => $validated['valor_aquisicao'] ?? null,
+            'responsavel_atual_id' => !empty($validated['responsavel_atual_id']) ? $validated['responsavel_atual_id'] : null,
+            'valor_aquisicao' => $valorAquisicao,
             'data_aquisicao' => $validated['data_aquisicao'] ?? now()->toDateString(),
             'status' => 'ATIVO',
         ]);
@@ -87,6 +95,10 @@ class AtivoController extends Controller
     public function planosPreventivos(Request $request): JsonResponse
     {
         try {
+            if (!Schema::hasTable('os_planos_preventivos')) {
+                return response()->json(['data' => []]);
+            }
+
             $user = $request->user();
             $query = PlanoPreventivo::query()->with(['cliente', 'ativo', 'tecnicoPadrao']);
 
@@ -103,8 +115,9 @@ class AtivoController extends Controller
 
     public function storePlanoPreventivo(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
+        $user = $request->user();
+        $tenantId = $user->tenant_id ?? Tenant::first()?->id;
+        $empresaId = $user->empresa_padrao_id 
                   ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
                   ?? Empresa::first()?->id;
 
@@ -124,8 +137,8 @@ class AtivoController extends Controller
             'tenant_id' => $tenantId,
             'empresa_id' => $empresaId,
             'cliente_id' => $validated['cliente_id'],
-            'ativo_id' => $validated['ativo_id'] ?? null,
-            'tecnico_padrao_id' => $validated['tecnico_padrao_id'] ?? null,
+            'ativo_id' => !empty($validated['ativo_id']) ? $validated['ativo_id'] : null,
+            'tecnico_padrao_id' => !empty($validated['tecnico_padrao_id']) ? $validated['tecnico_padrao_id'] : null,
             'titulo_plano' => $validated['titulo_plano'],
             'frequencia' => $validated['frequencia'],
             'proxima_execucao' => $validated['proxima_execucao'],
@@ -152,7 +165,16 @@ class AtivoController extends Controller
             'instrucoes_tecnicas' => 'nullable|string',
         ]);
 
-        $plano->update($validated);
+        $plano->update([
+            'cliente_id' => $validated['cliente_id'],
+            'ativo_id' => !empty($validated['ativo_id']) ? $validated['ativo_id'] : null,
+            'tecnico_padrao_id' => !empty($validated['tecnico_padrao_id']) ? $validated['tecnico_padrao_id'] : null,
+            'titulo_plano' => $validated['titulo_plano'],
+            'frequencia' => $validated['frequencia'],
+            'proxima_execucao' => $validated['proxima_execucao'],
+            'instrucoes_tecnicas' => $validated['instrucoes_tecnicas'] ?? null,
+        ]);
+
         return response()->json(['data' => $plano->load(['cliente', 'ativo', 'tecnicoPadrao'])]);
     }
 
@@ -209,7 +231,7 @@ class AtivoController extends Controller
                 return response()->json(['data' => $existentes]);
             }
         } catch (Exception $e) {
-            // Em caso de falha, retorna coleção padrão
+            // Retorna padrões em caso de erro
         }
 
         return response()->json(['data' => $padroes]);
@@ -217,7 +239,7 @@ class AtivoController extends Controller
 
     public function storePrioridade(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenantId = $request->user()->tenant_id ?? Tenant::first()?->id;
         $validated = $request->validate([
             'nome' => 'required|string|max:100',
             'codigo' => 'required|string|max:50',
@@ -244,7 +266,7 @@ class AtivoController extends Controller
 
     public function updatePrioridade(Request $request, string $id): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenantId = $request->user()->tenant_id ?? Tenant::first()?->id;
         $prioridade = TabelaDominio::where('tenant_id', $tenantId)
             ->where('tipo_lista', 'PRIORIDADE_OS')
             ->findOrFail($id);
