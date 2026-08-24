@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AtivoController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CompraController;
 use App\Http\Controllers\Api\DashboardController;
@@ -16,9 +17,8 @@ use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VendaController;
 use App\Http\Middleware\CheckMaster;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AtivoController;
 
-// Rotas Públicas de Autenticação e Portal do Cliente
+// Rotas Públicas
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
@@ -75,6 +75,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/itens/{id}', [ItemController::class, 'destroy']);
     Route::get('/itens/{id}/kardex', [ItemController::class, 'kardex']);
 
+    // Ativos Patrimoniais
+    Route::get('/ativos', [AtivoController::class, 'index']);
+    Route::post('/ativos', [AtivoController::class, 'store']);
+
     // WMS & Logística de Depósitos
     Route::get('/wms/depositos', [ItemController::class, 'depositos']);
     Route::post('/wms/depositos', [ItemController::class, 'storeDeposito']);
@@ -98,13 +102,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/vendas/{id}/cancelar', [VendaController::class, 'cancelar']);
     Route::post('/vendas/{id}/emitir-fiscal', [VendaController::class, 'emitirFiscal']);
 
-    // Prestação de Serviços & CMMS
+    // Prestação de Serviços & CMMS (Rotas estáticas declaradas ANTES de rotas com {id})
+    Route::get('/os/metricas-cmms', [OrdemServicoController::class, 'metricasCmms']);
+    Route::get('/os/planos-preventivos', [AtivoController::class, 'planosPreventivos']);
+    Route::post('/os/planos-preventivos', [AtivoController::class, 'storePlanoPreventivo']);
+    Route::get('/os/prioridades', [AtivoController::class, 'prioridades']);
+
     Route::get('/os', [OrdemServicoController::class, 'index']);
     Route::get('/ordens-servico', [OrdemServicoController::class, 'index']);
-    Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
-    Route::get('/ordens-servico/{id}', [OrdemServicoController::class, 'show']);
     Route::post('/os', [OrdemServicoController::class, 'store']);
     Route::post('/ordens-servico', [OrdemServicoController::class, 'store']);
+
+    Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
+    Route::get('/ordens-servico/{id}', [OrdemServicoController::class, 'show']);
     Route::post('/os/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
     Route::post('/ordens-servico/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
     Route::post('/os/{id}/concluir', [OrdemServicoController::class, 'concluir']);
@@ -120,12 +130,4 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/fiscal/documentos', [FiscalController::class, 'index']);
     Route::get('/fiscal/regras', [FiscalController::class, 'regras']);
     Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
-
-    // Ativos Patrimoniais, PMOC & Prioridades
-Route::get('/ativos', [AtivoController::class, 'index']);
-Route::post('/ativos', [AtivoController::class, 'store']);
-Route::get('/os/planos-preventivos', [AtivoController::class, 'planosPreventivos']);
-Route::post('/os/planos-preventivos', [AtivoController::class, 'storePlanoPreventivo']);
-Route::get('/os/prioridades', [AtivoController::class, 'prioridades']);
-Route::get('/os/metricas-cmms', [OrdemServicoController::class, 'metricasCmms']);
 });
