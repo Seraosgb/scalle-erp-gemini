@@ -184,4 +184,52 @@ class OrdemServicoController extends Controller
             ], 422);
         }
     }
+    public function metricasCmms(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // 1. Ordens concluídas
+        $concluidas = OrdemServico::where('tenant_id', $tenantId)
+            ->where('status', 'CONCLUIDA')
+            ->whereNotNull('data_abertura')
+            ->whereNotNull('data_conclusao')
+            ->get();
+
+        $totalConcluidas = $concluidas->count();
+        $totalHorasReparo = 0;
+
+        foreach ($concluidas as $os) {
+            $abertura = \Carbon\Carbon::parse($os->data_abertura);
+            $conclusao = \Carbon\Carbon::parse($os->data_conclusao);
+            $totalHorasReparo += max(0.5, $conclusao->diffInMinutes($abertura) / 60);
+        }
+
+        // MTTR (Mean Time to Repair em Horas)
+        $mttr = $totalConcluidas > 0 ? round($totalHorasReparo / $totalConcluidas, 1) : 0;
+
+        // 2. MTBF (Mean Time Between Failures em Dias)
+        $corretivas = OrdemServico::where('tenant_id', $tenantId)
+            ->where('tipo_manutencao', 'CORRETIVA')
+            ->count();
+
+        $diasPeriodo = 30;
+        $mtbf = $corretivas > 0 ? round($diasPeriodo / $corretivas, 1) : $diasPeriodo;
+
+        // 3. Taxa de Conformidade com SLA
+        $dentroDoPrazo = $concluidas->filter(function ($os) {
+            return $os->prazo_sla_resolucao && $os->data_conclusao <= $os->prazo_sla_resolucao;
+        })->count();
+
+        $slaConformidade = $totalConcluidas > 0 ? round(($dentroDoPrazo / $totalConcluidas) * 100, 1) : 100;
+
+        return response()->json([
+            'data' => [
+                'mttr_horas' => $mttr,
+                'mtbf_dias' => $mtbf,
+                'sla_conformidade_percent' => $slaConformidade,
+                'total_concluidas' => $totalConcluidas,
+                'total_corretivas' => $corretivas,
+            ]
+        ]);
+    }
 }

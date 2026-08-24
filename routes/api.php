@@ -127,4 +127,5 @@ Route::post('/ativos', [AtivoController::class, 'store']);
 Route::get('/os/planos-preventivos', [AtivoController::class, 'planosPreventivos']);
 Route::post('/os/planos-preventivos', [AtivoController::class, 'storePlanoPreventivo']);
 Route::get('/os/prioridades', [AtivoController::class, 'prioridades']);
+Route::get('/os/metricas-cmms', [OrdemServicoController::class, 'metricasCmms']);
 });

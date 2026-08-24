@@ -15,6 +15,7 @@ import UsuariosEmpresasPage from './pages/configuracoes/UsuariosEmpresasPage';
 import VendasPage from './pages/vendas/VendasPage';
 import MasterDashboardPage from './pages/master/MasterDashboardPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
+import PortalOsPage from './pages/portal/PortalOsPage';
 
 // Instância estável do QueryClient fora do ciclo de render
 const queryClient = new QueryClient({
@@ -78,6 +79,7 @@ export default function App() {
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />
             <Route path="os" element={<OrdensServicoPage />} />
+            <Route path="/portal/os/:token" element={<PortalOsPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="configuracoes" element={<UsuariosEmpresasPage />} />

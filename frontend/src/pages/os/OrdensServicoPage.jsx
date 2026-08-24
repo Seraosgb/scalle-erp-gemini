@@ -367,15 +367,18 @@ export default function OrdensServicoPage() {
                       className="bg-slate-950 border border-slate-800/80 hover:border-indigo-500/50 p-3 rounded-xl cursor-pointer transition shadow-sm space-y-2 group"
                     >
                       <div className="flex justify-between items-center text-xs">
-                        <span className="font-mono font-bold text-indigo-400">#{os.numero_os}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          os.prioridade === 'URGENTE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
-                          os.prioridade === 'ALTA' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-                          'bg-slate-800 text-slate-300'
-                        }`}>
-                          {os.prioridade}
-                        </span>
-                      </div>
+  <span className="font-mono font-bold text-indigo-400">#{os.numero_os}</span>
+  <div className="flex items-center gap-1.5">
+    <SlaTimerBadge prazo={os.prazo_sla_resolucao} />
+    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+      os.prioridade === 'URGENTE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+      os.prioridade === 'ALTA' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+      'bg-slate-800 text-slate-300'
+    }`}>
+      {os.prioridade}
+    </span>
+  </div>
+</div>
 
                       <div className="font-bold text-white text-xs line-clamp-1">{os.equipamento_descricao}</div>
                       <div className="text-[11px] text-slate-400 truncate">{os.cliente?.nome_razao_social}</div>
@@ -779,5 +782,34 @@ export default function OrdensServicoPage() {
         </div>
       )}
     </div>
+  );
+}
+function SlaTimerBadge({ prazo }) {
+  if (!prazo) return null;
+
+  const diffMs = new Date(prazo) - new Date();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (diffMs <= 0) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">
+        SLA Estourado
+      </span>
+    );
+  }
+
+  if (diffHours < 2) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+        Risco ({diffHours}h {diffMins}m)
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+      {diffHours}h {diffMins}m
+    </span>
   );
 }
