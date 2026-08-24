@@ -14,6 +14,8 @@ use App\Http\Controllers\Api\CompraController;
 use App\Http\Controllers\Api\EmpresaController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\PerfilController;
+use App\Http\Controllers\Api\MasterController;
+use App\Http\Middleware\CheckMaster;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,6 +24,13 @@ use App\Http\Controllers\Api\PerfilController;
 */
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::get('/portal/os/{token}', [PortalClienteController::class, 'consultarOs']);
+// Rotas do SaaS Owner
+Route::middleware(['auth:sanctum', CheckMaster::class])->prefix('master')->group(function () {
+    Route::get('/metricas', [MasterController::class, 'metricas']);
+    Route::get('/tenants', [MasterController::class, 'tenants']);
+    Route::post('/tenants', [MasterController::class, 'storeTenant']);
+    Route::put('/tenants/{id}/status', [MasterController::class, 'alterarStatusTenant']);
+});
 
 /*
 |--------------------------------------------------------------------------
