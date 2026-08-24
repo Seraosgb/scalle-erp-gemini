@@ -34,6 +34,8 @@ class OrdemServico extends Model
         'diagnostico_tecnico',
         'servico_executado',
         'data_abertura',
+        'prazo_sla_resposta',
+        'prazo_sla_resolucao',
         'data_agendamento',
         'data_inicio_execucao',
         'data_conclusao',
@@ -45,10 +47,16 @@ class OrdemServico extends Model
         'nome_responsavel_recebimento',
         'documento_responsavel_recebimento',
         'assinado_em',
+        'hash_assinatura_sha256',
+        'ip_assinatura',
+        'latitude_assinatura',
+        'longitude_assinatura',
     ];
 
     protected $casts = [
         'data_abertura' => 'datetime',
+        'prazo_sla_resposta' => 'datetime',
+        'prazo_sla_resolucao' => 'datetime',
         'data_agendamento' => 'datetime',
         'data_inicio_execucao' => 'datetime',
         'data_conclusao' => 'datetime',
@@ -57,7 +65,14 @@ class OrdemServico extends Model
         'valor_pecas' => 'decimal:2',
         'valor_desconto' => 'decimal:2',
         'valor_total' => 'decimal:2',
+        'latitude_assinatura' => 'decimal:8',
+        'longitude_assinatura' => 'decimal:8',
     ];
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
 
     public function cliente(): BelongsTo
     {

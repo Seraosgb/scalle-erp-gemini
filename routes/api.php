@@ -88,9 +88,12 @@ Route::post('/vendas/{id}/converter', [VendaController::class, 'converter']);
 Route::post('/vendas/{id}/cancelar', [VendaController::class, 'cancelar']);
 Route::post('/vendas/{id}/emitir-fiscal', [VendaController::class, 'emitirFiscal']);
 
-    // Ordens de Serviço (OS)
-    Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);
-    Route::apiResource('ordens-servico', OrdemServicoController::class);
+    // Ordens de Serviço & CMMS
+Route::get('/os', [OrdemServicoController::class, 'index']);
+Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
+Route::post('/os', [OrdemServicoController::class, 'store']);
+Route::post('/os/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
+Route::post('/os/{id}/concluir', [OrdemServicoController::class, 'concluir']);
 
     // Financeiro & Tesouraria
     Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);
