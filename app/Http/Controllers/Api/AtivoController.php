@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Empresa;
 use App\Models\PatrimonioBem;
 use App\Models\PlanoPreventivo;
 use App\Models\TabelaDominio;
+use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -33,7 +35,9 @@ class AtivoController extends Controller
     public function store(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id ?? $request->user()->empresaPadrao->id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()->id;
 
         $validated = $request->validate([
             'descricao' => 'required|string|max:200',
@@ -74,7 +78,9 @@ class AtivoController extends Controller
     public function storePlanoPreventivo(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id ?? $request->user()->empresaPadrao->id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()->id;
 
         $validated = $request->validate([
             'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
@@ -106,34 +112,40 @@ class AtivoController extends Controller
     public function prioridades(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $prioridades = TabelaDominio::where('tenant_id', $tenantId)
-            ->where('tipo_lista', 'PRIORIDADE_OS')
-            ->where('is_ativo', true)
-            ->orderBy('ordem_exibicao')
-            ->get();
 
-        if ($prioridades->isEmpty()) {
-            $padroes = [
-                ['codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem' => 1],
-                ['codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem' => 2],
-                ['codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem' => 3],
-                ['codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem' => 4],
-            ];
+        $padroes = [
+            ['codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'ordem' => 1],
+            ['codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'ordem' => 2],
+            ['codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'ordem' => 3],
+            ['codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'ordem' => 4],
+        ];
 
+        if ($tenantId) {
             foreach ($padroes as $p) {
-                TabelaDominio::create([
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                    'tipo_lista' => 'PRIORIDADE_OS',
-                    'codigo' => $p['codigo'],
-                    'nome' => $p['nome'],
-                    'cor_hex' => $p['cor_hex'],
-                    'ordem_exibicao' => $p['ordem'],
-                    'is_ativo' => true,
-                    'is_sistema' => true,
-                ]);
+                TabelaDominio::firstOrCreate(
+                    [
+                        'tenant_id' => $tenantId,
+                        'tipo_lista' => 'PRIORIDADE_OS',
+                        'codigo' => $p['codigo']
+                    ],
+                    [
+                        'id' => (string) Str::uuid(),
+                        'nome' => $p['nome'],
+                        'cor_hex' => $p['cor_hex'],
+                        'ordem_exibicao' => $p['ordem'],
+                        'is_ativo' => true,
+                        'is_sistema' => true,
+                    ]
+                );
             }
-            $prioridades = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'PRIORIDADE_OS')->get();
+
+            $prioridades = TabelaDominio::where('tenant_id', $tenantId)
+                ->where('tipo_lista', 'PRIORIDADE_OS')
+                ->where('is_ativo', true)
+                ->orderBy('ordem_exibicao')
+                ->get();
+        } else {
+            $prioridades = collect($padroes);
         }
 
         return response()->json(['data' => $prioridades]);
