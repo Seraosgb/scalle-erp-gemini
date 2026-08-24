@@ -1,23 +1,34 @@
 import React, { useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { useAuthStore } from '../store/useAuthStore';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard,
+  LayoutDashboard, 
   Boxes, 
   ShoppingCart, 
   Wrench, 
   DollarSign, 
   FileText, 
+  Users, 
   LogOut, 
-  Layers,
-  Menu,
-  X
+  Menu, 
+  X 
 } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout } = useAuthStore();
-  const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (e) {
+      console.error(e);
+    } finally {
+      localStorage.removeItem('scalle_token');
+      localStorage.removeItem('scalle_user');
+      navigate('/login');
+    }
+  };
 
   const menu = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -31,100 +42,88 @@ export default function AppLayout() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-950 text-slate-100">
-      {/* Header Mobile / Tablet */}
-      <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/20">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="font-bold text-white text-base tracking-tight">Scalle ERP</span>
-            <span className="text-[10px] font-mono text-indigo-400 block -mt-1">Enterprise</span>
-          </div>
-        </div>
-        <button 
-          type="button"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700 cursor-pointer"
-          aria-label="Abrir menu"
-        >
-          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </header>
-
-      {/* Backdrop Mobile */}
+    <div className="min-h-screen bg-slate-950 flex text-slate-100 font-sans">
+      {/* Sidebar Mobile Overlay */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs lg:hidden"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar Responsiva com Drawer Lateral */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 border-r border-slate-800 bg-slate-900/95 lg:bg-slate-900/60 flex flex-col justify-between transition-transform duration-200 ease-in-out lg:static lg:translate-x-0
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        <div>
-          <div className="p-6 hidden lg:flex items-center gap-3 border-b border-slate-800/80">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
-              <Layers className="w-5 h-5" />
+      {/* Sidebar Navigation */}
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-950/40">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-600/30">
+              S
             </div>
-            <div>
-              <h2 className="font-bold text-white tracking-tight leading-tight">Scalle ERP</h2>
-              <span className="text-xs text-indigo-400 font-mono">v2.0.0 Enterprise</span>
-            </div>
+            <span className="font-bold text-lg text-white tracking-wide">Scalle ERP</span>
           </div>
-
-          <nav className="p-4 space-y-1">
-            {menu.map((item) => {
-              const Icon = item.icon;
-              const active = location.pathname.startsWith(item.path);
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                    active 
-                      ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' 
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
-          </nav>
+          <button 
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="p-1 rounded-lg text-slate-400 hover:text-white lg:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        {/* User Footer */}
-        <div className="p-4 border-t border-slate-800/80">
-          <div className="flex items-center justify-between">
-            <div className="truncate pr-2">
-              <p className="text-sm font-semibold text-white truncate">{user?.name || 'Operador'}</p>
-              <p className="text-xs text-slate-500 truncate">{user?.email}</p>
-            </div>
-            <button
-              type="button"
-              onClick={logout}
-              title="Encerrar Sessão"
-              className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {menu.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) => `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition ${
+                  isActive 
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
+                    : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span>{item.name}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="p-3 border-t border-slate-800 bg-slate-950/20">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 transition cursor-pointer"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span>Encerrar Sessão</span>
+          </button>
         </div>
       </aside>
 
-      {/* Main Content Area com padding adaptativo */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Topbar Mobile */}
+        <header className="h-16 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-900/60 backdrop-blur-md lg:hidden shrink-0">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg text-slate-400 hover:text-white"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <span className="font-bold text-base text-white">Scalle ERP</span>
+          <div className="w-6" />
+        </header>
+
+        {/* Content Outlet */}
+        <main className="flex-1 overflow-y-auto p-2 sm:p-4">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
