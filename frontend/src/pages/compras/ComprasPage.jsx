@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { 
-  ShoppingCart, Plus, Search, RefreshCw, 
-  CheckCircle2, AlertTriangle, X, DollarSign, 
-  Calendar, FileText, Trash2, Building2 
+  ShoppingCart, Plus, RefreshCw, CheckCircle2, 
+  AlertTriangle, X, Trash2, UserPlus, Building2 
 } from 'lucide-react';
 
 export default function ComprasPage() {
@@ -12,9 +11,13 @@ export default function ComprasPage() {
   const [depositos, setDepositos] = useState([]);
   const [itensCatalogo, setItensCatalogo] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modais
   const [modalNovaCompra, setModalNovaCompra] = useState(false);
+  const [modalNovoFornecedor, setModalNovoFornecedor] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
+  // Forms
   const [formCompra, setFormCompra] = useState({
     fornecedor_id: '',
     deposito_destino_id: '',
@@ -27,6 +30,17 @@ export default function ComprasPage() {
     itens: [
       { item_id: '', quantidade: 1, valor_unitario: 0, lote: '', data_validade: '' }
     ]
+  });
+
+  const [formFornecedor, setFormFornecedor] = useState({
+    tipo_pessoa: 'PJ',
+    nome_razao_social: '',
+    nome_fantasia_apelido: '',
+    cpf_cnpj: '',
+    email_principal: '',
+    telefone_principal: '',
+    is_fornecedor: true,
+    is_cliente: false
   });
 
   const carregarDados = async () => {
@@ -104,6 +118,30 @@ export default function ComprasPage() {
     }
   };
 
+  const handleSalvarFornecedor = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/pessoas', formFornecedor);
+      const novoForn = res.data.data;
+      setModalNovoFornecedor(false);
+      setFormFornecedor({
+        tipo_pessoa: 'PJ',
+        nome_razao_social: '',
+        nome_fantasia_apelido: '',
+        cpf_cnpj: '',
+        email_principal: '',
+        telefone_principal: '',
+        is_fornecedor: true,
+        is_cliente: false
+      });
+      setFeedback({ tipo: 'sucesso', msg: 'Fornecedor cadastrado com sucesso!' });
+      await carregarDados();
+      setFormCompra(prev => ({ ...prev, fornecedor_id: novoForn.id }));
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.message || 'Erro ao cadastrar fornecedor.' });
+    }
+  };
+
   const calcularTotalForm = () => {
     const totalItens = formCompra.itens.reduce((acc, i) => acc + (parseFloat(i.quantidade || 0) * parseFloat(i.valor_unitario || 0)), 0);
     return Math.max(0, totalItens + parseFloat(formCompra.valor_frete || 0) - parseFloat(formCompra.valor_desconto || 0));
@@ -122,14 +160,24 @@ export default function ComprasPage() {
             Entradas de notas de fornecedores com integração ao WMS e Financeiro
           </p>
         </div>
-        <button 
-          type="button"
-          onClick={() => setModalNovaCompra(true)}
-          className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
-        >
-          <Plus className="h-4 w-4" />
-          Novo Pedido de Entrada
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            type="button"
+            onClick={() => setModalNovoFornecedor(true)}
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium border border-slate-700 cursor-pointer transition"
+          >
+            <UserPlus className="h-4 w-4 text-indigo-400" />
+            Novo Fornecedor
+          </button>
+          <button 
+            type="button"
+            onClick={() => setModalNovaCompra(true)}
+            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Pedido de Entrada
+          </button>
+        </div>
       </div>
 
       {/* Feedback Toast */}
@@ -202,6 +250,71 @@ export default function ComprasPage() {
         </div>
       </div>
 
+      {/* Modal Novo Fornecedor */}
+      {modalNovoFornecedor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-indigo-400" />
+                Novo Fornecedor
+              </h2>
+              <button type="button" onClick={() => setModalNovoFornecedor(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSalvarFornecedor} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Razão Social / Nome *</label>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="Ex: Distribuidora de Peças Ltda"
+                  value={formFornecedor.nome_razao_social}
+                  onChange={(e) => setFormFornecedor({ ...formFornecedor, nome_razao_social: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">CNPJ / CPF *</label>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="00.000.000/0001-00"
+                  value={formFornecedor.cpf_cnpj}
+                  onChange={(e) => setFormFornecedor({ ...formFornecedor, cpf_cnpj: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">E-mail</label>
+                  <input 
+                    type="email" 
+                    value={formFornecedor.email_principal}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, email_principal: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Telefone</label>
+                  <input 
+                    type="text" 
+                    value={formFornecedor.telefone_principal}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, telefone_principal: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoFornecedor(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Salvar Fornecedor</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Nova Compra */}
       {modalNovaCompra && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
@@ -218,7 +331,16 @@ export default function ComprasPage() {
             <form onSubmit={handleSalvarCompra} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Fornecedor *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-400">Fornecedor *</label>
+                    <button 
+                      type="button" 
+                      onClick={() => setModalNovoFornecedor(true)}
+                      className="text-[11px] text-indigo-400 hover:underline"
+                    >
+                      + Cadastrar Novo
+                    </button>
+                  </div>
                   <select 
                     required
                     value={formCompra.fornecedor_id}
@@ -275,7 +397,7 @@ export default function ComprasPage() {
                 </div>
               </div>
 
-              {/* Seção de Itens da Compra */}
+              {/* Itens */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <span className="text-xs font-bold text-white uppercase tracking-wider">Itens e Produtos da Compra</span>
