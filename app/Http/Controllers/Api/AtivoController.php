@@ -19,10 +19,14 @@ class AtivoController extends Controller
     {
         try {
             $user = $request->user();
-            $query = PatrimonioBem::query()->with('responsavel');
+            $query = PatrimonioBem::query()->with(['responsavel', 'cliente']);
 
             if ($user && $user->tenant_id) {
                 $query->where('tenant_id', $user->tenant_id);
+            }
+
+            if ($request->filled('cliente_id')) {
+                $query->where('cliente_id', $request->get('cliente_id'));
             }
 
             if ($request->filled('search')) {
@@ -48,6 +52,7 @@ class AtivoController extends Controller
         $empresa = Empresa::where('tenant_id', $tenantId)->first() ?? Empresa::first();
 
         $validated = $request->validate([
+            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
             'descricao' => 'required|string|max:200',
             'codigo_patrimonio' => 'required|string|max:50',
             'marca_modelo' => 'nullable|string|max:150',
@@ -62,6 +67,7 @@ class AtivoController extends Controller
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresa?->id,
+            'cliente_id' => $validated['cliente_id'] ?? null,
             'descricao' => $validated['descricao'],
             'codigo_patrimonio' => strtoupper($validated['codigo_patrimonio']),
             'marca_modelo' => $validated['marca_modelo'] ?? null,
@@ -73,9 +79,9 @@ class AtivoController extends Controller
             'status' => 'ATIVO',
         ]);
 
-        return response()->json(['data' => $ativo], 201);
+        return response()->json(['data' => $ativo->load(['cliente', 'responsavel'])], 201);
     }
-
+    
     public function planosPreventivos(Request $request): JsonResponse
     {
         try {

@@ -19,6 +19,7 @@ class PatrimonioBem extends Model
         'id',
         'tenant_id',
         'empresa_id',
+        'cliente_id',
         'responsavel_atual_id',
         'codigo_patrimonio',
         'descricao',
@@ -35,6 +36,11 @@ class PatrimonioBem extends Model
         'data_aquisicao' => 'date',
         'valor_aquisicao' => 'decimal:2',
     ];
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
 
     public function responsavel(): BelongsTo
     {
