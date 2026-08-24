@@ -51,6 +51,7 @@ class OrdemServico extends Model
         'ip_assinatura',
         'latitude_assinatura',
         'longitude_assinatura',
+        'ativo_id'
     ];
 
     protected $casts = [
@@ -67,6 +68,7 @@ class OrdemServico extends Model
         'valor_total' => 'decimal:2',
         'latitude_assinatura' => 'decimal:8',
         'longitude_assinatura' => 'decimal:8',
+        
     ];
 
     public function empresa(): BelongsTo
@@ -97,5 +99,9 @@ class OrdemServico extends Model
     public function fotos(): HasMany
     {
         return $this->hasMany(OrdemServicoFoto::class, 'ordem_servico_id');
+    }
+    public function ativo(): BelongsTo
+    {
+        return $this->belongsTo(PatrimonioBem::class, 'ativo_id');
     }
 }

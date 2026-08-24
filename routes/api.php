@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VendaController;
 use App\Http\Middleware\CheckMaster;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AtivoController;
 
 // Rotas Públicas de Autenticação e Portal do Cliente
 Route::prefix('auth')->group(function () {
@@ -119,4 +120,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/fiscal/documentos', [FiscalController::class, 'index']);
     Route::get('/fiscal/regras', [FiscalController::class, 'regras']);
     Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
+
+    // Ativos Patrimoniais, PMOC & Prioridades
+Route::get('/ativos', [AtivoController::class, 'index']);
+Route::post('/ativos', [AtivoController::class, 'store']);
+Route::get('/os/planos-preventivos', [AtivoController::class, 'planosPreventivos']);
+Route::post('/os/planos-preventivos', [AtivoController::class, 'storePlanoPreventivo']);
+Route::get('/os/prioridades', [AtivoController::class, 'prioridades']);
 });
