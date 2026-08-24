@@ -94,18 +94,20 @@ class MasterController extends Controller
     public function alterarStatusTenant(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:ativo,trial,suspenso,soft_lock,cancelado',
+            'status' => 'required|string',
         ]);
 
+        $statusNormalizado = strtolower(trim($validated['status']));
+
         $tenant = Tenant::withoutGlobalScopes()->findOrFail($id);
-        $tenant->update(['status' => $validated['status']]);
+        $tenant->update(['status' => $statusNormalizado]);
 
         $assinatura = Assinatura::withoutGlobalScopes()->where('tenant_id', $tenant->id)->first();
         if ($assinatura) {
-            $statusAssinatura = match ($validated['status']) {
+            $statusAssinatura = match ($statusNormalizado) {
                 'ativo' => 'ATIVO',
                 'suspenso' => 'SUSPENSO',
-                'soft_lock' => 'SOFT_LOCK',
+                'soft_lock', 'soft-lock' => 'SOFT_LOCK',
                 'cancelado' => 'CANCELADO',
                 default => 'TRIAL',
             };
@@ -114,7 +116,7 @@ class MasterController extends Controller
 
         return response()->json([
             'data' => [
-                'message' => "Status do tenant alterado para {$validated['status']}.",
+                'message' => "Status do tenant alterado para {$statusNormalizado}.",
                 'tenant' => $tenant,
             ]
         ]);
