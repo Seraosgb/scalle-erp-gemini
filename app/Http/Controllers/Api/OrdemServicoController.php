@@ -232,4 +232,42 @@ class OrdemServicoController extends Controller
             ]
         ]);
     }
+    public function atualizarStatus(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'status' => 'required|string|in:ABERTA,EM_DIAGNOSTICO,ORCAMENTO_GERADO,APROVADA,EM_EXECUCAO,AGUARDANDO_PECA,CANCELADA',
+            'diagnostico_tecnico' => 'nullable|string',
+            'tecnico_responsavel_id' => 'nullable|uuid|exists:users,id',
+            'valor_servicos' => 'nullable|numeric',
+        ]);
+
+        $dadosUpdate = ['status' => $validated['status']];
+        
+        if (isset($validated['diagnostico_tecnico'])) {
+            $dadosUpdate['diagnostico_tecnico'] = $validated['diagnostico_tecnico'];
+        }
+        if (isset($validated['tecnico_responsavel_id'])) {
+            $dadosUpdate['tecnico_responsavel_id'] = $validated['tecnico_responsavel_id'];
+        }
+        if (isset($validated['valor_servicos'])) {
+            $dadosUpdate['valor_servicos'] = (float) $validated['valor_servicos'];
+            $dadosUpdate['valor_total'] = ((float)$dadosUpdate['valor_servicos'] + (float)$os->valor_pecas) - (float)$os->valor_desconto;
+        }
+
+        if ($validated['status'] === 'EM_EXECUCAO' && empty($os->data_inicio_execucao)) {
+            $dadosUpdate['data_inicio_execucao'] = now();
+        }
+
+        $os->update($dadosUpdate);
+
+        return response()->json([
+            'data' => [
+                'message' => "Status da OS #{$os->numero_os} atualizado para {$os->status}!",
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo'])
+            ]
+        ]);
+    }
 }

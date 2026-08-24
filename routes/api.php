@@ -117,6 +117,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
     Route::get('/ordens-servico/{id}', [OrdemServicoController::class, 'show']);
     Route::post('/os/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
+    Route::put('/os/{id}/status', [OrdemServicoController::class, 'atualizarStatus']);
     Route::post('/ordens-servico/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
     Route::post('/os/{id}/concluir', [OrdemServicoController::class, 'concluir']);
     Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);

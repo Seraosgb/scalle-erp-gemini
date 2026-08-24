@@ -49,47 +49,55 @@ class AtivoController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $tenantId = $user->tenant_id ?? Tenant::first()?->id;
-        
-        $empresaId = $user->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
-                  ?? Empresa::first()?->id;
+        try {
+            $user = $request->user();
+            $tenantId = $user->tenant_id ?? Tenant::first()?->id;
+            
+            $empresaId = $user->empresa_padrao_id 
+                      ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                      ?? Empresa::first()?->id;
 
-        $validated = $request->validate([
-            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
-            'descricao' => 'required|string|max:200',
-            'codigo_patrimonio' => 'required|string|max:50',
-            'marca_modelo' => 'nullable|string|max:150',
-            'numero_serie' => 'nullable|string|max:100',
-            'localizacao_fisica' => 'nullable|string|max:150',
-            'responsavel_atual_id' => 'nullable|uuid|exists:users,id',
-            'valor_aquisicao' => 'nullable',
-            'data_aquisicao' => 'nullable|date',
-        ]);
+            $validated = $request->validate([
+                'cliente_id' => 'nullable',
+                'descricao' => 'required|string|max:200',
+                'codigo_patrimonio' => 'required|string|max:50',
+                'marca_modelo' => 'nullable|string|max:150',
+                'numero_serie' => 'nullable|string|max:100',
+                'localizacao_fisica' => 'nullable|string|max:150',
+                'responsavel_atual_id' => 'nullable',
+                'valor_aquisicao' => 'nullable',
+                'data_aquisicao' => 'nullable',
+            ]);
 
-        // Sanitização de valor numérico
-        $valorAquisicao = (!empty($validated['valor_aquisicao']) && is_numeric($validated['valor_aquisicao'])) 
-            ? (float) $validated['valor_aquisicao'] 
-            : null;
+            $clienteIdValido = (!empty($validated['cliente_id']) && Str::isUuid($validated['cliente_id'])) ? $validated['cliente_id'] : null;
+            $responsavelIdValido = (!empty($validated['responsavel_atual_id']) && Str::isUuid($validated['responsavel_atual_id'])) ? $validated['responsavel_atual_id'] : null;
+            $valorAquisicao = (!empty($validated['valor_aquisicao']) && is_numeric($validated['valor_aquisicao'])) ? (float)$validated['valor_aquisicao'] : null;
 
-        $ativo = PatrimonioBem::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
-            'empresa_id' => $empresaId,
-            'cliente_id' => !empty($validated['cliente_id']) ? $validated['cliente_id'] : null,
-            'descricao' => $validated['descricao'],
-            'codigo_patrimonio' => strtoupper($validated['codigo_patrimonio']),
-            'marca_modelo' => $validated['marca_modelo'] ?? null,
-            'numero_serie' => $validated['numero_serie'] ?? null,
-            'localizacao_fisica' => $validated['localizacao_fisica'] ?? null,
-            'responsavel_atual_id' => !empty($validated['responsavel_atual_id']) ? $validated['responsavel_atual_id'] : null,
-            'valor_aquisicao' => $valorAquisicao,
-            'data_aquisicao' => $validated['data_aquisicao'] ?? now()->toDateString(),
-            'status' => 'ATIVO',
-        ]);
+            $ativo = PatrimonioBem::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'cliente_id' => $clienteIdValido,
+                'descricao' => $validated['descricao'],
+                'codigo_patrimonio' => strtoupper(trim($validated['codigo_patrimonio'])),
+                'marca_modelo' => $validated['marca_modelo'] ?? null,
+                'numero_serie' => $validated['numero_serie'] ?? null,
+                'localizacao_fisica' => $validated['localizacao_fisica'] ?? null,
+                'responsavel_atual_id' => $responsavelIdValido,
+                'valor_aquisicao' => $valorAquisicao,
+                'data_aquisicao' => !empty($validated['data_aquisicao']) ? $validated['data_aquisicao'] : now()->toDateString(),
+                'status' => 'ATIVO',
+            ]);
 
-        return response()->json(['data' => $ativo->load(['cliente', 'responsavel'])], 201);
+            return response()->json(['data' => $ativo->load(['cliente', 'responsavel'])], 201);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ATIVO_STORE_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
     }
 
     public function planosPreventivos(Request $request): JsonResponse
