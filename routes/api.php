@@ -56,15 +56,18 @@ Route::delete('/perfis/{id}', [PerfilController::class, 'destroy']);
     // Pessoas (Clientes, Fornecedores e Técnicos)
     Route::apiResource('pessoas', PessoaController::class);
 
-    // Itens, Catálogo e WMS Estoque
-    Route::get('/wms/depositos', [ItemController::class, 'depositos']);
-    Route::post('/wms/depositos', [ItemController::class, 'storeDeposito']);
-    Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
-    Route::post('/wms/transferir', [ItemController::class, 'transferir']);
-    Route::get('/itens/{id}/kardex', [ItemController::class, 'kardex']);
-    Route::post('/itens/importar-xml', [ItemController::class, 'importarXml']);
-    Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);
-    Route::apiResource('itens', ItemController::class);
+    // WMS & Catálogo
+Route::get('/wms/depositos', [ItemController::class, 'depositos']);
+Route::post('/wms/depositos', [ItemController::class, 'storeDeposito']);
+Route::put('/wms/depositos/{id}', [ItemController::class, 'updateDeposito']);
+Route::delete('/wms/depositos/{id}', [ItemController::class, 'destroyDeposito']);
+
+Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
+Route::post('/wms/transferir', [ItemController::class, 'transferir']);
+Route::get('/itens/{id}/kardex', [ItemController::class, 'kardex']);
+Route::post('/itens/importar-xml', [ItemController::class, 'importarXml']);
+Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);
+Route::apiResource('itens', ItemController::class);
 
     // Comercial, Vendas e PDV
     Route::post('/vendas/faturar', [VendaController::class, 'faturar']);

@@ -20,7 +20,8 @@ class ItemController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Item::query()->with('saldosPorDeposito.deposito');
+        $tenantId = $request->user()->tenant_id;
+        $query = Item::where('tenant_id', $tenantId)->with('saldosPorDeposito.deposito');
 
         if ($request->filled('search')) {
             $search = $request->get('search');
@@ -55,9 +56,43 @@ class ItemController extends Controller
 
         $validated['id'] = (string) Str::uuid();
         $validated['tenant_id'] = $request->user()->tenant_id;
+        $validated['is_ativo'] = true;
         $item = Item::create($validated);
 
         return response()->json(['data' => $item], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $item = Item::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:200',
+            'codigo_sku' => 'required|string|max:50',
+            'tipo_item' => 'required|string|in:PRODUTO,SERVICO,MATERIA_PRIMA,INSUMO',
+            'preco_venda' => 'required|numeric|min:0',
+            'preco_custo' => 'nullable|numeric|min:0',
+            'unidade_medida' => 'required|string|max:10',
+            'ncm' => 'nullable|string|max:10',
+            'controla_estoque' => 'boolean',
+            'is_ativo' => 'boolean',
+        ]);
+
+        $item->update($validated);
+
+        return response()->json(['data' => $item]);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $item = Item::where('tenant_id', $tenantId)->findOrFail($id);
+
+        // Soft Delete seguro
+        $item->delete();
+
+        return response()->json(['data' => ['message' => 'Item removido do catálogo com sucesso.']]);
     }
 
     public function kardex(string $id): JsonResponse
@@ -104,9 +139,17 @@ class ItemController extends Controller
             ]);
         }
 
-        $depositos = Deposito::where('empresa_id', $empresaId)
-            ->where('is_ativo', true)
-            ->withCount('saldos')
+        $query = Deposito::where('empresa_id', $empresaId);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $depositos = $query->withCount('saldos')
             ->orderByDesc('is_padrao')
             ->orderBy('nome')
             ->get();
@@ -120,17 +163,7 @@ class ItemController extends Controller
         
         $empresa = $request->user()->empresaPadrao 
                 ?? Empresa::where('tenant_id', $tenantId)->first()
-                ?? Empresa::firstOrCreate(
-                    ['tenant_id' => $tenantId],
-                    [
-                        'id' => (string) Str::uuid(),
-                        'razao_social' => 'Scalle Enterprise Matriz',
-                        'nome_fantasia' => 'Scalle Matriz',
-                        'cnpj' => '00.000.000/0001-91',
-                        'regime_tributario' => 'simples_nacional',
-                        'is_matriz' => true,
-                    ]
-                );
+                ?? Empresa::first();
 
         $validated = $request->validate([
             'nome' => 'required|string|max:100',
@@ -172,6 +205,71 @@ class ItemController extends Controller
         ]);
 
         return response()->json(['data' => $deposito], 201);
+    }
+
+    public function updateDeposito(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $deposito = Deposito::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'codigo' => 'required|string|max:30',
+            'descricao' => 'nullable|string|max:255',
+            'is_padrao' => 'nullable|boolean',
+            'is_ativo' => 'boolean',
+        ]);
+
+        $codigoFormatado = strtoupper(trim($validated['codigo']));
+
+        $jaExiste = Deposito::where('empresa_id', $deposito->empresa_id)
+            ->where('codigo', $codigoFormatado)
+            ->where('id', '!=', $id)
+            ->exists();
+
+        if ($jaExiste) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DUPLICATE_CODE',
+                    'message' => "Já existe outro depósito com o código '{$codigoFormatado}'.",
+                ]
+            ], 422);
+        }
+
+        $isPadrao = !empty($validated['is_padrao']) && $validated['is_padrao'];
+
+        if ($isPadrao) {
+            Deposito::where('empresa_id', $deposito->empresa_id)->update(['is_padrao' => false]);
+        }
+
+        $deposito->update([
+            'nome' => $validated['nome'],
+            'codigo' => $codigoFormatado,
+            'descricao' => $validated['descricao'] ?? null,
+            'is_padrao' => $isPadrao,
+            'is_ativo' => $validated['is_ativo'] ?? $deposito->is_ativo,
+        ]);
+
+        return response()->json(['data' => $deposito]);
+    }
+
+    public function destroyDeposito(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $deposito = Deposito::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($deposito->is_padrao) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PADRAO_DELETE_FORBIDDEN',
+                    'message' => 'O depósito padrão da empresa não pode ser excluído.',
+                ]
+            ], 422);
+        }
+
+        $deposito->delete();
+
+        return response()->json(['data' => ['message' => 'Depósito removido com sucesso.']]);
     }
 
     public function ajustarSaldo(Request $request): JsonResponse
@@ -276,7 +374,6 @@ class ItemController extends Controller
                 $qtd = (float) $validated['quantidade'];
                 $userId = $request->user()->id;
 
-                // 1. Baixa no depósito de origem
                 EstoqueService::movimentar(
                     $origemId,
                     $itemId,
@@ -289,7 +386,6 @@ class ItemController extends Controller
                     0.00
                 );
 
-                // 2. Se for DIRETO, dá entrada imediata no destino
                 if ($validated['modalidade'] === 'DIRETO') {
                     EstoqueService::movimentar(
                         $destinoId,
