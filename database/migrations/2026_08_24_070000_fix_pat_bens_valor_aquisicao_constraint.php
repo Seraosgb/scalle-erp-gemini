@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::getDriverName() === 'pgsql') {
+         if (Schema::hasTable('pat_bens') && DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE pat_bens ALTER COLUMN valor_aquisicao DROP NOT NULL;');
             DB::statement('ALTER TABLE pat_bens ALTER COLUMN valor_aquisicao SET DEFAULT 0.00;');
         }
@@ -16,7 +16,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::getDriverName() === 'pgsql') {
+         if (Schema::hasTable('pat_bens') && DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE pat_bens ALTER COLUMN valor_aquisicao SET NOT NULL;');
         }
     }
