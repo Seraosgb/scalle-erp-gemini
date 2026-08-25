@@ -2,9 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\AlcadaAprovacao;
 use App\Models\ContaFinanceira;
-use App\Models\MovimentacaoEstoque;
+use App\Models\EstoqueDeposito;
 use App\Models\MovimentacaoExtrato;
 use App\Models\PedidoVenda;
 use App\Models\PedidoVendaItem;
@@ -17,9 +16,6 @@ use Illuminate\Support\Str;
 
 class VendaService
 {
-    /**
-     * Fatura uma venda direta ou PDV com baixa atômica e financeiro
-     */
     public static function faturarVenda(
         string $empresaId,
         string $clienteId,
@@ -47,7 +43,6 @@ class VendaService
             $ultimoNumero = PedidoVenda::where('empresa_id', $empresaId)->max('numero_pedido') ?? 1000;
             $numeroPedido = $ultimoNumero + 1;
 
-            // 1. Calcular subtotal e validar desconto
             foreach ($itensPayload as $itemData) {
                 $subtotalItens += ((float) $itemData['quantidade'] * (float) $itemData['preco_unitario']);
             }
@@ -55,7 +50,6 @@ class VendaService
             $totalLiquidoPedido = max(0.00, $subtotalItens - $descontoGeral);
             $percentualDesconto = $subtotalItens > 0 ? ($descontoGeral / $subtotalItens) * 100 : 0.00;
 
-            // 2. Validação do Motor de Alçadas
             $validacaoAlcada = MotorAlcadaService::validarDesconto(
                 $vendedor,
                 'pedidos',
@@ -66,7 +60,6 @@ class VendaService
 
             $statusInicial = $validacaoAlcada['requer_aprovacao'] ? 'AGUARDANDO_APROVACAO' : 'FATURADO';
 
-            // 3. Criar Pedido
             $pedido = PedidoVenda::create([
                 'id' => $pedidoId,
                 'tenant_id' => $tenantId,
@@ -84,13 +77,12 @@ class VendaService
                 'valor_total_liquido' => $totalLiquidoPedido,
             ]);
 
-            // 4. Processar Itens
             foreach ($itensPayload as $itemData) {
                 $quantidade = (float) $itemData['quantidade'];
                 $precoUnitario = (float) $itemData['preco_unitario'];
                 $descontoItem = (float) ($itemData['desconto_unitario'] ?? 0.00);
                 $precoFinal = max(0.00, $precoUnitario - $descontoItem);
-                
+
                 PedidoVendaItem::create([
                     'pedido_id' => $pedido->id,
                     'item_id' => $itemData['item_id'],
@@ -103,7 +95,6 @@ class VendaService
                     'lote' => $itemData['lote'] ?? null,
                 ]);
 
-                // Só realiza baixa imediata se a venda não estiver aguardando aprovação
                 if (!$validacaoAlcada['requer_aprovacao']) {
                     EstoqueService::movimentar(
                         $depositoId,
@@ -119,11 +110,8 @@ class VendaService
                 }
             }
 
-            // 5. Processar Pagamentos e Financeiro (se faturado direto)
-            $totalPago = 0.00;
             foreach ($pagamentosPayload as $pagamentoData) {
                 $valorPago = (float) $pagamentoData['valor_pago'];
-                $totalPago += $valorPago;
 
                 PedidoVendaPagamento::create([
                     'pedido_id' => $pedido->id,
@@ -143,9 +131,6 @@ class VendaService
         });
     }
 
-    /**
-     * Cria um Orçamento / Proposta Comercial sem baixa de estoque
-     */
     public static function criarOrcamento(
         string $empresaId,
         string $clienteId,
@@ -213,15 +198,22 @@ class VendaService
                     'valor_total_liquido' => $quantidade * $precoFinal,
                     'lote' => $itemData['lote'] ?? null,
                 ]);
+
+                // Reserva de estoque atômica no WMS
+                $estoque = EstoqueDeposito::where('deposito_id', $depositoId)
+                    ->where('item_id', $itemData['item_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($estoque) {
+                    $estoque->increment('quantidade_reservada', $quantidade);
+                }
             }
 
             return $orcamento;
         });
     }
 
-    /**
-     * Converte um orçamento em venda faturada com baixa no WMS
-     */
     public static function converterOrcamento(PedidoVenda $orcamento, array $pagamentosPayload, User $usuario): PedidoVenda
     {
         return DB::transaction(function () use ($orcamento, $pagamentosPayload, $usuario) {
@@ -229,8 +221,18 @@ class VendaService
                 throw new Exception("Este orçamento já foi convertido e faturado anteriormente.");
             }
 
-            // 1. Dar baixa em cada item no estoque
             foreach ($orcamento->itens as $item) {
+                // Estorna a reserva do estoque
+                $estoque = EstoqueDeposito::where('deposito_id', $orcamento->deposito_saida_id)
+                    ->where('item_id', $item->item_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($estoque) {
+                    $estoque->decrement('quantidade_reservada', min((float)$estoque->quantidade_reservada, (float)$item->quantidade));
+                }
+
+                // Efetua a baixa física definitiva
                 EstoqueService::movimentar(
                     $orcamento->deposito_saida_id,
                     $item->item_id,
@@ -244,7 +246,6 @@ class VendaService
                 );
             }
 
-            // 2. Gravar pagamentos
             foreach ($pagamentosPayload as $pagamentoData) {
                 PedidoVendaPagamento::create([
                     'pedido_id' => $orcamento->id,
@@ -256,7 +257,6 @@ class VendaService
                 ]);
             }
 
-            // 3. Gerar Financeiro
             self::gerarFinanceiroVenda($orcamento, $pagamentosPayload, (float) $orcamento->valor_total_liquido, $usuario);
 
             $orcamento->update([
@@ -268,9 +268,6 @@ class VendaService
         });
     }
 
-    /**
-     * Cancela uma venda e estorna estoque e financeiro
-     */
     public static function cancelarVenda(PedidoVenda $pedido, string $motivo, User $usuario): PedidoVenda
     {
         return DB::transaction(function () use ($pedido, $motivo, $usuario) {
@@ -278,14 +275,13 @@ class VendaService
                 throw new Exception("Esta venda já se encontra cancelada.");
             }
 
-            // Se a venda estava faturada, devolve o estoque
             if ($pedido->status === 'FATURADO') {
                 foreach ($pedido->itens as $item) {
                     EstoqueService::movimentar(
                         $pedido->deposito_saida_id,
                         $item->item_id,
                         (float) $item->quantidade,
-                        'ENTRADA_COMPRA', // Devolução / Estorno
+                        'ENTRADA_COMPRA',
                         $usuario->id,
                         'vendas',
                         $pedido->id,
@@ -294,10 +290,20 @@ class VendaService
                     );
                 }
 
-                // Cancela o título no contas a receber
                 TituloFinanceiro::where('origem_tipo', 'vendas')
                     ->where('origem_id', $pedido->id)
                     ->update(['status' => 'CANCELADO', 'historico' => "Cancelado: {$motivo}"]);
+            } elseif ($pedido->status === 'ORCAMENTO') {
+                // Se for orçamento cancelado, remove a reserva do WMS
+                foreach ($pedido->itens as $item) {
+                    $estoque = EstoqueDeposito::where('deposito_id', $pedido->deposito_saida_id)
+                        ->where('item_id', $item->item_id)
+                        ->first();
+
+                    if ($estoque) {
+                        $estoque->decrement('quantidade_reservada', min((float)$estoque->quantidade_reservada, (float)$item->quantidade));
+                    }
+                }
             }
 
             $pedido->update([
