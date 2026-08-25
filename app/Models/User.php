@@ -29,6 +29,7 @@ class User extends Authenticatable
         'is_ativo',
         'mfa_ativo',
         'mfa_secret',
+        'is_master'
     ];
 
     protected $hidden = [
@@ -44,6 +45,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_ativo' => 'boolean',
             'mfa_ativo' => 'boolean',
+            'is_master' => 'boolean'
         ];
     }
 

@@ -69,6 +69,9 @@ class AtivoController extends Controller
                 'data_aquisicao' => 'nullable',
             ]);
 
+            $codigoLimpo = strtoupper(trim($validated['codigo_patrimonio']));
+            $qrHash = hash('sha256', "{$tenantId}|{$codigoLimpo}|" . Str::random(16));
+
             $clienteIdValido = (!empty($validated['cliente_id']) && Str::isUuid($validated['cliente_id'])) ? $validated['cliente_id'] : null;
             $responsavelIdValido = (!empty($validated['responsavel_atual_id']) && Str::isUuid($validated['responsavel_atual_id'])) ? $validated['responsavel_atual_id'] : null;
             $valorAquisicao = (!empty($validated['valor_aquisicao']) && is_numeric($validated['valor_aquisicao'])) ? (float)$validated['valor_aquisicao'] : null;
@@ -79,11 +82,12 @@ class AtivoController extends Controller
                 'empresa_id' => $empresaId,
                 'cliente_id' => $clienteIdValido,
                 'descricao' => $validated['descricao'],
-                'codigo_patrimonio' => strtoupper(trim($validated['codigo_patrimonio'])),
+                'codigo_patrimonio' => $codigoLimpo,
                 'marca_modelo' => $validated['marca_modelo'] ?? null,
                 'numero_serie' => $validated['numero_serie'] ?? null,
                 'localizacao_fisica' => $validated['localizacao_fisica'] ?? null,
                 'responsavel_atual_id' => $responsavelIdValido,
+                'qr_code_hash' => $qrHash,
                 'valor_aquisicao' => $valorAquisicao,
                 'data_aquisicao' => !empty($validated['data_aquisicao']) ? $validated['data_aquisicao'] : now()->toDateString(),
                 'status' => 'ATIVO',

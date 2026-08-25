@@ -104,4 +104,9 @@ class OrdemServico extends Model
     {
         return $this->belongsTo(PatrimonioBem::class, 'ativo_id');
     }
+
+    public function apontamentos(): HasMany
+    {
+        return $this->hasMany(OsApontamentoHora::class, 'ordem_servico_id');
+    }
 }

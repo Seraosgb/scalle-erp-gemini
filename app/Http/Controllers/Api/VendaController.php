@@ -216,7 +216,7 @@ class VendaController extends Controller
             $docFiscal = MotorFiscalService::emitirDocumento(
                 $empresa,
                 $pedido->cliente,
-                '65', // NFC-e
+                '65',
                 $itensFiscal,
                 'vendas',
                 $pedido->id

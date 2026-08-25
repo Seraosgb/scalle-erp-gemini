@@ -124,6 +124,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/os/planos-preventivos/{id}', [AtivoController::class, 'updatePlanoPreventivo']);
     Route::put('/os/planos-preventivos/{id}/status', [AtivoController::class, 'alterarStatusPlanoPreventivo']);
     Route::put('/os/prioridades/{id}', [AtivoController::class, 'updatePrioridade']);
+    Route::post('/os/{id}/pecas', [OrdemServicoController::class, 'adicionarPeca']);
+    Route::put('/os/{id}/pecas/{itemId}/almoxarifado', [OrdemServicoController::class, 'tratarPecaAlmoxarifado']);
 
     // Financeiro & Tesouraria
     Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);

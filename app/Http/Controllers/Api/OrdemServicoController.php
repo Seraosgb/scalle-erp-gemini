@@ -40,16 +40,7 @@ class OrdemServicoController extends Controller
         return response()->json($ordens);
     }
 
-    public function show(string $id): JsonResponse
-    {
-        $tenantId = request()->user()->tenant_id;
-        $os = OrdemServico::where('tenant_id', $tenantId)
-            ->with(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'empresa'])
-            ->findOrFail($id);
-
-        return response()->json(['data' => $os]);
-    }
-
+    
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -232,42 +223,183 @@ class OrdemServicoController extends Controller
             ]
         ]);
     }
+    
+    public function show(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'empresa', 'ativo', 'apontamentos.tecnico'])
+            ->findOrFail($id);
+
+        return response()->json(['data' => $os]);
+    }
+
     public function atualizarStatus(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
         $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
 
         $validated = $request->validate([
-            'status' => 'required|string|in:ABERTA,EM_DIAGNOSTICO,ORCAMENTO_GERADO,APROVADA,EM_EXECUCAO,AGUARDANDO_PECA,CANCELADA',
+            'status' => 'required|string|in:ABERTA,EM_EXECUCAO,AGUARDANDO_PECA,MATERIAL_DISPONIVEL,CONCLUIDA,CANCELADA',
             'diagnostico_tecnico' => 'nullable|string',
             'tecnico_responsavel_id' => 'nullable|uuid|exists:users,id',
-            'valor_servicos' => 'nullable|numeric',
         ]);
 
-        $dadosUpdate = ['status' => $validated['status']];
-        
+        $novoStatus = $validated['status'];
+        $statusAnterior = $os->status;
+        $userId = $request->user()->id;
+
+        // 1. Fechar apontamento aberto de mão de obra se estiver saindo de EM_EXECUCAO
+        if ($statusAnterior === 'EM_EXECUCAO' && $novoStatus !== 'EM_EXECUCAO') {
+            $apontamentoAberto = \App\Models\OsApontamentoHora::where('ordem_servico_id', $os->id)
+                ->whereNull('data_hora_fim')
+                ->latest()
+                ->first();
+
+            if ($apontamentoAberto) {
+                $agora = now();
+                $inicio = \Carbon\Carbon::parse($apontamentoAberto->data_hora_inicio);
+                $minutos = max(1, $agora->diffInMinutes($inicio));
+                $horas = round($minutos / 60, 2);
+                $valorTotal = $horas * (float)$apontamentoAberto->valor_hora;
+
+                $apontamentoAberto->update([
+                    'data_hora_fim' => $agora,
+                    'total_horas' => $horas,
+                    'valor_total' => $valorTotal,
+                ]);
+
+                // Recalcular valor total de serviços da OS
+                $totalServicos = \App\Models\OsApontamentoHora::where('ordem_servico_id', $os->id)->sum('valor_total');
+                $os->update([
+                    'valor_servicos' => $totalServicos,
+                    'valor_total' => ((float)$totalServicos + (float)$os->valor_pecas) - (float)$os->valor_desconto,
+                ]);
+            }
+        }
+
+        // 2. Abrir novo apontamento de mão de obra ao entrar em EM_EXECUCAO
+        if ($novoStatus === 'EM_EXECUCAO') {
+            \App\Models\OsApontamentoHora::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'ordem_servico_id' => $os->id,
+                'tecnico_id' => $validated['tecnico_responsavel_id'] ?? $os->tecnico_responsavel_id ?? $userId,
+                'data_hora_inicio' => now(),
+                'valor_hora' => 60.00, // Valor padrão de hora técnica
+                'descricao_atividades' => 'Execução técnica em andamento.',
+            ]);
+
+            if (empty($os->data_inicio_execucao)) {
+                $os->data_inicio_execucao = now();
+            }
+        }
+
+        $dadosUpdate = ['status' => $novoStatus];
         if (isset($validated['diagnostico_tecnico'])) {
             $dadosUpdate['diagnostico_tecnico'] = $validated['diagnostico_tecnico'];
         }
         if (isset($validated['tecnico_responsavel_id'])) {
             $dadosUpdate['tecnico_responsavel_id'] = $validated['tecnico_responsavel_id'];
         }
-        if (isset($validated['valor_servicos'])) {
-            $dadosUpdate['valor_servicos'] = (float) $validated['valor_servicos'];
-            $dadosUpdate['valor_total'] = ((float)$dadosUpdate['valor_servicos'] + (float)$os->valor_pecas) - (float)$os->valor_desconto;
-        }
-
-        if ($validated['status'] === 'EM_EXECUCAO' && empty($os->data_inicio_execucao)) {
-            $dadosUpdate['data_inicio_execucao'] = now();
-        }
 
         $os->update($dadosUpdate);
 
         return response()->json([
             'data' => [
-                'message' => "Status da OS #{$os->numero_os} atualizado para {$os->status}!",
-                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo'])
+                'message' => "OS #{$os->numero_os} transitada para {$novoStatus}!",
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
             ]
         ]);
     }
-}
+
+    public function adicionarPeca(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'item_id' => 'required|uuid|exists:pro_itens,id',
+            'quantidade' => 'required|numeric|min:0.0001',
+            'valor_unitario' => 'required|numeric|min:0',
+        ]);
+
+        $item = \App\Models\OrdemServicoItem::create([
+            'id' => (string) Str::uuid(),
+            'ordem_servico_id' => $os->id,
+            'item_id' => $validated['item_id'],
+            'tipo_item' => 'PRODUTO',
+            'quantidade' => $validated['quantidade'],
+            'valor_unitario' => $validated['valor_unitario'],
+            'valor_total' => (float)$validated['quantidade'] * (float)$validated['valor_unitario'],
+            'status_requisicao' => 'SOLICITADO',
+        ]);
+
+        $totalPecas = \App\Models\OrdemServicoItem::where('ordem_servico_id', $os->id)->sum('valor_total');
+        $os->update([
+            'valor_pecas' => $totalPecas,
+            'valor_total' => ((float)$os->valor_servicos + (float)$totalPecas) - (float)$os->valor_desconto,
+            'status' => 'AGUARDANDO_PECA',
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Material solicitado ao almoxarifado com sucesso!',
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ]
+        ], 201);
+    }
+
+    public function tratarPecaAlmoxarifado(Request $request, string $osId, string $itemId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($osId);
+        $itemOs = \App\Models\OrdemServicoItem::where('ordem_servico_id', $os->id)->findOrFail($itemId);
+
+        $validated = $request->validate([
+            'status_requisicao' => 'required|string|in:DISPONIVEL,RETIRADO',
+        ]);
+
+        $novoStatusReq = $validated['status_requisicao'];
+        $user = $request->user();
+
+        if ($novoStatusReq === 'RETIRADO' && $itemOs->status_requisicao !== 'RETIRADO') {
+            // Efetua a baixa física atômica no WMS
+            if (!empty($os->deposito_saida_id)) {
+                \App\Services\EstoqueService::movimentar(
+                    $os->deposito_saida_id,
+                    $itemOs->item_id,
+                    (float) $itemOs->quantidade,
+                    'SAIDA_OS',
+                    $user->id,
+                    'os',
+                    $os->id,
+                    null,
+                    (float) $itemOs->valor_unitario
+                );
+            }
+        }
+
+        $itemOs->update([
+            'status_requisicao' => $novoStatusReq,
+            'almoxarife_id' => $user->id,
+            'atendido_em' => now(),
+        ]);
+
+        // Se todas as peças foram atendidas/disponíveis, sugere MATERIAL_DISPONIVEL
+        $pendentes = \App\Models\OrdemServicoItem::where('ordem_servico_id', $os->id)
+            ->where('status_requisicao', 'SOLICITADO')
+            ->count();
+
+        if ($pendentes === 0 && $novoStatusReq === 'DISPONIVEL') {
+            $os->update(['status' => 'MATERIAL_DISPONIVEL']);
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => "Material marcado como {$novoStatusReq}!",
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ]
+        ]);
+    }
+    }
