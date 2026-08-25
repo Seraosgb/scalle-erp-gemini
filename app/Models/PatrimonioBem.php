@@ -15,6 +15,11 @@ class PatrimonioBem extends Model
     public $incrementing = false;
     protected $keyType = 'string';
 
+    protected $attributes = [
+        'valor_aquisicao' => 0.00,
+        'status' => 'ATIVO',
+    ];
+
     protected $fillable = [
         'id',
         'tenant_id',

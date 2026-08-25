@@ -77,9 +77,10 @@ class AtivoController extends Controller
                 ? $validated['responsavel_atual_id'] 
                 : null;
 
-            // Blindagem contra constraint NOT NULL do PostgreSQL
-            $valorAquisicao = (isset($validated['valor_aquisicao']) && is_numeric($validated['valor_aquisicao'])) 
-                ? (float) $validated['valor_aquisicao'] 
+            // Tratamento definitivo para 0.00
+            $valorRaw = $validated['valor_aquisicao'] ?? null;
+            $valorAquisicao = (is_numeric($valorRaw) && (float)$valorRaw > 0) 
+                ? (float)$valorRaw 
                 : 0.00;
 
             $dataAquisicao = !empty($validated['data_aquisicao']) 
