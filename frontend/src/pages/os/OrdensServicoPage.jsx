@@ -73,7 +73,7 @@ export default function OrdensServicoPage() {
   });
   const [prioridadeEmEdicao, setPrioridadeEmEdicao] = useState(null);
 
-  // Form Adicionar Peça em Andamento
+  // Form Requisitar Peça ao Almoxarifado
   const [novaPeca, setNovaPeca] = useState({ item_id: '', quantidade: 1, valor_unitario: 0 });
 
   // Form Conclusão
@@ -88,59 +88,86 @@ export default function OrdensServicoPage() {
   const [arquivoFoto, setArquivoFoto] = useState(null);
   const [descFoto, setDescFoto] = useState('');
 
-  const carregarDados = async () => {
+  const carregarDadosIniciais = async () => {
     setLoading(true);
     try {
-      const [resOs, resCli, resUsers, resDeps, resItens, resAtivos, resPrios, resPmoc, resMetricas] = await Promise.all([
-        api.get('/os', { params: { search } }),
+      // 1. Carregamento ultra-rápido via Endpoint Bootstrap
+      const resBootstrap = await api.get('/os/bootstrap', { params: { search } });
+      const data = resBootstrap.data?.data || {};
+      
+      setOrdens(data.ordens || []);
+      setMetricasCmms(data.metricas || { mttr_horas: 0, mtbf_dias: 0, sla_conformidade_percent: 100, total_concluidas: 0, total_corretivas: 0 });
+      setPrioridades(data.prioridades || []);
+    } catch (err) {
+      // Fallback em caso de lentidão
+      try {
+        const resOs = await api.get('/os', { params: { search } });
+        setOrdens(resOs.data.data || []);
+      } catch (e) {}
+    } finally {
+      setLoading(false);
+    }
+
+    // 2. Carregamento assíncrono em segundo plano (não bloqueia a renderização)
+    try {
+      const [resCli, resUsers, resDeps, resItens, resAtivos, resPmoc] = await Promise.all([
         api.get('/pessoas', { params: { tipo: 'CLIENTE' } }),
         api.get('/usuarios'),
         api.get('/wms/depositos'),
         api.get('/itens'),
         api.get('/ativos'),
-        api.get('/os/prioridades'),
-        api.get('/os/planos-preventivos'),
-        api.get('/os/metricas-cmms').catch(() => ({ data: { data: null } }))
+        api.get('/os/planos-preventivos')
       ]);
 
-      setOrdens(resOs.data.data || []);
-      setClientes(resCli.data.data || []);
-      setTecnicos(resUsers.data.data?.usuarios || resUsers.data.data || []);
-      const deps = resDeps.data.data || [];
-      setDepositos(deps);
-      setItensCatalogo(resItens.data.data || []);
-      setAtivos(resAtivos.data.data || []);
-      setPrioridades(resPrios.data.data || []);
-      setPlanosPmoc(resPmoc.data.data || []);
+      const cliList = resCli.data?.data || [];
+      const userList = resUsers.data?.data?.usuarios || resUsers.data?.data || [];
+      const depList = resDeps.data?.data || [];
+      const itList = resItens.data?.data || [];
+      const atList = resAtivos.data?.data || [];
+      const pmList = resPmoc.data?.data || [];
 
-      if (resMetricas?.data?.data) {
-        setMetricasCmms(resMetricas.data.data);
-      }
+      setClientes(cliList);
+      setTecnicos(userList);
+      setDepositos(depList);
+      setItensCatalogo(itList);
+      setAtivos(atList);
+      setPlanosPmoc(pmList);
 
-      if (deps.length > 0 && !formOs.deposito_saida_id) {
-        setFormOs(prev => ({ ...prev, deposito_saida_id: deps[0].id }));
+      if (depList.length > 0 && !formOs.deposito_saida_id) {
+        setFormOs(prev => ({ ...prev, deposito_saida_id: depList[0].id }));
       }
     } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      console.warn('Carregamento secundário concluído com avisos:', err);
     }
   };
 
   useEffect(() => {
-    carregarDados();
+    carregarDadosIniciais();
   }, [search]);
 
   const handleSalvarAtivo = async (e) => {
     e.preventDefault();
     try {
-      const res = await api.post('/ativos', formAtivo);
+      const payload = {
+        descricao: formAtivo.descricao,
+        codigo_patrimonio: formAtivo.codigo_patrimonio,
+        marca_modelo: formAtivo.marca_modelo || null,
+        numero_serie: formAtivo.numero_serie || null,
+        localizacao_fisica: formAtivo.localizacao_fisica || null,
+        cliente_id: formAtivo.cliente_id && formAtivo.cliente_id !== '' ? formAtivo.cliente_id : null,
+        valor_aquisicao: formAtivo.valor_aquisicao ? parseFloat(formAtivo.valor_aquisicao) : 0.00,
+        data_aquisicao: formAtivo.data_aquisicao || null,
+      };
+
+      const res = await api.post('/ativos', payload);
       setAtivos([...ativos, res.data.data]);
       setModalNovoAtivo(false);
       setFormAtivo({ cliente_id: '', descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '', localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10) });
-      setFeedback({ tipo: 'sucesso', msg: 'Ativo cadastrado com QR Code Hash gerado!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Ativo patrimonial cadastrado com sucesso!' });
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao cadastrar ativo.' });
+      const msgErro = err.response?.data?.error?.message 
+                   || (err.response?.data?.errors ? Object.values(err.response.data.errors).flat().join(', ') : 'Erro ao cadastrar ativo.');
+      setFeedback({ tipo: 'erro', msg: msgErro });
     }
   };
 
@@ -149,7 +176,7 @@ export default function OrdensServicoPage() {
       const res = await api.put(`/os/${osSelecionada.id}/status`, { status: novoStatus });
       setOsSelecionada(res.data.data.os);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDados();
+      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao transitar status da OS.' });
     }
@@ -163,7 +190,7 @@ export default function OrdensServicoPage() {
       setModalAddPeca(false);
       setNovaPeca({ item_id: '', quantidade: 1, valor_unitario: 0 });
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDados();
+      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao requisitar peça ao almoxarifado.' });
     }
@@ -174,7 +201,7 @@ export default function OrdensServicoPage() {
       const res = await api.put(`/os/${osSelecionada.id}/pecas/${itemId}/almoxarifado`, { status_requisicao: novoStatus });
       setOsSelecionada(res.data.data.os);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDados();
+      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao atualizar status da peça no almoxarifado.' });
     }
@@ -186,7 +213,7 @@ export default function OrdensServicoPage() {
       const res = await api.post('/os', formOs);
       setModalNovaOs(false);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDados();
+      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao abrir OS.' });
     }
@@ -204,7 +231,7 @@ export default function OrdensServicoPage() {
       }
       setModalNovoPmoc(false);
       setFormPmoc({ id: null, cliente_id: '', ativo_id: '', tecnico_padrao_id: '', titulo_plano: '', frequencia: 'MENSAL', proxima_execucao: new Date().toISOString().substring(0, 10), instrucoes_tecnicas: '' });
-      carregarDados();
+      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao salvar PMOC.' });
     }
@@ -213,10 +240,28 @@ export default function OrdensServicoPage() {
   const handleToggleStatusPmoc = async (id) => {
     try {
       await api.put(`/os/planos-preventivos/${id}/status`);
-      carregarDados();
+      carregarDadosIniciais();
       setFeedback({ tipo: 'sucesso', msg: 'Status do plano PMOC alterado!' });
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao alterar status do PMOC.' });
+    }
+  };
+
+  const handleSalvarPrioridade = async (e) => {
+    e.preventDefault();
+    try {
+      if (prioridadeEmEdicao) {
+        await api.put(`/os/prioridades/${prioridadeEmEdicao.id}`, formPrioridade);
+        setFeedback({ tipo: 'sucesso', msg: 'Regra de SLA atualizada!' });
+      } else {
+        await api.post('/os/prioridades', formPrioridade);
+        setFeedback({ tipo: 'sucesso', msg: 'Nova prioridade cadastrada!' });
+      }
+      setModalPrioridade(false);
+      setPrioridadeEmEdicao(null);
+      carregarDadosIniciais();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao salvar regra de SLA.' });
     }
   };
 
@@ -276,7 +321,7 @@ export default function OrdensServicoPage() {
       setModalConcluir(false);
       setModalDetalhes(false);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDados();
+      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao concluir OS.' });
     }
@@ -314,6 +359,23 @@ export default function OrdensServicoPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
+      {/* Estilo CSS A4 Dedicado para Impressão */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #laudo-impressao-a4, #laudo-impressao-a4 * { visibility: visible; }
+          #laudo-impressao-a4 {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            background: white !important;
+            color: black !important;
+            padding: 20px;
+          }
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
@@ -322,7 +384,7 @@ export default function OrdensServicoPage() {
             Ordens de Serviço & CMMS 100%
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Apontamento contínuo de horas técnicas, workflow de almoxarifado, PMOC e assinatura digital
+            Apontamento contínuo de horas técnicas, workflow de almoxarifado, PMOC e assinatura digital (MP 2.200-2)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -456,7 +518,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Visualização 1: Quadro Kanban com Estágios Industriais */}
+      {/* Visualização 1: Quadro Kanban */}
       {abaAtiva === 'kanban' && (
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {colunasKanban.map((col) => {
@@ -505,7 +567,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Visualização 2: Cronogramas PMOC (Edição & Ativação Restaurados) */}
+      {/* Visualização 2: Cronogramas PMOC */}
       {abaAtiva === 'pmoc' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-left text-sm text-slate-300">
@@ -841,12 +903,70 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Detalhes da OS (Painel de Gestão Completo com Apontamento de Horas e Peças) */}
+      {/* Modal Cadastro/Edição PMOC */}
+      {modalNovoPmoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-auto p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><Calendar className="h-5 w-5 text-indigo-400" /> {formPmoc.id ? 'Editar Plano PMOC' : 'Cadastrar Plano Preventivo PMOC'}</h3>
+              <button type="button" onClick={() => setModalNovoPmoc(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarPmoc} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Título do Plano PMOC *</label>
+                <input type="text" required placeholder="Ex: PMOC Mensal Central Bloco A" value={formPmoc.titulo_plano} onChange={(e) => setFormPmoc({ ...formPmoc, titulo_plano: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Cliente *</label>
+                  <select required value={formPmoc.cliente_id} onChange={(e) => setFormPmoc({ ...formPmoc, cliente_id: e.target.value, ativo_id: '' })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Selecione o Cliente...</option>
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Ativo Vinculado</label>
+                  <select value={formPmoc.ativo_id} onChange={(e) => setFormPmoc({ ...formPmoc, ativo_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Equipamento Geral do Local</option>
+                    {ativos.filter(a => !formPmoc.cliente_id || !a.cliente_id || a.cliente_id === formPmoc.cliente_id).map(a => <option key={a.id} value={a.id}>{a.descricao} ({a.codigo_patrimonio})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Frequência *</label>
+                  <select value={formPmoc.frequencia} onChange={(e) => setFormPmoc({ ...formPmoc, frequencia: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="MENSAL">Mensal</option>
+                    <option value="BIMESTRAL">Bimestral</option>
+                    <option value="TRIMESTRAL">Trimestral</option>
+                    <option value="SEMESTRAL">Semestral</option>
+                    <option value="ANUAL">Anual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Próxima Execução *</label>
+                  <input type="date" required value={formPmoc.proxima_execucao} onChange={(e) => setFormPmoc({ ...formPmoc, proxima_execucao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Instruções Técnicas & Normas ANVISA</label>
+                <textarea rows="2" placeholder="Descreva os parâmetros técnicos de conformidade..." value={formPmoc.instrucoes_tecnicas} onChange={(e) => setFormPmoc({ ...formPmoc, instrucoes_tecnicas: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoPmoc(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Cronograma</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detalhes da OS */}
       {modalDetalhes && osSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
             
-            {/* Header com Ações Rápidas de Status */}
+            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 gap-3 shrink-0">
               <div>
                 <div className="flex items-center gap-2">
@@ -870,7 +990,7 @@ export default function OrdensServicoPage() {
             {/* Corpo do Painel */}
             <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 text-xs">
               
-              {/* Barra de Transição de Status em Campo */}
+              {/* Barra de Transição de Status */}
               {osSelecionada.status !== 'CONCLUIDA' && (
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5">
                   <div>
@@ -1100,7 +1220,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Requisitar Peça em Andamento */}
+      {/* Modal Requisitar Peça ao Almoxarifado */}
       {modalAddPeca && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-5 space-y-4">
@@ -1215,6 +1335,119 @@ export default function OrdensServicoPage() {
                 <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Enviar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Configurar/Editar SLAs e Prioridades */}
+      {modalPrioridade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Settings className="h-4 w-4 text-indigo-400" /> {prioridadeEmEdicao ? 'Editar Regra de SLA' : 'Nova Prioridade'}</h3>
+              <button type="button" onClick={() => setModalPrioridade(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarPrioridade} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Nome de Exibição *</label>
+                <input type="text" required placeholder="Ex: Emergência Crítica (4h)" value={formPrioridade.nome} onChange={(e) => setFormPrioridade({ ...formPrioridade, nome: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Código Identificador *</label>
+                  <input type="text" required disabled={!!prioridadeEmEdicao} placeholder="Ex: EMERGENCIA" value={formPrioridade.codigo} onChange={(e) => setFormPrioridade({ ...formPrioridade, codigo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono disabled:opacity-50" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Prazo SLA (Horas) *</label>
+                  <input type="number" min="1" required placeholder="4" value={formPrioridade.horas_sla} onChange={(e) => setFormPrioridade({ ...formPrioridade, horas_sla: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+              {prioridadeEmEdicao && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input type="checkbox" id="check_ativo_prio" checked={formPrioridade.is_ativo} onChange={(e) => setFormPrioridade({ ...formPrioridade, is_ativo: e.target.checked })} className="rounded bg-slate-950 border-slate-800" />
+                  <label htmlFor="check_ativo_prio" className="text-slate-300 font-medium">Prioridade Ativa no Sistema</label>
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalPrioridade(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Regra</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Relatório A4 Vetorial Oculto para Impressão */}
+      {osSelecionada && (
+        <div id="laudo-impressao-a4" className="hidden">
+          <div className="border-b-2 border-slate-900 pb-4 mb-4 flex justify-between items-start">
+            <div>
+              <h1 className="text-xl font-bold uppercase">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ERP'}</h1>
+              <p className="text-xs text-slate-600">CNPJ: {osSelecionada.empresa?.cnpj || '00.000.000/0001-91'}</p>
+            </div>
+            <div className="text-right">
+              <h2 className="text-lg font-mono font-bold">RELATÓRIO TÉCNICO DE OS #{osSelecionada.numero_os}</h2>
+              <p className="text-xs text-slate-600">Emissão: {new Date().toLocaleString('pt-BR')}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-4 text-xs border p-3 rounded">
+            <div>
+              <strong>Cliente:</strong> {osSelecionada.cliente?.nome_razao_social}<br />
+              <strong>Equipamento:</strong> {osSelecionada.equipamento_descricao}<br />
+              <strong>Marca/Modelo:</strong> {osSelecionada.equipamento_marca_modelo || '-'}<br />
+              <strong>Nº de Série:</strong> {osSelecionada.equipamento_numero_serie || '-'}
+            </div>
+            <div>
+              <strong>Técnico Responsável:</strong> {osSelecionada.tecnico?.name || '-'}<br />
+              <strong>Tipo de Manutenção:</strong> {osSelecionada.tipo_manutencao}<br />
+              <strong>Data de Abertura:</strong> {new Date(osSelecionada.data_abertura).toLocaleString('pt-BR')}<br />
+              <strong>Data de Conclusão:</strong> {osSelecionada.data_conclusao ? new Date(osSelecionada.data_conclusao).toLocaleString('pt-BR') : 'Em andamento'}
+            </div>
+          </div>
+
+          <div className="mb-4 text-xs border p-3 rounded">
+            <strong className="block mb-1">Defeito Reclamado pelo Cliente:</strong>
+            <p className="text-slate-700">{osSelecionada.defeito_reclamado}</p>
+          </div>
+
+          <div className="mb-4 text-xs border p-3 rounded">
+            <strong className="block mb-1">Laudo Técnico dos Serviços Executados:</strong>
+            <p className="text-slate-700">{osSelecionada.servico_executado || osSelecionada.diagnostico_tecnico || 'Sem laudo registrado.'}</p>
+          </div>
+
+          <div className="mb-4 text-xs">
+            <strong className="block mb-2">Materiais, Peças e Insumos Aplicados:</strong>
+            <table className="w-full text-left border text-xs">
+              <thead className="bg-slate-100 border-b">
+                <tr>
+                  <th className="p-2">Item / Descrição</th>
+                  <th className="p-2 text-center">Qtd</th>
+                  <th className="p-2 text-right">Valor Un.</th>
+                  <th className="p-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {osSelecionada.itens?.map((it) => (
+                  <tr key={it.id}>
+                    <td className="p-2">{it.item?.nome}</td>
+                    <td className="p-2 text-center">{it.quantidade}</td>
+                    <td className="p-2 text-right">R$ {parseFloat(it.valor_unitario).toFixed(2)}</td>
+                    <td className="p-2 text-right">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="border-t-2 border-slate-900 pt-4 flex justify-between items-end text-xs">
+            <div>
+              <p><strong>Aceite do Cliente (MP 2.200-2/2001):</strong> {osSelecionada.nome_responsavel_recebimento || '_______________________________'}</p>
+              <p className="text-[10px] text-slate-500 font-mono">Hash SHA-256: {osSelecionada.hash_assinatura_sha256 || 'Assinatura pendente'}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-base font-bold">TOTAL DA OS: R$ {parseFloat(osSelecionada.valor_total || 0).toFixed(2)}</p>
+            </div>
           </div>
         </div>
       )}
