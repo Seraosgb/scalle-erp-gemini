@@ -77,11 +77,11 @@ class AtivoController extends Controller
                 ? $validated['responsavel_atual_id'] 
                 : null;
 
-            // Tratamento definitivo para 0.00
-            $valorRaw = $validated['valor_aquisicao'] ?? null;
-            $valorAquisicao = (is_numeric($valorRaw) && (float)$valorRaw > 0) 
-                ? (float)$valorRaw 
-                : 0.00;
+            // Força 0.00 float absoluto
+            $valorAquisicao = 0.00;
+            if (isset($validated['valor_aquisicao']) && is_numeric($validated['valor_aquisicao']) && (float)$validated['valor_aquisicao'] > 0) {
+                $valorAquisicao = (float)$validated['valor_aquisicao'];
+            }
 
             $dataAquisicao = !empty($validated['data_aquisicao']) 
                 ? $validated['data_aquisicao'] 
