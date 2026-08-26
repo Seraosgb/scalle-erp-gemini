@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 export default function EstoquePage() {
-  const [abaAtiva, setAbaAtiva] = useState('saldos'); // 'saldos' | 'transferencias' | 'abc' | 'depositos'
+  const [abaAtiva, setAbaAtiva] = useState('saldos'); // 'saldos' | 'transferencias' | 'depositos' | 'abc'
   const [saldos, setSaldos] = useState([]);
   const [depositos, setDepositos] = useState([]);
   const [itens, setItens] = useState([]);
@@ -44,12 +44,19 @@ export default function EstoquePage() {
         api.get('/wms/curva-abc').catch(() => ({ data: { data: { valor_total_saidas_90d: 0, itens: [] } } }))
       ]);
 
-      setSaldos(resSaldos.data.data || []);
-      const deps = resDeps.data.data || [];
+      const rawSaldos = resSaldos.data?.data;
+      const listaSaldos = Array.isArray(rawSaldos) ? rawSaldos : (rawSaldos?.data || []);
+      setSaldos(listaSaldos);
+
+      const deps = resDeps.data?.data || [];
       setDepositos(deps);
-      setItens(resItens.data.data || []);
-      setTransferencias(resTransfs.data.data || []);
-      setCurvaAbc(resAbc.data.data || { valor_total_saidas_90d: 0, itens: [] });
+
+      const rawItens = resItens.data?.data;
+      const listaItens = Array.isArray(rawItens) ? rawItens : (rawItens?.data || []);
+      setItens(listaItens);
+
+      setTransferencias(resTransfs.data?.data || []);
+      setCurvaAbc(resAbc.data?.data || { valor_total_saidas_90d: 0, itens: [] });
 
       if (deps.length > 0 && !depositoXml) {
         setDepositoXml(deps[0].id);
@@ -141,7 +148,7 @@ export default function EstoquePage() {
             Almoxarifado & WMS
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Controle de múltiplos almoxarifados, transferências em trânsito com conferência cega, FEFO e Curva ABC
+            Gestão de depósitos, transferências em trânsito com conferência cega, FEFO e Curva ABC
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -192,7 +199,7 @@ export default function EstoquePage() {
               abaAtiva === 'saldos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
             }`}
           >
-            Posição de Estoque
+            Posições de Estoque
           </button>
           <button
             type="button"
@@ -257,7 +264,7 @@ export default function EstoquePage() {
         </div>
       )}
 
-      {/* Aba 1: Posição de Estoque */}
+      {/* Aba 1: Posições de Estoque */}
       {abaAtiva === 'saldos' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-left text-sm text-slate-300">
@@ -272,7 +279,7 @@ export default function EstoquePage() {
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-xs">
               {saldos.length === 0 ? (
-                <tr><td colSpan="5" className="text-center py-10 text-slate-500">Nenhum saldo registrado no WMS.</td></tr>
+                <tr><td colSpan="5" className="text-center py-10 text-slate-500">Nenhum item cadastrado no sistema.</td></tr>
               ) : (
                 saldos.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-800/40 transition">
@@ -297,7 +304,7 @@ export default function EstoquePage() {
                       {s.localizacao_rua ? `Rua ${s.localizacao_rua} / Prédio ${s.localizacao_predio}` : '-'}
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-sm font-bold text-emerald-400">
-                      {parseFloat(s.quantidade_saldo).toFixed(2)}
+                      {parseFloat(s.quantidade_saldo || 0).toFixed(2)}
                     </td>
                   </tr>
                 ))
@@ -323,7 +330,7 @@ export default function EstoquePage() {
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-xs">
               {transferencias.length === 0 ? (
-                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhuma transferência registrada.</td></tr>
+                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhuma transferência em trânsito.</td></tr>
               ) : (
                 transferencias.map((t) => (
                   <tr key={t.id} className="hover:bg-slate-800/40 transition">
