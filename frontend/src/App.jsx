@@ -15,6 +15,7 @@ import VendasPage from './pages/vendas/VendasPage';
 import MasterDashboardPage from './pages/master/MasterDashboardPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
 import PortalOsPage from './pages/portal/PortalOsPage';
+import EstoquePage from './pages/estoque/EstoquePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,7 +73,8 @@ export default function App() {
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="wms" element={<WmsPage />} />
+            <Route path="/estoque" element={<EstoquePage />} />
+<Route path="/wms" element={<EstoquePage />} />   
             <Route path="compras" element={<ComprasPage />} />
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />
@@ -95,6 +97,7 @@ export default function App() {
             <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="wms" element={<WmsPage />} />
+            <Route path="/estoque" element={<WmsPage />} />
             <Route path="compras" element={<ComprasPage />} />
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />
