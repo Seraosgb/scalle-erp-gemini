@@ -134,7 +134,10 @@ export default function PcpPage() {
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
       carregarDados();
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao finalizar OP.' });
+      const msgErro = err.response?.data?.error?.message 
+                   || err.response?.data?.message 
+                   || 'Erro ao finalizar Ordem de Produção.';
+      setFeedback({ tipo: 'erro', msg: msgErro });
     }
   };
 
