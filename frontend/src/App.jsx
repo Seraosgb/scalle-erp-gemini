@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-// Importação do Layout real com Sidebar e Topbar
+// Importação do Layout com Sidebar e Topbar
 import AppLayout from './layouts/AppLayout';
 
 // Páginas
@@ -25,6 +25,8 @@ export default function App() {
         <Route path="/estoque" element={<Navigate to="/app/wms" replace />} />
         <Route path="/os" element={<Navigate to="/app/os" replace />} />
         <Route path="/pcp" element={<Navigate to="/app/pcp" replace />} />
+        <Route path="/vendas" element={<Navigate to="/app/vendas" replace />} />
+        <Route path="/pdv" element={<Navigate to="/app/pdv" replace />} />
 
         {/* Rotas Principais com Sidebar (Layout) */}
         <Route path="/app" element={<AppLayout />}>
@@ -34,9 +36,8 @@ export default function App() {
           <Route path="os" element={<OrdensServicoPage />} />
           <Route path="ordens-servico" element={<OrdensServicoPage />} />
           <Route path="pcp" element={<PcpPage />} />
-          // Dentro de <Route path="/app" element={<AppLayout />}>:
-<Route path="vendas" element={<VendasPage />} />
-<Route path="pdv" element={<PdvPage />} />
+          <Route path="vendas" element={<VendasPage />} />
+          <Route path="pdv" element={<PdvPage />} />
         </Route>
 
         {/* Fallback 404 */}
