@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import WmsPage from './pages/wms/WmsPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
 import PortalOsPage from './pages/portal/PortalOsPage';
+import PcpPage from './pages/pcp/PcpPage';
 
 // Componente de Layout Fallback Seguro (caso não exista Layout.jsx separado)
 function AppLayout() {
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="estoque" element={<WmsPage />} />
           <Route path="os" element={<OrdensServicoPage />} />
           <Route path="ordens-servico" element={<OrdensServicoPage />} />
+          <Route path="pcp" element={<PcpPage />} />
         </Route>
 
         {/* Fallback 404 */}

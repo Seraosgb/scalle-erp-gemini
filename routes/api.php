@@ -159,4 +159,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/fiscal/documentos', [FiscalController::class, 'index']);
     Route::get('/fiscal/regras', [FiscalController::class, 'regras']);
     Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
+
+    // Indústria & PCP (Planejamento e Controle da Produção)
+    Route::get('/pcp/ordens-producao', [\App\Http\Controllers\Api\PcpController::class, 'ordensProducao']);
+    Route::post('/pcp/ordens-producao', [\App\Http\Controllers\Api\PcpController::class, 'storeOrdemProducao']);
+    Route::post('/pcp/ordens-producao/{id}/finalizar', [\App\Http\Controllers\Api\PcpController::class, 'finalizarOrdemProducao']);
+    Route::get('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'estruturas']);
+    Route::post('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'storeEstrutura']);
 });
