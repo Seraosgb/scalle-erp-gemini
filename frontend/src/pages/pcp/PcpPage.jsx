@@ -68,7 +68,11 @@ export default function PcpPage() {
   };
 
   useEffect(() => {
-    carregarDados();
+    const delayDebounceFn = setTimeout(() => {
+      carregarDados();
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
   }, [search]);
 
   const handleSalvarOp = async (e) => {
@@ -257,12 +261,12 @@ export default function PcpPage() {
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <input
-            type="text"
-            placeholder="Buscar OP, produto..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
-          />
+    type="text"
+    placeholder="Buscar por Nº da OP (ex: 1001), Produto ou SKU..."
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+    className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+  />
         </div>
       </div>
 

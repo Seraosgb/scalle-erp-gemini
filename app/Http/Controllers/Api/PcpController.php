@@ -19,6 +19,8 @@ class PcpController extends Controller
     public function ordensProducao(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
+        $search = trim((string) $request->get('search'));
+
         $query = OrdemProducao::where('tenant_id', $tenantId)
             ->with(['produto', 'responsavel', 'depositoOrigem', 'depositoDestino']);
 
@@ -26,11 +28,18 @@ class PcpController extends Controller
             $query->where('status', $request->get('status'));
         }
 
-        if ($request->filled('search')) {
-            $search = $request->get('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('numero_op', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('produto', fn($p) => $p->where('nome', 'ILIKE', "%{$search}%"));
+        if (!empty($search)) {
+            // Extrai apenas dígitos caso o usuário pesquise por "OP-1001" ou "1001"
+            $apenasNumero = preg_replace('/[^0-9]/', '', $search);
+
+            $query->where(function ($q) use ($search, $apenasNumero) {
+                if (!empty($apenasNumero)) {
+                    $q->where('numero_op', (int) $apenasNumero);
+                }
+                $q->orWhereHas('produto', function ($sub) use ($search) {
+                    $sub->where('nome', 'ILIKE', "%{$search}%")
+                        ->orWhere('codigo_sku', 'ILIKE', "%{$search}%");
+                });
             });
         }
 
@@ -246,10 +255,10 @@ class PcpController extends Controller
     public function estruturas(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $search = $request->get('search');
+        $search = trim((string) $request->get('search'));
 
         $query = EstruturaItem::where('tenant_id', $tenantId)
-            ->with(['insumo']);
+            ->with(['insumo', 'produtoPai']);
 
         if (!empty($search)) {
             $query->where(function ($q) use ($search) {
