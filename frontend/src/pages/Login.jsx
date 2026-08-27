@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { Layers, Lock, Mail, AlertTriangle, RefreshCw } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function Login() {
   const [email, setEmail] = useState('admin@scalle.com.br');
@@ -9,7 +10,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const { login } = useAuthStore();
+  const { login } = useAuthStore ? useAuthStore() : { login: null };
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -18,8 +19,18 @@ export default function Login() {
     setError(null);
 
     try {
-      await login(email, password);
-      navigate('/dashboard');
+      if (login) {
+        await login(email, password);
+      } else {
+        const res = await api.post('/auth/login', { email, password });
+        const { token, user } = res.data.data;
+        localStorage.setItem('scalle_token', token);
+        localStorage.setItem('token', token);
+        localStorage.setItem('scalle_user', JSON.stringify(user));
+      }
+
+      // Redirecionamento direto para a rota principal do layout
+      navigate('/app/dashboard', { replace: true });
     } catch (err) {
       setError(
         err.response?.data?.error?.message || 

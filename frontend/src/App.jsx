@@ -1,10 +1,12 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-// Importação do Layout com Sidebar e Topbar
+// Layout Principal com Sidebar
 import AppLayout from './layouts/AppLayout';
 
 // Páginas
+import Login from './pages/Login';
+import DashboardPage from './pages/dashboard/DashboardPage';
 import WmsPage from './pages/wms/WmsPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
 import PortalOsPage from './pages/portal/PortalOsPage';
@@ -16,11 +18,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Rota Pública de Autenticação */}
+        <Route path="/login" element={<Login />} />
+
         {/* Portal Público de OS */}
         <Route path="/portal/os/:token" element={<PortalOsPage />} />
 
-        {/* Redirecionamentos da Raiz */}
-        <Route path="/" element={<Navigate to="/app/wms" replace />} />
+        {/* Redirecionamentos da Raiz para o Dashboard */}
+        <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
         <Route path="/wms" element={<Navigate to="/app/wms" replace />} />
         <Route path="/estoque" element={<Navigate to="/app/wms" replace />} />
         <Route path="/os" element={<Navigate to="/app/os" replace />} />
@@ -28,9 +34,10 @@ export default function App() {
         <Route path="/vendas" element={<Navigate to="/app/vendas" replace />} />
         <Route path="/pdv" element={<Navigate to="/app/pdv" replace />} />
 
-        {/* Rotas Principais com Sidebar (Layout) */}
+        {/* Rotas Protegidas sob o Layout /app */}
         <Route path="/app" element={<AppLayout />}>
-          <Route index element={<Navigate to="wms" replace />} />
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="wms" element={<WmsPage />} />
           <Route path="estoque" element={<WmsPage />} />
           <Route path="os" element={<OrdensServicoPage />} />
@@ -41,7 +48,7 @@ export default function App() {
         </Route>
 
         {/* Fallback 404 */}
-        <Route path="*" element={<Navigate to="/app/wms" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );
