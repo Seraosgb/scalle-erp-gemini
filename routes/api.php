@@ -18,14 +18,19 @@ use App\Http\Controllers\Api\VendaController;
 use App\Http\Middleware\CheckMaster;
 use Illuminate\Support\Facades\Route;
 
+// ==========================================
 // Rotas Públicas
+// ==========================================
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
 Route::get('/portal/os/{token}', [PortalClienteController::class, 'consultarOs']);
+Route::post('/portal/os/{token}/aprovar', [PortalClienteController::class, 'aprovarOrcamento']);
 
+// ==========================================
 // Rotas Protegidas por Autenticação (Sanctum)
+// ==========================================
 Route::middleware('auth:sanctum')->group(function () {
 
     // Sessão do Usuário
@@ -74,19 +79,28 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/itens/{id}', [ItemController::class, 'update']);
     Route::delete('/itens/{id}', [ItemController::class, 'destroy']);
     Route::get('/itens/{id}/kardex', [ItemController::class, 'kardex']);
+    Route::post('/itens/importar-xml', [ItemController::class, 'importarXml']);
 
     // Ativos Patrimoniais
     Route::get('/ativos', [AtivoController::class, 'index']);
     Route::post('/ativos', [AtivoController::class, 'store']);
 
-    // WMS & Logística de Depósitos
+    // WMS, Almoxarifado & Logística de Estoque
     Route::get('/wms/depositos', [ItemController::class, 'depositos']);
     Route::post('/wms/depositos', [ItemController::class, 'storeDeposito']);
     Route::put('/wms/depositos/{id}', [ItemController::class, 'updateDeposito']);
     Route::delete('/wms/depositos/{id}', [ItemController::class, 'destroyDeposito']);
+
+    // Posições de Saldos (com alias para compatibilidade)
+    Route::get('/wms/saldos', [ItemController::class, 'saldosPorDeposito']);
     Route::get('/wms/posicoes', [ItemController::class, 'saldosPorDeposito']);
     Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
+
+    // Transferências & Curva ABC
+    Route::get('/wms/transferencias', [ItemController::class, 'transferencias']);
     Route::post('/wms/transferir', [ItemController::class, 'transferir']);
+    Route::put('/wms/transferencias/{id}/conferir', [ItemController::class, 'conferirTransferencia']);
+    Route::get('/wms/curva-abc', [ItemController::class, 'relatorioCurvaAbc']);
     Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);
 
     // Compras & Suprimentos
@@ -102,17 +116,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/vendas/{id}/cancelar', [VendaController::class, 'cancelar']);
     Route::post('/vendas/{id}/emitir-fiscal', [VendaController::class, 'emitirFiscal']);
 
-    // Prestação de Serviços & CMMS (Rotas estáticas declaradas ANTES de rotas com {id})
+    // Prestação de Serviços & CMMS
+    Route::get('/os/bootstrap', [OrdemServicoController::class, 'bootstrapData']);
     Route::get('/os/metricas-cmms', [OrdemServicoController::class, 'metricasCmms']);
     Route::get('/os/planos-preventivos', [AtivoController::class, 'planosPreventivos']);
     Route::post('/os/planos-preventivos', [AtivoController::class, 'storePlanoPreventivo']);
     Route::get('/os/prioridades', [AtivoController::class, 'prioridades']);
+    Route::post('/os/prioridades', [AtivoController::class, 'storePrioridade']);
+    Route::put('/os/planos-preventivos/{id}', [AtivoController::class, 'updatePlanoPreventivo']);
+    Route::put('/os/planos-preventivos/{id}/status', [AtivoController::class, 'alterarStatusPlanoPreventivo']);
+    Route::put('/os/prioridades/{id}', [AtivoController::class, 'updatePrioridade']);
 
     Route::get('/os', [OrdemServicoController::class, 'index']);
     Route::get('/ordens-servico', [OrdemServicoController::class, 'index']);
     Route::post('/os', [OrdemServicoController::class, 'store']);
     Route::post('/ordens-servico', [OrdemServicoController::class, 'store']);
-    Route::post('/os/prioridades', [AtivoController::class, 'storePrioridade']);
 
     Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
     Route::get('/ordens-servico/{id}', [OrdemServicoController::class, 'show']);
@@ -121,9 +139,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ordens-servico/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
     Route::post('/os/{id}/concluir', [OrdemServicoController::class, 'concluir']);
     Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);
-    Route::put('/os/planos-preventivos/{id}', [AtivoController::class, 'updatePlanoPreventivo']);
-    Route::put('/os/planos-preventivos/{id}/status', [AtivoController::class, 'alterarStatusPlanoPreventivo']);
-    Route::put('/os/prioridades/{id}', [AtivoController::class, 'updatePrioridade']);
     Route::post('/os/{id}/pecas', [OrdemServicoController::class, 'adicionarPeca']);
     Route::put('/os/{id}/pecas/{itemId}/almoxarifado', [OrdemServicoController::class, 'tratarPecaAlmoxarifado']);
 
