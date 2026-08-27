@@ -2,47 +2,36 @@ import axios from 'axios';
 
 export const api = axios.create({
   baseURL: '/api',
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  }
 });
 
-// Interceptor de Requisição: Injeta o Bearer Token
-api.interceptors.request.use((config) => {
-  let token = null;
+// Interceptor de Requisição: anexa o Bearer token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('scalle_token') || localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-  // 1. Tenta recuperar do storage do Zustand
-  const authStorage = localStorage.getItem('auth-storage') || localStorage.getItem('scalle-auth');
-  if (authStorage) {
-    try {
-      const parsed = JSON.parse(authStorage);
-      token = parsed?.state?.token || parsed?.state?.user?.token;
-    } catch (e) {}
-  }
-
-  // 2. Fallbacks diretos
-  if (!token) {
-    token = localStorage.getItem('token') 
-         || localStorage.getItem('scalle_token') 
-         || localStorage.getItem('auth_token')
-         || sessionStorage.getItem('token');
-  }
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${String(token).replace(/^"|"$/g, '').trim()}`;
-  }
-  
-  return config;
-});
-
-// Interceptor de Resposta seguro (sem window.location.href para evitar loop)
+// Interceptor de Resposta: trata 401 sem loop infinito
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Apenas propaga o erro para ser tratado pelos hooks sem derrubar a tela
+    if (error.response && error.response.status === 401) {
+      const isPublicRoute = 
+        window.location.pathname.includes('/login') || 
+        window.location.pathname.includes('/portal/os');
+
+      if (!isPublicRoute) {
+        localStorage.removeItem('scalle_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('scalle_user');
+        window.location.href = '/login';
+      }
+    }
     return Promise.reject(error);
   }
 );
-
-export default api;
