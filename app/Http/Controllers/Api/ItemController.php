@@ -8,6 +8,7 @@ use App\Models\Empresa;
 use App\Models\EstoqueDeposito;
 use App\Models\Item;
 use App\Models\MovimentacaoEstoque;
+use App\Models\TransferenciaEstoque;
 use App\Services\EstoqueService;
 use App\Services\ImportadorXmlNfeService;
 use Exception;
@@ -89,7 +90,6 @@ class ItemController extends Controller
         $tenantId = $request->user()->tenant_id;
         $item = Item::where('tenant_id', $tenantId)->findOrFail($id);
 
-        // Soft Delete seguro
         $item->delete();
 
         return response()->json(['data' => ['message' => 'Item removido do catálogo com sucesso.']]);
@@ -355,58 +355,6 @@ class ItemController extends Controller
         }
     }
 
-    public function transferir(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'deposito_origem_id' => 'required|uuid|exists:wms_depositos,id|different:deposito_destino_id',
-            'deposito_destino_id' => 'required|uuid|exists:wms_depositos,id',
-            'item_id' => 'required|uuid|exists:pro_itens,id',
-            'quantidade' => 'required|numeric|min:0.0001',
-            'modalidade' => 'required|string|in:DIRETO,EM_TRANSITO',
-            'observacoes' => 'nullable|string|max:255',
-        ]);
-
-        try {
-            DB::transaction(function () use ($validated, $request) {
-                $origemId = $validated['deposito_origem_id'];
-                $destinoId = $validated['deposito_destino_id'];
-                $itemId = $validated['item_id'];
-                $qtd = (float) $validated['quantidade'];
-                $userId = $request->user()->id;
-
-                EstoqueService::movimentar(
-                    $origemId,
-                    $itemId,
-                    $qtd,
-                    'TRANSFERENCIA_SAIDA',
-                    $userId,
-                    'transferencias',
-                    null,
-                    null,
-                    0.00
-                );
-
-                if ($validated['modalidade'] === 'DIRETO') {
-                    EstoqueService::movimentar(
-                        $destinoId,
-                        $itemId,
-                        $qtd,
-                        'TRANSFERENCIA_ENTRADA',
-                        $userId,
-                        'transferencias',
-                        null,
-                        null,
-                        0.00
-                    );
-                }
-            });
-
-            return response()->json(['data' => ['message' => 'Transferência executada com sucesso!']]);
-        } catch (Exception $e) {
-            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
-        }
-    }
-
     public function importarXml(Request $request): JsonResponse
     {
         $request->validate([
@@ -431,34 +379,70 @@ class ItemController extends Controller
             ]
         ]);
     }
+
     public function saldosPorDeposito(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
+        $depositoId = $request->get('deposito_id');
 
-        $query = EstoqueDeposito::where('tenant_id', $tenantId)
-            ->with(['item', 'deposito']);
-
-        if ($request->filled('deposito_id')) {
-            $query->where('deposito_id', $request->get('deposito_id'));
-        }
+        $query = Item::where('tenant_id', $tenantId)
+            ->where('tipo_item', '!=', 'SERVICO')
+            ->with(['saldosPorDeposito' => function ($q) use ($depositoId) {
+                if (!empty($depositoId)) {
+                    $q->where('deposito_id', $depositoId);
+                }
+                $q->with('deposito');
+            }]);
 
         if ($request->filled('search')) {
             $search = $request->get('search');
-            $query->whereHas('item', function ($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('nome', 'ILIKE', "%{$search}%")
                   ->orWhere('codigo_sku', 'ILIKE', "%{$search}%")
                   ->orWhere('codigo_barras_ean', 'ILIKE', "%{$search}%");
-            })->orWhere('lote', 'ILIKE', "%{$search}%");
+            });
         }
 
-        $posicoes = $query->orderByDesc('quantidade_saldo')->paginate(20);
+        $itens = $query->orderBy('nome')->get();
 
-        return response()->json($posicoes);
+        $linhasSaldo = [];
+        foreach ($itens as $item) {
+            if ($item->saldosPorDeposito->isEmpty()) {
+                $linhasSaldo[] = [
+                    'id' => 'sem-saldo-' . $item->id,
+                    'item_id' => $item->id,
+                    'item' => $item,
+                    'deposito' => ['nome' => 'Sem depósito vinculado'],
+                    'lote' => null,
+                    'data_validade' => null,
+                    'localizacao_rua' => null,
+                    'localizacao_predio' => null,
+                    'quantidade_saldo' => 0.0000,
+                ];
+            } else {
+                foreach ($item->saldosPorDeposito as $saldo) {
+                    $linhasSaldo[] = [
+                        'id' => $saldo->id,
+                        'item_id' => $item->id,
+                        'item' => $item,
+                        'deposito' => $saldo->deposito,
+                        'lote' => $saldo->lote,
+                        'data_validade' => $saldo->data_validade,
+                        'localizacao_rua' => $saldo->localizacao_rua,
+                        'localizacao_predio' => $saldo->localizacao_predio,
+                        'quantidade_saldo' => (float) $saldo->quantidade_saldo,
+                    ];
+                }
+            }
+        }
+
+        return response()->json(['data' => $linhasSaldo]);
     }
+
     public function transferencias(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $query = \App\Models\TransferenciaEstoque::where('tenant_id', $tenantId)
+        $query = TransferenciaEstoque::where('tenant_id', $tenantId)
             ->with(['origem', 'destino', 'item', 'solicitante', 'recebedor']);
 
         if ($request->filled('status')) {
@@ -483,8 +467,8 @@ class ItemController extends Controller
 
         $tenantId = $request->user()->tenant_id;
         $empresaId = $request->user()->empresa_padrao_id 
-                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id 
-                  ?? \App\Models\Empresa::first()?->id;
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()?->id;
 
         try {
             $transf = DB::transaction(function () use ($validated, $tenantId, $empresaId, $request) {
@@ -534,7 +518,7 @@ class ItemController extends Controller
                     $recebedorId = null;
                 }
 
-                return \App\Models\TransferenciaEstoque::create([
+                return TransferenciaEstoque::create([
                     'id' => $transfId,
                     'tenant_id' => $tenantId,
                     'empresa_id' => $empresaId,
@@ -568,7 +552,7 @@ class ItemController extends Controller
     public function conferirTransferencia(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $transf = \App\Models\TransferenciaEstoque::where('tenant_id', $tenantId)->findOrFail($id);
+        $transf = TransferenciaEstoque::where('tenant_id', $tenantId)->findOrFail($id);
 
         if ($transf->status !== 'EM_TRANSITO') {
             return response()->json(['error' => ['message' => 'Esta transferência já foi conferida ou encerrada.']], 422);
@@ -626,7 +610,6 @@ class ItemController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // 1. Itens com movimentação de saída nos últimos 90 dias
         $itens = Item::where('tenant_id', $tenantId)
             ->where('tipo_item', '!=', 'SERVICO')
             ->get();
@@ -659,10 +642,8 @@ class ItemController extends Controller
             ];
         }
 
-        // 2. Ordenar decrescente por valor movimentado
         usort($dadosAbc, fn($a, $b) => $b['valor_movimentado_90d'] <=> $a['valor_movimentado_90d']);
 
-        // 3. Atribuir Classes A (80%), B (15%) e C (5%)
         $acumulado = 0.00;
         foreach ($dadosAbc as &$d) {
             $acumulado += $d['valor_movimentado_90d'];
