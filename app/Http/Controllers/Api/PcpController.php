@@ -347,4 +347,53 @@ class PcpController extends Controller
             ]
         ]);
     }
+    public function apontarOrdemProducao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'quantidade_produzida' => 'required|numeric|min:0',
+            'quantidade_refugo' => 'nullable|numeric|min:0',
+            'horas_mod' => 'nullable|numeric|min:0',
+            'custo_hora_mod' => 'nullable|numeric|min:0',
+            'horas_cif' => 'nullable|numeric|min:0',
+            'custo_hora_cif' => 'nullable|numeric|min:0',
+            'observacoes' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            $apontamento = ProducaoPcpService::apontarProducao(
+                $op,
+                (float) $validated['quantidade_produzida'],
+                (float) ($validated['quantidade_refugo'] ?? 0.00),
+                (float) ($validated['horas_mod'] ?? 0.00),
+                (float) ($validated['custo_hora_mod'] ?? 45.00),
+                (float) ($validated['horas_cif'] ?? 0.00),
+                (float) ($validated['custo_hora_cif'] ?? 25.00),
+                $validated['observacoes'] ?? null,
+                $request->user()
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => "Apontamento de {$validated['quantidade_produzida']} UN registrado com sucesso!",
+                    'apontamento' => $apontamento,
+                    'op' => $op->fresh(['produto', 'responsavel', 'apontamentos.operador']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function showOrdemProducao(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)
+            ->with(['produto', 'responsavel', 'depositoOrigem', 'depositoDestino', 'apontamentos.operador'])
+            ->findOrFail($id);
+
+        return response()->json(['data' => $op]);
+    }
 }

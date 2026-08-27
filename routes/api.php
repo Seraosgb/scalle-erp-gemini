@@ -167,6 +167,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/pcp/ordens-producao/{id}', [\App\Http\Controllers\Api\PcpController::class, 'updateOrdemProducao']);
     Route::post('/pcp/ordens-producao/{id}/cancelar', [\App\Http\Controllers\Api\PcpController::class, 'cancelarOrdemProducao']);
     Route::delete('/pcp/ordens-producao/{id}', [\App\Http\Controllers\Api\PcpController::class, 'destroyOrdemProducao']);
+    Route::post('/pcp/ordens-producao/{id}/apontar', [\App\Http\Controllers\Api\PcpController::class, 'apontarOrdemProducao']);
     Route::post('/pcp/ordens-producao/{id}/finalizar', [\App\Http\Controllers\Api\PcpController::class, 'finalizarOrdemProducao']);
     Route::get('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'estruturas']);
     Route::post('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'storeEstrutura']);

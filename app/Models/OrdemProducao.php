@@ -77,4 +77,8 @@ class OrdemProducao extends Model
     {
         return $this->belongsTo(Deposito::class, 'deposito_destino_id');
     }
+    public function apontamentos(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PcpApontamento::class, 'ordem_producao_id')->orderByDesc('created_at');
+    }
 }
