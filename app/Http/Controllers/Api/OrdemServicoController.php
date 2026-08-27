@@ -402,4 +402,48 @@ class OrdemServicoController extends Controller
             ]
         ]);
     }
+    public function bootstrapData(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+
+        // 1. Ordens de Serviço (primeira página)
+        $ordens = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente:id,nome_razao_social', 'tecnico:id,name', 'deposito:id,nome'])
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+
+        // 2. Métricas CMMS rápidas via agregação no banco
+        $concluidas = OrdemServico::where('tenant_id', $tenantId)
+            ->where('status', 'CONCLUIDA')
+            ->selectRaw('COUNT(*) as total, AVG(EXTRACT(EPOCH FROM (data_conclusao - data_abertura))/3600) as mttr_horas')
+            ->first();
+
+        $corretivasCount = OrdemServico::where('tenant_id', $tenantId)
+            ->where('tipo_manutencao', 'CORRETIVA')
+            ->count();
+
+        $metricas = [
+            'mttr_horas' => round((float) ($concluidas->mttr_horas ?? 0), 1),
+            'mtbf_dias' => $corretivasCount > 0 ? round(30 / $corretivasCount, 1) : 30,
+            'sla_conformidade_percent' => 100,
+            'total_concluidas' => (int) ($concluidas->total ?? 0),
+            'total_corretivas' => $corretivasCount,
+        ];
+
+        // 3. Prioridades
+        $prioridades = \App\Models\TabelaDominio::where('tenant_id', $tenantId)
+            ->where('tipo_lista', 'PRIORIDADE_OS')
+            ->orderBy('ordem_exibicao')
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'ordens' => $ordens,
+                'metricas' => $metricas,
+                'prioridades' => $prioridades,
+            ]
+        ]);
+    }
     }
