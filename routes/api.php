@@ -161,9 +161,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
 
     // Indústria & PCP (Planejamento e Controle da Produção)
+    Route::get('/pcp/metricas', [\App\Http\Controllers\Api\PcpController::class, 'metricasKpi']);
     Route::get('/pcp/ordens-producao', [\App\Http\Controllers\Api\PcpController::class, 'ordensProducao']);
     Route::post('/pcp/ordens-producao', [\App\Http\Controllers\Api\PcpController::class, 'storeOrdemProducao']);
+    Route::put('/pcp/ordens-producao/{id}', [\App\Http\Controllers\Api\PcpController::class, 'updateOrdemProducao']);
+    Route::post('/pcp/ordens-producao/{id}/cancelar', [\App\Http\Controllers\Api\PcpController::class, 'cancelarOrdemProducao']);
+    Route::delete('/pcp/ordens-producao/{id}', [\App\Http\Controllers\Api\PcpController::class, 'destroyOrdemProducao']);
     Route::post('/pcp/ordens-producao/{id}/finalizar', [\App\Http\Controllers\Api\PcpController::class, 'finalizarOrdemProducao']);
     Route::get('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'estruturas']);
     Route::post('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'storeEstrutura']);
+    Route::delete('/pcp/estruturas/{id}', [\App\Http\Controllers\Api\PcpController::class, 'destroyEstruturaItem']);
 });
