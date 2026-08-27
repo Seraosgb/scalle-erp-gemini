@@ -103,6 +103,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/wms/curva-abc', [ItemController::class, 'relatorioCurvaAbc']);
     Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);
 
+    // Posições de Estoque & Saldos (Aliases compatíveis)
+    Route::get('/wms/saldos', [ItemController::class, 'saldosPorDeposito']);
+    Route::get('/wms/posicoes', [ItemController::class, 'saldosPorDeposito']);
+    Route::get('/wms/posicao-estoque', [ItemController::class, 'saldosPorDeposito']);
+    Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
+
     // Compras & Suprimentos
     Route::get('/compras', [CompraController::class, 'index']);
     Route::post('/compras', [CompraController::class, 'store']);
