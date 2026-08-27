@@ -32,4 +32,8 @@ class EstruturaItem extends Model
     {
         return $this->belongsTo(Item::class, 'insumo_filho_id');
     }
+    public function produtoPai(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'produto_pai_id');
+    }
 }

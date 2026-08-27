@@ -246,11 +246,24 @@ class PcpController extends Controller
     public function estruturas(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
+        $search = $request->get('search');
 
-        $estruturas = EstruturaItem::where('tenant_id', $tenantId)
-            ->with(['insumo'])
-            ->get()
-            ->groupBy('produto_pai_id');
+        $query = EstruturaItem::where('tenant_id', $tenantId)
+            ->with(['insumo']);
+
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('insumo', function ($sub) use ($search) {
+                    $sub->where('nome', 'ILIKE', "%{$search}%")
+                        ->orWhere('codigo_sku', 'ILIKE', "%{$search}%");
+                })->orWhereHas('produtoPai', function ($sub) use ($search) {
+                    $sub->where('nome', 'ILIKE', "%{$search}%")
+                        ->orWhere('codigo_sku', 'ILIKE', "%{$search}%");
+                });
+            });
+        }
+
+        $estruturas = $query->get()->groupBy('produto_pai_id');
 
         $resultado = [];
         foreach ($estruturas as $produtoPaiId => $insumos) {

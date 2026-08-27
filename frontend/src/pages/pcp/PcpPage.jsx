@@ -36,7 +36,7 @@ export default function PcpPage() {
     try {
       const [resOps, resBoms, resItens, resDeps, resKpis] = await Promise.all([
         api.get('/pcp/ordens-producao', { params: { search } }).catch(() => ({ data: { data: [] } })),
-        api.get('/pcp/estruturas').catch(() => ({ data: { data: [] } })),
+        api.get('/pcp/estruturas', { params: { search } }).catch(() => ({ data: { data: [] } })),
         api.get('/itens').catch(() => ({ data: { data: [] } })),
         api.get('/wms/depositos').catch(() => ({ data: { data: [] } })),
         api.get('/pcp/metricas').catch(() => ({ data: { data: null } })),
