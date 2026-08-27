@@ -91,7 +91,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/wms/depositos/{id}', [ItemController::class, 'updateDeposito']);
     Route::delete('/wms/depositos/{id}', [ItemController::class, 'destroyDeposito']);
 
-    // Posições de Saldos (com alias para compatibilidade)
+    // Posições de Estoque & Saldos (Aliases compatíveis)
     Route::get('/wms/saldos', [ItemController::class, 'saldosPorDeposito']);
     Route::get('/wms/posicoes', [ItemController::class, 'saldosPorDeposito']);
     Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
@@ -121,10 +121,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/os/metricas-cmms', [OrdemServicoController::class, 'metricasCmms']);
     Route::get('/os/planos-preventivos', [AtivoController::class, 'planosPreventivos']);
     Route::post('/os/planos-preventivos', [AtivoController::class, 'storePlanoPreventivo']);
-    Route::get('/os/prioridades', [AtivoController::class, 'prioridades']);
-    Route::post('/os/prioridades', [AtivoController::class, 'storePrioridade']);
     Route::put('/os/planos-preventivos/{id}', [AtivoController::class, 'updatePlanoPreventivo']);
     Route::put('/os/planos-preventivos/{id}/status', [AtivoController::class, 'alterarStatusPlanoPreventivo']);
+
+    Route::get('/os/prioridades', [AtivoController::class, 'prioridades']);
+    Route::post('/os/prioridades', [AtivoController::class, 'storePrioridade']);
     Route::put('/os/prioridades/{id}', [AtivoController::class, 'updatePrioridade']);
 
     Route::get('/os', [OrdemServicoController::class, 'index']);
