@@ -114,6 +114,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/compras', [CompraController::class, 'store']);
 
     // Comercial, Vendas & PDV
+    Route::get('/vendas/metricas', [VendaController::class, 'metricas']);
     Route::get('/vendas', [VendaController::class, 'index']);
     Route::get('/vendas/{id}', [VendaController::class, 'show']);
     Route::post('/vendas/faturar', [VendaController::class, 'faturar']);

@@ -9,6 +9,8 @@ import WmsPage from './pages/wms/WmsPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
 import PortalOsPage from './pages/portal/PortalOsPage';
 import PcpPage from './pages/pcp/PcpPage';
+import VendasPage from './pages/vendas/VendasPage';
+import PdvPage from './pages/vendas/PdvPage';
 
 export default function App() {
   return (
@@ -32,6 +34,9 @@ export default function App() {
           <Route path="os" element={<OrdensServicoPage />} />
           <Route path="ordens-servico" element={<OrdensServicoPage />} />
           <Route path="pcp" element={<PcpPage />} />
+          // Dentro de <Route path="/app" element={<AppLayout />}>:
+<Route path="vendas" element={<VendasPage />} />
+<Route path="pdv" element={<PdvPage />} />
         </Route>
 
         {/* Fallback 404 */}

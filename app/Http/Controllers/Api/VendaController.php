@@ -68,6 +68,7 @@ class VendaController extends Controller
             'pagamentos.*.forma_pagamento' => 'required|string',
             'pagamentos.*.valor_pago' => 'required|numeric|min:0.01',
             'pagamentos.*.valor_troco' => 'nullable|numeric|min:0',
+            'emitir_cupom_fiscal' => 'nullable|boolean',
         ]);
 
         $tenantId = $request->user()->tenant_id;
@@ -89,10 +90,31 @@ class VendaController extends Controller
                 'PDV'
             );
 
+            $docFiscal = null;
+            if (!empty($validated['emitir_cupom_fiscal']) && $pedido->status === 'FATURADO') {
+                $itensFiscal = $pedido->itens->map(fn($i) => [
+                    'tipo_item' => 'PRODUTO',
+                    'cfop' => $i->item->cfop_padrao ?? '5102',
+                    'valor_total' => (float) $i->valor_total_liquido,
+                ])->toArray();
+
+                $docFiscal = MotorFiscalService::emitirDocumento(
+                    Empresa::find($empresaId),
+                    $pedido->cliente,
+                    '65',
+                    $itensFiscal,
+                    'vendas',
+                    $pedido->id
+                );
+            }
+
             return response()->json([
                 'data' => [
-                    'message' => "Venda #{$pedido->numero_pedido} faturada com sucesso!",
+                    'message' => $pedido->status === 'AGUARDANDO_APROVACAO' 
+                        ? "Venda registrada, aguardando aprovação de alçada de desconto!" 
+                        : "Venda #{$pedido->numero_pedido} faturada com sucesso!",
                     'pedido' => $pedido->load('itens.item', 'pagamentos', 'cliente'),
+                    'documento_fiscal' => $docFiscal,
                 ]
             ], 201);
         } catch (Exception $e) {
@@ -195,42 +217,39 @@ class VendaController extends Controller
         }
     }
 
-    public function emitirFiscal(Request $request, string $id): JsonResponse
+    public function metricas(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $pedido = PedidoVenda::where('tenant_id', $tenantId)
-            ->with(['cliente', 'itens.item'])
-            ->findOrFail($id);
 
-        $empresa = Empresa::findOrFail($pedido->empresa_id);
+        $hoje = now()->toDateString();
+        $vendasHoje = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereDate('data_emissao', $hoje)
+            ->sum('valor_total_liquido') ?? 0.00;
 
-        $itensFiscal = $pedido->itens->map(function ($i) {
-            return [
-                'tipo_item' => 'PRODUTO',
-                'cfop' => $i->item->cfop_padrao ?? '5102',
-                'valor_total' => (float) $i->valor_total_liquido,
-            ];
-        })->toArray();
+        $qtdHoje = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereDate('data_emissao', $hoje)
+            ->count();
 
-        try {
-            $docFiscal = MotorFiscalService::emitirDocumento(
-                $empresa,
-                $pedido->cliente,
-                '65',
-                $itensFiscal,
-                'vendas',
-                $pedido->id
-            );
+        $orcamentosAbertos = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'ORCAMENTO')
+            ->count();
 
-            return response()->json([
-                'data' => [
-                    'message' => "NFC-e autorizada com sucesso sob a chave {$docFiscal->chave_acesso}",
-                    'documento' => $docFiscal,
-                ]
-            ]);
-        } catch (Exception $e) {
-            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
-        }
+        $totalMes = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereMonth('data_emissao', now()->month)
+            ->whereYear('data_emissao', now()->year)
+            ->sum('valor_total_liquido') ?? 0.00;
+
+        return response()->json([
+            'data' => [
+                'faturamento_hoje' => (float) $vendasHoje,
+                'vendas_hoje_qtd' => (int) $qtdHoje,
+                'orcamentos_abertos_qtd' => (int) $orcamentosAbertos,
+                'faturamento_mes' => (float) $totalMes,
+            ]
+        ]);
     }
 
     private static function resolverClienteId(?string $clienteId, string $tenantId): string
