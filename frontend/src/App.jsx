@@ -73,8 +73,8 @@ export default function App() {
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="/estoque" element={<EstoquePage />} />
-<Route path="/wms" element={<EstoquePage />} />   
+            <Route path="estoque" element={<EstoquePage />} />
+<Route path="wms" element={<EstoquePage />} />
             <Route path="compras" element={<ComprasPage />} />
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />

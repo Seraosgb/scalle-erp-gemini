@@ -455,4 +455,233 @@ class ItemController extends Controller
 
         return response()->json($posicoes);
     }
+    public function transferencias(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = \App\Models\TransferenciaEstoque::where('tenant_id', $tenantId)
+            ->with(['origem', 'destino', 'item', 'solicitante', 'recebedor']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->get('status'));
+        }
+
+        $transfs = $query->orderByDesc('created_at')->paginate(15);
+        return response()->json($transfs);
+    }
+
+    public function transferir(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_origem_id' => 'required|uuid|exists:wms_depositos,id|different:deposito_destino_id',
+            'deposito_destino_id' => 'required|uuid|exists:wms_depositos,id',
+            'item_id' => 'required|uuid|exists:pro_itens,id',
+            'quantidade' => 'required|numeric|min:0.0001',
+            'modalidade' => 'required|string|in:DIRETO,EM_TRANSITO',
+            'lote' => 'nullable|string|max:50',
+            'observacoes' => 'nullable|string|max:255',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? \App\Models\Empresa::first()?->id;
+
+        try {
+            $transf = DB::transaction(function () use ($validated, $tenantId, $empresaId, $request) {
+                $origemId = $validated['deposito_origem_id'];
+                $destinoId = $validated['deposito_destino_id'];
+                $itemId = $validated['item_id'];
+                $qtd = (float) $validated['quantidade'];
+                $userId = $request->user()->id;
+                $lote = $validated['lote'] ?? null;
+                $modalidade = $validated['modalidade'];
+
+                $transfId = (string) Str::uuid();
+
+                // 1. Saída física da origem
+                EstoqueService::movimentar(
+                    $origemId,
+                    $itemId,
+                    $qtd,
+                    'TRANSFERENCIA_SAIDA',
+                    $userId,
+                    'transferencias',
+                    $transfId,
+                    $lote,
+                    0.00
+                );
+
+                if ($modalidade === 'DIRETO') {
+                    // Entrada imediata no destino
+                    EstoqueService::movimentar(
+                        $destinoId,
+                        $itemId,
+                        $qtd,
+                        'TRANSFERENCIA_ENTRADA',
+                        $userId,
+                        'transferencias',
+                        $transfId,
+                        $lote,
+                        0.00
+                    );
+
+                    $status = 'CONCLUIDA';
+                    $recebidoEm = now();
+                    $recebedorId = $userId;
+                } else {
+                    $status = 'EM_TRANSITO';
+                    $recebidoEm = null;
+                    $recebedorId = null;
+                }
+
+                return \App\Models\TransferenciaEstoque::create([
+                    'id' => $transfId,
+                    'tenant_id' => $tenantId,
+                    'empresa_id' => $empresaId,
+                    'deposito_origem_id' => $origemId,
+                    'deposito_destino_id' => $destinoId,
+                    'item_id' => $itemId,
+                    'solicitante_id' => $userId,
+                    'recebedor_id' => $recebedorId,
+                    'quantidade_enviada' => $qtd,
+                    'quantidade_recebida' => ($modalidade === 'DIRETO') ? $qtd : null,
+                    'lote' => $lote,
+                    'modalidade' => $modalidade,
+                    'status' => $status,
+                    'observacoes' => $validated['observacoes'] ?? null,
+                    'data_envio' => now(),
+                    'data_recebimento' => $recebidoEm,
+                ]);
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => ($validated['modalidade'] === 'DIRETO') ? 'Transferência direta executada com sucesso!' : 'Transferência despachada em trânsito com sucesso!',
+                    'transferencia' => $transf->load(['origem', 'destino', 'item']),
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function conferirTransferencia(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $transf = \App\Models\TransferenciaEstoque::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($transf->status !== 'EM_TRANSITO') {
+            return response()->json(['error' => ['message' => 'Esta transferência já foi conferida ou encerrada.']], 422);
+        }
+
+        $validated = $request->validate([
+            'quantidade_recebida' => 'required|numeric|min:0',
+            'motivo_divergencia' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            DB::transaction(function () use ($transf, $validated, $request) {
+                $qtdRecebida = (float) $validated['quantidade_recebida'];
+                $qtdEnviada = (float) $transf->quantidade_enviada;
+                $userId = $request->user()->id;
+
+                if ($qtdRecebida > 0) {
+                    // Entrada física definitiva no destino
+                    EstoqueService::movimentar(
+                        $transf->deposito_destino_id,
+                        $transf->item_id,
+                        $qtdRecebida,
+                        'TRANSFERENCIA_ENTRADA',
+                        $userId,
+                        'transferencias',
+                        $transf->id,
+                        $transf->lote,
+                        0.00
+                    );
+                }
+
+                $statusFinal = ($qtdRecebida === $qtdEnviada) ? 'CONCLUIDA' : 'DIVERGENCIA';
+
+                $transf->update([
+                    'status' => $statusFinal,
+                    'quantidade_recebida' => $qtdRecebida,
+                    'recebedor_id' => $userId,
+                    'data_recebimento' => now(),
+                    'motivo_divergencia' => $validated['motivo_divergencia'] ?? null,
+                ]);
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Transferência conferida e estoque de destino abastecido com sucesso!',
+                    'transferencia' => $transf->fresh(['origem', 'destino', 'item', 'recebedor']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function relatorioCurvaAbc(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // 1. Itens com movimentação de saída nos últimos 90 dias
+        $itens = Item::where('tenant_id', $tenantId)
+            ->where('tipo_item', '!=', 'SERVICO')
+            ->get();
+
+        $dadosAbc = [];
+        $valorTotalGeral = 0.00;
+
+        foreach ($itens as $item) {
+            $saidas = MovimentacaoEstoque::where('item_id', $item->id)
+                ->whereIn('tipo_movimento', ['SAIDA_VENDA', 'SAIDA_OS'])
+                ->where('created_at', '>=', now()->subDays(90))
+                ->sum('quantidade') ?? 0;
+
+            $preco = (float) ($item->preco_venda > 0 ? $item->preco_venda : $item->preco_custo);
+            $valorTotal = (float) $saidas * $preco;
+            $valorTotalGeral += $valorTotal;
+
+            $saldoAtual = EstoqueDeposito::where('item_id', $item->id)->sum('quantidade_saldo') ?? 0;
+
+            $dadosAbc[] = [
+                'id' => $item->id,
+                'nome' => $item->nome,
+                'sku' => $item->codigo_sku,
+                'unidade' => $item->unidade_medida,
+                'quantidade_saidas_90d' => (float) $saidas,
+                'saldo_atual' => (float) $saldoAtual,
+                'estoque_minimo' => (float) ($item->estoque_minimo ?? 0),
+                'valor_movimentado_90d' => $valorTotal,
+                'status_reposicao' => $saldoAtual <= ($item->estoque_minimo ?? 0) ? 'CRITICO' : 'NORMAL',
+            ];
+        }
+
+        // 2. Ordenar decrescente por valor movimentado
+        usort($dadosAbc, fn($a, $b) => $b['valor_movimentado_90d'] <=> $a['valor_movimentado_90d']);
+
+        // 3. Atribuir Classes A (80%), B (15%) e C (5%)
+        $acumulado = 0.00;
+        foreach ($dadosAbc as &$d) {
+            $acumulado += $d['valor_movimentado_90d'];
+            $pctAcumulada = $valorTotalGeral > 0 ? ($acumulado / $valorTotalGeral) * 100 : 100;
+
+            if ($pctAcumulada <= 80) {
+                $d['classe_abc'] = 'A';
+            } elseif ($pctAcumulada <= 95) {
+                $d['classe_abc'] = 'B';
+            } else {
+                $d['classe_abc'] = 'C';
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'valor_total_saidas_90d' => $valorTotalGeral,
+                'itens' => $dadosAbc,
+            ]
+        ]);
+    }
 }
