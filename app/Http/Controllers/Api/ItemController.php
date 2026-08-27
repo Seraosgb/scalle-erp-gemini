@@ -405,14 +405,23 @@ class ItemController extends Controller
 
         $itens = $query->orderBy('nome')->get();
 
-        $linhasSaldo = [];
+        $linhas = [];
         foreach ($itens as $item) {
             if ($item->saldosPorDeposito->isEmpty()) {
-                $linhasSaldo[] = [
-                    'id' => 'sem-saldo-' . $item->id,
+                $linhas[] = [
+                    'id' => 'item-' . $item->id,
                     'item_id' => $item->id,
-                    'item' => $item,
-                    'deposito' => ['nome' => 'Sem depósito vinculado'],
+                    'item' => [
+                        'id' => $item->id,
+                        'nome' => $item->nome,
+                        'codigo_sku' => $item->codigo_sku,
+                        'unidade_medida' => $item->unidade_medida,
+                        'preco_venda' => (float) $item->preco_venda,
+                        'preco_custo' => (float) $item->preco_custo,
+                    ],
+                    'deposito' => [
+                        'nome' => 'Depósito Central / Matriz',
+                    ],
                     'lote' => null,
                     'data_validade' => null,
                     'localizacao_rua' => null,
@@ -421,11 +430,20 @@ class ItemController extends Controller
                 ];
             } else {
                 foreach ($item->saldosPorDeposito as $saldo) {
-                    $linhasSaldo[] = [
+                    $linhas[] = [
                         'id' => $saldo->id,
                         'item_id' => $item->id,
-                        'item' => $item,
-                        'deposito' => $saldo->deposito,
+                        'item' => [
+                            'id' => $item->id,
+                            'nome' => $item->nome,
+                            'codigo_sku' => $item->codigo_sku,
+                            'unidade_medida' => $item->unidade_medida,
+                            'preco_venda' => (float) $item->preco_venda,
+                            'preco_custo' => (float) $item->preco_custo,
+                        ],
+                        'deposito' => [
+                            'nome' => $saldo->deposito?->nome ?? 'Depósito Geral',
+                        ],
                         'lote' => $saldo->lote,
                         'data_validade' => $saldo->data_validade,
                         'localizacao_rua' => $saldo->localizacao_rua,
@@ -436,7 +454,7 @@ class ItemController extends Controller
             }
         }
 
-        return response()->json(['data' => $linhasSaldo]);
+        return response()->json(['data' => $linhas]);
     }
 
     public function transferencias(Request $request): JsonResponse
