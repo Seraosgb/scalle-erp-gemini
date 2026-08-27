@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench, 
   DollarSign, FileText, Users, LogOut, Menu, X, 
-  Building2, ShieldAlert
+  Building2, ShieldAlert, Factory
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -56,17 +56,19 @@ export default function AppLayout() {
     }
   };
 
+  // Rotas relativas sob o layout /app
   const menu = [
-    ...(usuario?.is_master ? [{ name: 'Painel Master SaaS', path: '/master', icon: ShieldAlert, isMaster: true }] : []),
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'WMS & Estoque', path: '/wms', icon: Boxes },
-    { name: 'Compras & Suprimentos', path: '/compras', icon: ShoppingCart },
-    { name: 'Pedidos & Vendas', path: '/vendas', icon: ShoppingBag },
-    { name: 'PDV Balcão', path: '/pdv', icon: ShoppingCart },
-    { name: 'Ordens de Serviço', path: '/os', icon: Wrench },
-    { name: 'Financeiro', path: '/financeiro', icon: DollarSign },
-    { name: 'Motor Fiscal', path: '/fiscal', icon: FileText },
-    { name: 'Governança & Equipe', path: '/configuracoes', icon: Users },
+    ...(usuario?.is_master ? [{ name: 'Painel Master SaaS', path: 'master', icon: ShieldAlert, isMaster: true }] : []),
+    { name: 'Dashboard', path: 'dashboard', icon: LayoutDashboard },
+    { name: 'WMS & Estoque', path: 'wms', icon: Boxes },
+    { name: 'Indústria & PCP', path: 'pcp', icon: Factory },
+    { name: 'Compras & Suprimentos', path: 'compras', icon: ShoppingCart },
+    { name: 'Pedidos & Vendas', path: 'vendas', icon: ShoppingBag },
+    { name: 'PDV Balcão', path: 'pdv', icon: ShoppingCart },
+    { name: 'Ordens de Serviço', path: 'os', icon: Wrench },
+    { name: 'Financeiro', path: 'financeiro', icon: DollarSign },
+    { name: 'Motor Fiscal', path: 'fiscal', icon: FileText },
+    { name: 'Governança & Equipe', path: 'usuarios', icon: Users },
   ];
 
   return (
@@ -98,7 +100,7 @@ export default function AppLayout() {
             </div>
           </div>
           <button 
-            type="button"
+            type="button" 
             onClick={() => setSidebarOpen(false)}
             className="p-1 rounded-lg text-slate-400 hover:text-white lg:hidden cursor-pointer"
           >

@@ -1,22 +1,14 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-// Importações com caminhos tolerantes
+// Importação do Layout real com Sidebar e Topbar
+import AppLayout from './layouts/AppLayout';
+
+// Páginas
 import WmsPage from './pages/wms/WmsPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
 import PortalOsPage from './pages/portal/PortalOsPage';
 import PcpPage from './pages/pcp/PcpPage';
-
-// Componente de Layout Fallback Seguro (caso não exista Layout.jsx separado)
-function AppLayout() {
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <main className="flex-1">
-        <Outlet />
-      </main>
-    </div>
-  );
-}
 
 export default function App() {
   return (
@@ -30,8 +22,9 @@ export default function App() {
         <Route path="/wms" element={<Navigate to="/app/wms" replace />} />
         <Route path="/estoque" element={<Navigate to="/app/wms" replace />} />
         <Route path="/os" element={<Navigate to="/app/os" replace />} />
+        <Route path="/pcp" element={<Navigate to="/app/pcp" replace />} />
 
-        {/* Rotas Principais sob /app */}
+        {/* Rotas Principais com Sidebar (Layout) */}
         <Route path="/app" element={<AppLayout />}>
           <Route index element={<Navigate to="wms" replace />} />
           <Route path="wms" element={<WmsPage />} />
