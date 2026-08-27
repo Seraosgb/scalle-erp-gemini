@@ -6,6 +6,7 @@ use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class OrdemProducao extends Model
 {
@@ -47,8 +48,33 @@ class OrdemProducao extends Model
         'data_fim_real' => 'datetime',
     ];
 
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
     public function produto(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'produto_id');
+    }
+
+    public function responsavel(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsavel_id');
+    }
+
+    public function depositoOrigem(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_origem_id');
+    }
+
+    public function depositoDestino(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_destino_id');
     }
 }

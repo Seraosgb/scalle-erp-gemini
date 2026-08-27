@@ -50,36 +50,50 @@ class PcpController extends Controller
             'observacoes' => 'nullable|string|max:255',
         ]);
 
-        $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+        $empresaId = $user->empresa_padrao_id 
                   ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
                   ?? Empresa::first()?->id;
 
-        $ultimoNumero = OrdemProducao::where('empresa_id', $empresaId)->max('numero_op') ?? 1000;
+        try {
+            $ultimoNumero = OrdemProducao::withoutGlobalScopes()
+                ->where('empresa_id', $empresaId)
+                ->max('numero_op') ?? 1000;
 
-        $op = OrdemProducao::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
-            'empresa_id' => $empresaId,
-            'produto_id' => $validated['produto_id'],
-            'deposito_origem_id' => $validated['deposito_origem_id'],
-            'deposito_destino_id' => $validated['deposito_destino_id'],
-            'responsavel_id' => $request->user()->id,
-            'numero_op' => $ultimoNumero + 1,
-            'status' => 'PLANEJADA',
-            'quantidade_planejada' => (float) $validated['quantidade_planejada'],
-            'quantidade_produzida' => 0.0000,
-            'data_inicio_prevista' => $validated['data_inicio_prevista'] ?? now()->toDateString(),
-            'data_fim_prevista' => $validated['data_fim_prevista'] ?? now()->addDays(2)->toDateString(),
-            'observacoes' => $validated['observacoes'] ?? null,
-        ]);
+            $op = OrdemProducao::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'produto_id' => $validated['produto_id'],
+                'deposito_origem_id' => $validated['deposito_origem_id'],
+                'deposito_destino_id' => $validated['deposito_destino_id'],
+                'responsavel_id' => $user->id,
+                'numero_op' => $ultimoNumero + 1,
+                'status' => 'PLANEJADA',
+                'quantidade_planejada' => (float) $validated['quantidade_planejada'],
+                'quantidade_produzida' => 0.0000,
+                'custo_total_estimado' => 0.00,
+                'custo_total_real' => 0.00,
+                'data_inicio_prevista' => $validated['data_inicio_prevista'] ?? now()->toDateString(),
+                'data_fim_prevista' => $validated['data_fim_prevista'] ?? now()->addDays(2)->toDateString(),
+                'observacoes' => $validated['observacoes'] ?? null,
+            ]);
 
-        return response()->json([
-            'data' => [
-                'message' => "Ordem de Produção OP-{$op->numero_op} criada com sucesso!",
-                'op' => $op->load(['produto', 'responsavel']),
-            ]
-        ], 201);
+            return response()->json([
+                'data' => [
+                    'message' => "Ordem de Produção OP-{$op->numero_op} criada com sucesso!",
+                    'op' => $op->load(['produto', 'responsavel']),
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PCP_STORE_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
     }
 
     public function finalizarOrdemProducao(Request $request, string $id): JsonResponse
