@@ -16,25 +16,40 @@ class FiscalController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = DocumentoFiscal::with(['destinatario', 'empresa']);
+        try {
+            $user = $request->user();
+            $tenantId = $user ? $user->tenant_id : null;
 
-        if ($request->filled('modelo')) {
-            $query->where('modelo_documento', $request->get('modelo'));
+            $query = DocumentoFiscal::query()->with(['destinatario', 'empresa']);
+
+            if ($tenantId) {
+                $query->where('tenant_id', $tenantId);
+            }
+
+            if ($request->filled('modelo')) {
+                $query->where('modelo_documento', $request->get('modelo'));
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->get('status'));
+            }
+
+            $documentos = $query->orderByDesc('created_at')->get();
+
+            return response()->json(['data' => $documentos]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
         }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->get('status'));
-        }
-
-        $documentos = $query->orderByDesc('created_at')->paginate(15);
-
-        return response()->json($documentos);
     }
 
-    public function regras(): JsonResponse
+    public function regras(Request $request): JsonResponse
     {
-        $regras = RegraTributaria::where('is_ativo', true)->orderBy('cfop')->get();
-        return response()->json(['data' => $regras]);
+        try {
+            $regras = RegraTributaria::where('is_ativo', true)->orderBy('cfop')->get();
+            return response()->json(['data' => $regras]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
     }
 
     public function emitir(Request $request): JsonResponse

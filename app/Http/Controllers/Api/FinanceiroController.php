@@ -10,43 +10,65 @@ use App\Services\FinanceiroService;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class FinanceiroController extends Controller
 {
     public function titulos(Request $request): JsonResponse
     {
-        $query = TituloFinanceiro::with(['pessoa', 'contaPadrao']);
+        try {
+            $user = $request->user();
+            $query = TituloFinanceiro::query()->with(['pessoa', 'contaPadrao']);
 
-        if ($request->filled('natureza')) {
-            $query->where('natureza', $request->get('natureza'));
+            if ($user && $user->tenant_id) {
+                $query->where('tenant_id', $user->tenant_id);
+            }
+
+            if ($request->filled('natureza')) {
+                $query->where('natureza', $request->get('natureza'));
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->get('status'));
+            }
+
+            $titulos = $query->orderBy('data_vencimento')->paginate(15);
+            return response()->json($titulos);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
         }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->get('status'));
-        }
-
-        $titulos = $query->orderBy('data_vencimento')->paginate(15);
-
-        return response()->json($titulos);
     }
 
-    public function contas(): JsonResponse
+    public function contas(Request $request): JsonResponse
     {
-        $contas = ContaFinanceira::where('is_ativo', true)->orderBy('nome')->get();
-        return response()->json(['data' => $contas]);
+        try {
+            $user = $request->user();
+            $query = ContaFinanceira::where('is_ativo', true);
+
+            if ($user && $user->tenant_id) {
+                $query->where('tenant_id', $user->tenant_id);
+            }
+
+            $contas = $query->orderBy('nome')->get();
+            return response()->json(['data' => $contas]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
     }
 
     public function extrato(string $contaId): JsonResponse
     {
-        $movimentos = MovimentacaoExtrato::where('conta_financeira_id', $contaId)
-            ->with('titulo')
-            ->orderByDesc('data_movimento')
-            ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
+        try {
+            $movimentos = MovimentacaoExtrato::where('conta_financeira_id', $contaId)
+                ->with('titulo')
+                ->orderByDesc('data_movimento')
+                ->orderByDesc('created_at')
+                ->limit(50)
+                ->get();
 
-        return response()->json(['data' => $movimentos]);
+            return response()->json(['data' => $movimentos]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
     }
 
     public function liquidar(Request $request, string $id): JsonResponse
