@@ -365,4 +365,78 @@ class VendaController extends Controller
             ]
         ]);
     }
+    public function listarRegrasComissao(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $regras = \App\Models\RegraComissao::where('tenant_id', $tenantId)
+            ->with('categoria')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $regras]);
+    }
+
+    public function storeRegraComissao(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'cargo_ou_perfil' => 'required|string|max:50',
+            'categoria_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+            'faixa_valor_min' => 'nullable|numeric|min:0',
+            'faixa_valor_max' => 'nullable|numeric|min:0',
+            'percentual_comissao' => 'required|numeric|min:0|max:100',
+        ]);
+
+        $regra = \App\Models\RegraComissao::create([
+            'tenant_id' => $tenantId,
+            'empresa_id' => $empresaId,
+            'cargo_ou_perfil' => strtoupper($validated['cargo_ou_perfil']),
+            'categoria_id' => $validated['categoria_id'] ?? null,
+            'faixa_valor_min' => (float) ($validated['faixa_valor_min'] ?? 0.00),
+            'faixa_valor_max' => !empty($validated['faixa_valor_max']) ? (float) $validated['faixa_valor_max'] : null,
+            'percentual_comissao' => (float) $validated['percentual_comissao'],
+            'is_ativo' => true,
+        ]);
+
+        return response()->json(['data' => $regra->load('categoria')], 201);
+    }
+
+    public function toggleRegraComissao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $regra = \App\Models\RegraComissao::where('tenant_id', $tenantId)->findOrFail($id);
+        $regra->update(['is_ativo' => !$regra->is_ativo]);
+
+        return response()->json(['data' => $regra]);
+    }
+    public function processarCartaoPdv(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'valor' => 'required|numeric|min:0.01',
+            'modalidade' => 'required|string|in:CARTAO_CREDITO,CARTAO_DEBITO',
+            'parcelas' => 'nullable|integer|min:1|max:12',
+            'dados_cartao' => 'nullable|array',
+        ]);
+
+        try {
+            $resultado = \App\Services\CartaoGatewayService::processarTransacao(
+                (float) $validated['valor'],
+                $validated['modalidade'],
+                (int) ($validated['parcelas'] ?? 1),
+                $validated['dados_cartao'] ?? null
+            );
+
+            return response()->json(['data' => $resultado]);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CARD_PROCESSING_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
+    }
 }

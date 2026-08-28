@@ -129,6 +129,10 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/vendas/alcadas/pendentes', [VendaController::class, 'listarAlcadasPendentes']);
 Route::put('/vendas/alcadas/{id}/responder', [VendaController::class, 'responderAlcada']);
 Route::get('/vendas/comissoes/extrato', [VendaController::class, 'extratoComissoes']);
+Route::get('/vendas/comissoes/regras', [VendaController::class, 'listarRegrasComissao']);
+Route::post('/vendas/comissoes/regras', [VendaController::class, 'storeRegraComissao']);
+Route::put('/vendas/comissoes/regras/{id}/toggle', [VendaController::class, 'toggleRegraComissao']);
+Route::post('/vendas/pdv/processar-cartao', [VendaController::class, 'processarCartaoPdv']);
 
     // Prestação de Serviços & CMMS
     Route::get('/os/bootstrap', [OrdemServicoController::class, 'bootstrapData']);
