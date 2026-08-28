@@ -6,6 +6,22 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+function formatarDataHora(dataValor, fallbackCreatedAt) {
+  const valor = (dataValor && !dataValor.includes('00:00:00')) ? dataValor : fallbackCreatedAt || dataValor;
+  if (!valor) return '-';
+  
+  const d = new Date(valor);
+  if (isNaN(d.getTime())) return valor;
+
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function VendasPage() {
   const [pedidos, setPedidos] = useState([]);
   const [metricas, setMetricas] = useState(null);
@@ -32,7 +48,7 @@ export default function VendasPage() {
     itens: []
   });
 
-  // Busca e Seleção de Item no Orçamento (Igual ao PDV)
+  // Busca e Seleção de Item no Orçamento (Padrão PDV)
   const [searchItemOrcamento, setSearchItemOrcamento] = useState('');
   const [itemTemp, setItemTemp] = useState({ item_id: '', nome: '', sku: '', quantidade: 1, preco_unitario: 0, saldo_disponivel: 0 });
 
@@ -347,7 +363,9 @@ export default function VendasPage() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-white font-medium">{p.cliente?.nome_razao_social}</td>
-                  <td className="py-3 px-4 text-center text-slate-400 font-mono">{p.data_emissao}</td>
+                  <td className="py-3 px-4 text-center text-slate-300 font-mono text-xs whitespace-nowrap">
+                    {formatarDataHora(p.data_emissao, p.created_at)}
+                  </td>
                   <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
                     R$ {parseFloat(p.valor_total_liquido).toFixed(2)}
                   </td>
@@ -445,7 +463,7 @@ export default function VendasPage() {
                 </select>
               </div>
 
-              {/* Inclusão de Produtos via Busca Inteligente (Padrão PDV) */}
+              {/* Inclusão de Produtos via Busca Inteligente */}
               <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
                 <span className="font-bold text-white block">Adicionar Produtos à Proposta</span>
 
@@ -460,7 +478,7 @@ export default function VendasPage() {
                   />
                 </div>
 
-                {/* Dropdown de Resultados da Pesquisa */}
+                {/* Dropdown de Resultados */}
                 {searchItemOrcamento && (
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-2 max-h-48 overflow-y-auto space-y-1 shadow-lg">
                     {itensFiltradosOrcamento.length === 0 ? (
@@ -493,7 +511,7 @@ export default function VendasPage() {
                   </div>
                 )}
 
-                {/* Linha de Inserção do Item Selecionado */}
+                {/* Linha de Inserção do Item */}
                 {itemTemp.item_id && (
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 bg-slate-900 p-2.5 rounded-lg border border-indigo-500/40 items-center">
                     <div className="sm:col-span-6">
