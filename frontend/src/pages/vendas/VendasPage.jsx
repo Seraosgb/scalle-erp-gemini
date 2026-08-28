@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
 import { 
   ShoppingBag, Plus, Search, DollarSign, CheckCircle2, 
-  AlertTriangle, X, FileText, Ban, ShoppingCart, Check, Trash2, Calendar
+  AlertTriangle, X, FileText, Ban, ShoppingCart, Check, Trash2, Calendar, Package
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -12,6 +12,7 @@ export default function VendasPage() {
   const [clientes, setClientes] = useState([]);
   const [depositos, setDepositos] = useState([]);
   const [itensCatalogo, setItensCatalogo] = useState([]);
+  const [saldosEstoque, setSaldosEstoque] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
@@ -30,7 +31,10 @@ export default function VendasPage() {
     data_validade: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
     itens: []
   });
-  const [itemTemp, setItemTemp] = useState({ item_id: '', quantidade: 1, preco_unitario: 0 });
+
+  // Busca e Seleção de Item no Orçamento (Igual ao PDV)
+  const [searchItemOrcamento, setSearchItemOrcamento] = useState('');
+  const [itemTemp, setItemTemp] = useState({ item_id: '', nome: '', sku: '', quantidade: 1, preco_unitario: 0, saldo_disponivel: 0 });
 
   // Form Conversão
   const [formaPagamentoConversao, setFormaPagamentoConversao] = useState('DINHEIRO');
@@ -68,32 +72,64 @@ export default function VendasPage() {
     }
   };
 
+  const carregarSaldosDoDeposito = async (depId) => {
+    if (!depId) return;
+    try {
+      const res = await api.get('/wms/saldos', { params: { deposito_id: depId } });
+      const mapa = {};
+      (res.data?.data || []).forEach((linha) => {
+        mapa[linha.item_id] = (mapa[linha.item_id] || 0) + parseFloat(linha.quantidade_saldo || 0);
+      });
+      setSaldosEstoque(mapa);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     const delay = setTimeout(carregarDados, 300);
     return () => clearTimeout(delay);
   }, [search, filtroStatus]);
 
+  useEffect(() => {
+    if (formOrcamento.deposito_id) {
+      carregarSaldosDoDeposito(formOrcamento.deposito_id);
+    }
+  }, [formOrcamento.deposito_id]);
+
+  const selecionarItemBusca = (prod) => {
+    const saldo = saldosEstoque[prod.id] || 0;
+    setItemTemp({
+      item_id: prod.id,
+      nome: prod.nome,
+      sku: prod.codigo_sku,
+      quantidade: 1,
+      preco_unitario: parseFloat(prod.preco_venda || 0),
+      saldo_disponivel: saldo
+    });
+    setSearchItemOrcamento('');
+  };
+
   const handleAddItemOrcamento = () => {
     if (!itemTemp.item_id || itemTemp.quantidade <= 0) return;
-    const prod = itensCatalogo.find(i => i.id === itemTemp.item_id);
-    if (!prod) return;
 
     setFormOrcamento(prev => ({
       ...prev,
       itens: [
         ...prev.itens,
         {
-          item_id: prod.id,
-          nome: prod.nome,
-          sku: prod.codigo_sku,
+          item_id: itemTemp.item_id,
+          nome: itemTemp.nome,
+          sku: itemTemp.sku,
           quantidade: parseFloat(itemTemp.quantidade),
           preco_unitario: parseFloat(itemTemp.preco_unitario),
-          total: parseFloat(itemTemp.quantidade) * parseFloat(itemTemp.preco_unitario)
+          total: parseFloat(itemTemp.quantidade) * parseFloat(itemTemp.preco_unitario),
+          saldo_disponivel: itemTemp.saldo_disponivel
         }
       ]
     }));
 
-    setItemTemp({ item_id: '', quantidade: 1, preco_unitario: 0 });
+    setItemTemp({ item_id: '', nome: '', sku: '', quantidade: 1, preco_unitario: 0, saldo_disponivel: 0 });
   };
 
   const handleRemoverItemOrcamento = (idx) => {
@@ -173,6 +209,15 @@ export default function VendasPage() {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao cancelar pedido.' });
     }
   };
+
+  const itensFiltradosOrcamento = searchItemOrcamento
+    ? itensCatalogo.filter(
+        (i) =>
+          i.nome.toLowerCase().includes(searchItemOrcamento.toLowerCase()) ||
+          (i.codigo_sku && i.codigo_sku.toLowerCase().includes(searchItemOrcamento.toLowerCase())) ||
+          (i.codigo_barras_ean && i.codigo_barras_ean.includes(searchItemOrcamento))
+      )
+    : [];
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto text-slate-200">
@@ -269,7 +314,7 @@ export default function VendasPage() {
           feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
         }`}>
           <span>{feedback.msg}</span>
-          <button type="button" onClick={() => setFeedback(null)} className="p-1"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -350,15 +395,15 @@ export default function VendasPage() {
         </table>
       </div>
 
-      {/* Modal Novo Orçamento Comercial */}
+      {/* Modal Novo Orçamento Comercial com Busca Dinâmica */}
       {modalNovoOrcamento && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
             <div className="flex justify-between items-center p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <FileText className="h-5 w-5 text-indigo-400" /> Elaborar Orçamento Comercial (Proposta)
               </h3>
-              <button type="button" onClick={() => setModalNovoOrcamento(false)} className="p-1 cursor-pointer"><X className="h-5 w-5 text-slate-400" /></button>
+              <button type="button" onClick={() => setModalNovoOrcamento(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
             </div>
 
             <form onSubmit={handleSalvarOrcamento} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
@@ -400,72 +445,110 @@ export default function VendasPage() {
                 </select>
               </div>
 
-              {/* Inclusão de Produtos */}
-              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+              {/* Inclusão de Produtos via Busca Inteligente (Padrão PDV) */}
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
                 <span className="font-bold text-white block">Adicionar Produtos à Proposta</span>
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                  <div className="sm:col-span-6">
-                    <select
-                      value={itemTemp.item_id}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        const p = itensCatalogo.find(i => i.id === id);
-                        setItemTemp({
-                          ...itemTemp,
-                          item_id: id,
-                          preco_unitario: p ? parseFloat(p.preco_venda || 0) : 0
-                        });
-                      }}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white"
-                    >
-                      <option value="">Selecione o Produto...</option>
-                      {itensCatalogo.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
-                    </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder="Qtd"
-                      value={itemTemp.quantidade}
-                      onChange={(e) => setItemTemp({ ...itemTemp, quantidade: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-center font-mono"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="Preço R$"
-                      value={itemTemp.preco_unitario}
-                      onChange={(e) => setItemTemp({ ...itemTemp, preco_unitario: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-right font-mono"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <button
-                      type="button"
-                      onClick={handleAddItemOrcamento}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg cursor-pointer"
-                    >
-                      Inserir
-                    </button>
-                  </div>
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar por Código de Barras (EAN), SKU ou Nome..."
+                    value={searchItemOrcamento}
+                    onChange={(e) => setSearchItemOrcamento(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-indigo-500 font-medium"
+                  />
                 </div>
 
+                {/* Dropdown de Resultados da Pesquisa */}
+                {searchItemOrcamento && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-2 max-h-48 overflow-y-auto space-y-1 shadow-lg">
+                    {itensFiltradosOrcamento.length === 0 ? (
+                      <div className="p-3 text-center text-slate-500 text-xs">Nenhum item encontrado.</div>
+                    ) : (
+                      itensFiltradosOrcamento.map((item) => {
+                        const saldoDisponivel = saldosEstoque[item.id] || 0;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => selecionarItemBusca(item)}
+                            className="flex justify-between items-center p-2 rounded-lg hover:bg-slate-800 transition cursor-pointer text-xs"
+                          >
+                            <div>
+                              <div className="font-semibold text-white">{item.nome}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                SKU: {item.codigo_sku} | Saldo: <strong className={saldoDisponivel > 0 ? 'text-emerald-400' : 'text-rose-400'}>{saldoDisponivel.toFixed(2)} {item.unidade_medida}</strong>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-mono font-bold text-emerald-400 block">
+                                R$ {parseFloat(item.preco_venda || 0).toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-indigo-400 font-bold">Selecionar</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* Linha de Inserção do Item Selecionado */}
+                {itemTemp.item_id && (
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 bg-slate-900 p-2.5 rounded-lg border border-indigo-500/40 items-center">
+                    <div className="sm:col-span-6">
+                      <div className="text-white font-bold truncate">{itemTemp.nome}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        SKU: {itemTemp.sku} | Saldo Disp: <strong className="text-emerald-400">{itemTemp.saldo_disponivel}</strong>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Qtd"
+                        value={itemTemp.quantidade}
+                        onChange={(e) => setItemTemp({ ...itemTemp, quantidade: e.target.value })}
+                        className="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded text-white text-center font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Preço R$"
+                        value={itemTemp.preco_unitario}
+                        onChange={(e) => setItemTemp({ ...itemTemp, preco_unitario: e.target.value })}
+                        className="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded text-white text-right font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <button
+                        type="button"
+                        onClick={handleAddItemOrcamento}
+                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded cursor-pointer"
+                      >
+                        Inserir
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Grade de Itens Adicionados */}
-                <div className="space-y-1 mt-2 max-h-36 overflow-y-auto">
+                <div className="space-y-1.5 mt-2 max-h-40 overflow-y-auto">
                   {formOrcamento.itens.length === 0 ? (
-                    <div className="text-center py-3 text-slate-500 text-xs">Nenhum produto adicionado.</div>
+                    <div className="text-center py-4 text-slate-500 text-xs">Nenhum produto adicionado ao orçamento.</div>
                   ) : (
                     formOrcamento.itens.map((it, idx) => (
-                      <div key={idx} className="flex justify-between items-center p-2 rounded bg-slate-900 text-xs">
+                      <div key={idx} className="flex justify-between items-center p-2 rounded bg-slate-900 text-xs border border-slate-800/80">
                         <span className="truncate pr-2">{it.nome} ({it.quantidade} UN x R$ {it.preco_unitario.toFixed(2)})</span>
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-emerald-400">R$ {it.total.toFixed(2)}</span>
-                          <button type="button" onClick={() => handleRemoverItemOrcamento(idx)} className="text-rose-400 p-1"><Trash2 className="h-3.5 w-3.5" /></button>
+                          <button type="button" onClick={() => handleRemoverItemOrcamento(idx)} className="text-rose-400 p-1 hover:bg-rose-950 rounded cursor-pointer">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </div>
                     ))
@@ -474,13 +557,13 @@ export default function VendasPage() {
               </div>
 
               {/* Totais do Orçamento */}
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1 text-xs">
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Subtotal:</span>
+                  <span className="text-slate-400">Subtotal dos Produtos:</span>
                   <span className="font-mono text-white">R$ {subtotalOrcamento.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Desconto Geral (R$):</span>
+                  <span className="text-slate-400">Desconto Comercial (R$):</span>
                   <input
                     type="number"
                     min="0"
@@ -490,15 +573,17 @@ export default function VendasPage() {
                     className="w-24 px-2 py-1 bg-slate-900 border border-slate-800 rounded text-right text-white font-mono"
                   />
                 </div>
-                <div className="flex justify-between font-bold text-sm border-t border-slate-900 pt-1.5 text-emerald-400">
+                <div className="flex justify-between font-bold text-sm border-t border-slate-900 pt-2 text-emerald-400">
                   <span>TOTAL DA PROPOSTA:</span>
-                  <span className="font-mono">R$ {totalLiquidoOrcamento.toFixed(2)}</span>
+                  <span className="font-mono text-base">R$ {totalLiquidoOrcamento.toFixed(2)}</span>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovoOrcamento(false)} className="px-4 py-2 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Salvar & Reservar Estoque</button>
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoOrcamento(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer shadow-lg shadow-indigo-600/30">
+                  Salvar & Reservar Estoque WMS
+                </button>
               </div>
             </form>
           </div>
@@ -513,7 +598,7 @@ export default function VendasPage() {
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Check className="h-4 w-4 text-emerald-400" /> Converter Orçamento #{orcamentoSelecionado.numero_pedido}
               </h3>
-              <button type="button" onClick={() => setModalConverter(false)} className="p-1"><X className="h-4 w-4 text-slate-400" /></button>
+              <button type="button" onClick={() => setModalConverter(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
             </div>
 
             <form onSubmit={handleConfirmarConversao} className="space-y-3 text-xs">
