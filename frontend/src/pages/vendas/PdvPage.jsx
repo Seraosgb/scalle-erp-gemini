@@ -5,7 +5,7 @@ import {
   ShoppingCart, Plus, Trash2, CheckCircle2, AlertTriangle, 
   X, Search, DollarSign, CreditCard, QrCode, Banknote, 
   Receipt, ArrowRight, Printer, Package, Layers, AlertCircle, Minus,
-  Wifi, WifiOff, RefreshCw, ShieldCheck
+  Wifi, WifiOff, RefreshCw, ShieldCheck, Percent, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -30,17 +30,26 @@ export default function PdvPage() {
   const [modalPagamento, setModalPagamento] = useState(false);
   const [modalComprovante, setModalComprovante] = useState(false);
   const [modalAlcadas, setModalAlcadas] = useState(false);
+  const [modalComissoes, setModalComissoes] = useState(false);
   const [alcadasPendentes, setAlcadasPendentes] = useState([]);
+  const [regrasComissao, setRegrasComissao] = useState([]);
   const [vendaFinalizada, setVendaFinalizada] = useState(null);
   const [linhasPagamento, setLinhasPagamento] = useState([
-    { forma_pagamento: 'DINHEIRO', valor_pago: '' }
+    { forma_pagamento: 'DINHEIRO', valor_pago: '', parcelas: 1 }
   ]);
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Formulário Nova Regra de Comissão
+  const [novaRegra, setNovaRegra] = useState({
+    cargo_ou_perfil: 'VENDEDOR',
+    faixa_valor_min: '0.00',
+    faixa_valor_max: '',
+    percentual_comissao: '2.50'
+  });
+
   const inputBuscaRef = useRef(null);
 
-  // Monitorar Status de Rede e Contar Fila Offline
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
@@ -136,6 +145,15 @@ export default function PdvPage() {
     }
   };
 
+  const carregarRegrasComissao = async () => {
+    try {
+      const res = await api.get('/vendas/comissoes/regras');
+      setRegrasComissao(res.data?.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     carregarDados();
     if (inputBuscaRef.current) inputBuscaRef.current.focus();
@@ -161,6 +179,7 @@ export default function PdvPage() {
         setModalPagamento(false);
         setModalComprovante(false);
         setModalAlcadas(false);
+        setModalComissoes(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -217,7 +236,7 @@ export default function PdvPage() {
 
   const adicionarLinhaPagamento = () => {
     if (saldoRestante <= 0) return;
-    setLinhasPagamento([...linhasPagamento, { forma_pagamento: 'PIX', valor_pago: saldoRestante.toFixed(2) }]);
+    setLinhasPagamento([...linhasPagamento, { forma_pagamento: 'PIX', valor_pago: saldoRestante.toFixed(2), parcelas: 1 }]);
   };
 
   const removerLinhaPagamento = (index) => {
@@ -232,7 +251,7 @@ export default function PdvPage() {
   };
 
   const handleAbrirPagamento = () => {
-    setLinhasPagamento([{ forma_pagamento: 'DINHEIRO', valor_pago: totalLiquido.toFixed(2) }]);
+    setLinhasPagamento([{ forma_pagamento: 'DINHEIRO', valor_pago: totalLiquido.toFixed(2), parcelas: 1 }]);
     setModalPagamento(true);
   };
 
@@ -242,6 +261,42 @@ export default function PdvPage() {
     if (totalPagoDigitado < totalLiquido) {
       alert(`O valor total pago (R$ ${totalPagoDigitado.toFixed(2)}) não pode ser inferior ao total da venda.`);
       return;
+    }
+
+    setLoading(true);
+
+    const pagamentosTratados = [];
+
+    // Processamento síncrono de cartão via gateway / TEF quando online
+    for (const linha of linhasPagamento) {
+      const valor = parseFloat(linha.valor_pago) || 0;
+      let nsuTEF = null;
+      let autorizacaoTEF = null;
+
+      if (isOnline && (linha.forma_pagamento === 'CARTAO_CREDITO' || linha.forma_pagamento === 'CARTAO_DEBITO')) {
+        try {
+          const resCard = await api.post('/vendas/pdv/processar-cartao', {
+            valor,
+            modalidade: linha.forma_pagamento,
+            parcelas: parseInt(linha.parcelas) || 1
+          });
+          nsuTEF = resCard.data?.data?.nsu;
+          autorizacaoTEF = resCard.data?.data?.codigo_autorizacao;
+        } catch (cardErr) {
+          setFeedback({ tipo: 'erro', msg: cardErr.response?.data?.error?.message || 'Falha na autorização do cartão.' });
+          setLoading(false);
+          return;
+        }
+      }
+
+      pagamentosTratados.push({
+        forma_pagamento: linha.forma_pagamento,
+        valor_pago: valor,
+        parcelas: parseInt(linha.parcelas) || 1,
+        valor_troco: linha.forma_pagamento === 'DINHEIRO' ? troco : 0,
+        nsu: nsuTEF,
+        autorizacao: autorizacaoTEF
+      });
     }
 
     const payload = {
@@ -254,16 +309,10 @@ export default function PdvPage() {
         quantidade: i.quantidade,
         preco_unitario: i.preco_unitario,
       })),
-      pagamentos: linhasPagamento.map((l) => ({
-        forma_pagamento: l.forma_pagamento,
-        valor_pago: parseFloat(l.valor_pago) || 0,
-        valor_troco: l.forma_pagamento === 'DINHEIRO' ? troco : 0,
-      })),
+      pagamentos: pagamentosTratados,
     };
 
-    setLoading(true);
-
-    // Se offline ou falha de rede, persiste localmente
+    // Modo contingência offline
     if (!isOnline) {
       await pdvOfflineService.salvarVendaOffline(payload);
       setVendaFinalizada({
@@ -292,7 +341,6 @@ export default function PdvPage() {
       setModalComprovante(true);
       carregarSaldosDoDeposito();
     } catch (err) {
-      // Fallback em caso de erro de rede
       if (!window.navigator.onLine || err.message?.includes('Network Error')) {
         await pdvOfflineService.salvarVendaOffline(payload);
         setFeedback({ tipo: 'sucesso', msg: 'Sem conexão. Venda salva em CONTINGÊNCIA OFFLINE!' });
@@ -315,6 +363,32 @@ export default function PdvPage() {
       carregarSaldosDoDeposito();
     } catch (e) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao responder alçada.' });
+    }
+  };
+
+  const handleSalvarRegraComissao = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/vendas/comissoes/regras', {
+        ...novaRegra,
+        faixa_valor_min: parseFloat(novaRegra.faixa_valor_min) || 0,
+        faixa_valor_max: novaRegra.faixa_valor_max ? parseFloat(novaRegra.faixa_valor_max) : null,
+        percentual_comissao: parseFloat(novaRegra.percentual_comissao) || 0
+      });
+      setFeedback({ tipo: 'sucesso', msg: 'Regra de comissão cadastrada com sucesso!' });
+      setNovaRegra({ cargo_ou_perfil: 'VENDEDOR', faixa_valor_min: '0.00', faixa_valor_max: '', percentual_comissao: '2.50' });
+      carregarRegrasComissao();
+    } catch (e) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao salvar regra de comissão.' });
+    }
+  };
+
+  const handleToggleRegraComissao = async (id) => {
+    try {
+      await api.put(`/vendas/comissoes/regras/${id}/toggle`);
+      carregarRegrasComissao();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -371,7 +445,17 @@ export default function PdvPage() {
             <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300 font-mono">F8: Limpar</kbd>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              carregarRegrasComissao();
+              setModalComissoes(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-300 border border-slate-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <Percent className="h-4 w-4" /> Comissões
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -583,7 +667,7 @@ export default function PdvPage() {
         </div>
       </div>
 
-      {/* Modal Pagamento Múltiplo */}
+      {/* Modal Pagamento Múltiplo e Gateway */}
       {modalPagamento && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 space-y-4">
@@ -627,35 +711,52 @@ export default function PdvPage() {
 
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {linhasPagamento.map((linha, idx) => (
-                    <div key={idx} className="flex gap-2 items-center bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                      <select
-                        value={linha.forma_pagamento}
-                        onChange={(e) => atualizarLinhaPagamento(idx, 'forma_pagamento', e.target.value)}
-                        className="w-1/2 px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-white text-xs font-semibold"
-                      >
-                        <option value="DINHEIRO">Dinheiro</option>
-                        <option value="PIX">PIX Nativo</option>
-                        <option value="CARTAO_DEBITO">Cartão de Débito</option>
-                        <option value="CARTAO_CREDITO">Cartão de Crédito</option>
-                        <option value="BOLETO">Boleto / A Prazo</option>
-                      </select>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        placeholder="Valor R$"
-                        value={linha.valor_pago}
-                        onChange={(e) => atualizarLinhaPagamento(idx, 'valor_pago', e.target.value)}
-                        className="w-1/2 px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-right text-emerald-400 font-mono font-bold text-xs"
-                      />
-                      {linhasPagamento.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removerLinhaPagamento(idx)}
-                          className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
+                    <div key={idx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-2">
+                      <div className="flex gap-2 items-center">
+                        <select
+                          value={linha.forma_pagamento}
+                          onChange={(e) => atualizarLinhaPagamento(idx, 'forma_pagamento', e.target.value)}
+                          className="w-1/2 px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-white text-xs font-semibold"
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                          <option value="DINHEIRO">Dinheiro</option>
+                          <option value="PIX">PIX Nativo</option>
+                          <option value="CARTAO_DEBITO">Cartão de Débito (TEF)</option>
+                          <option value="CARTAO_CREDITO">Cartão de Crédito (TEF)</option>
+                          <option value="BOLETO">Boleto / A Prazo</option>
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          placeholder="Valor R$"
+                          value={linha.valor_pago}
+                          onChange={(e) => atualizarLinhaPagamento(idx, 'valor_pago', e.target.value)}
+                          className="w-1/2 px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-right text-emerald-400 font-mono font-bold text-xs"
+                        />
+                        {linhasPagamento.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removerLinhaPagamento(idx)}
+                            className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {linha.forma_pagamento === 'CARTAO_CREDITO' && (
+                        <div className="flex items-center gap-2 pt-1 border-t border-slate-900">
+                          <span className="text-[11px] text-slate-400">Parcelas:</span>
+                          <select
+                            value={linha.parcelas || 1}
+                            onChange={(e) => atualizarLinhaPagamento(idx, 'parcelas', e.target.value)}
+                            className="px-2 py-1 bg-slate-900 border border-slate-800 rounded text-xs text-white"
+                          >
+                            {[1, 2, 3, 4, 5, 6, 10, 12].map(n => (
+                              <option key={n} value={n}>{n}x de R$ {(parseFloat(linha.valor_pago || 0) / n).toFixed(2)}</option>
+                            ))}
+                          </select>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -692,9 +793,9 @@ export default function PdvPage() {
                 <button
                   type="submit"
                   disabled={loading || totalPagoDigitado < totalLiquido}
-                  className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold cursor-pointer"
+                  className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold cursor-pointer flex items-center gap-1.5"
                 >
-                  {loading ? 'Processando...' : 'Finalizar Venda'}
+                  {loading ? 'Processando Gateway/Venda...' : 'Finalizar Venda'}
                 </button>
               </div>
             </form>
@@ -702,7 +803,7 @@ export default function PdvPage() {
         </div>
       )}
 
-      {/* Modal Impressão Térmica de Cupom Não-Fiscal */}
+      {/* Modal Impressão Térmica */}
       {modalComprovante && vendaFinalizada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
@@ -756,7 +857,7 @@ export default function PdvPage() {
         </div>
       )}
 
-      {/* Modal Aprovação de Alçadas Gerenciais */}
+      {/* Modal Aprovação de Alçadas */}
       {modalAlcadas && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl p-5 space-y-4">
@@ -792,6 +893,96 @@ export default function PdvPage() {
                         className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
                       >
                         Aprovar
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Gestão de Regras de Comissão */}
+      {modalComissoes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Percent className="h-4 w-4 text-indigo-400" /> Regras de Comissão Multinível
+              </h3>
+              <button type="button" onClick={() => setModalComissoes(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+
+            {/* Formulário Nova Regra */}
+            <form onSubmit={handleSalvarRegraComissao} className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+              <div>
+                <label className="block text-[10px] text-slate-400 font-semibold mb-1">Cargo/Perfil</label>
+                <select
+                  value={novaRegra.cargo_ou_perfil}
+                  onChange={(e) => setNovaRegra({ ...novaRegra, cargo_ou_perfil: e.target.value })}
+                  className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded text-white"
+                >
+                  <option value="VENDEDOR">Vendedor</option>
+                  <option value="TECNICO">Técnico</option>
+                  <option value="GERENTE">Gerente</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 font-semibold mb-1">Valor Mínimo (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={novaRegra.faixa_valor_min}
+                  onChange={(e) => setNovaRegra({ ...novaRegra, faixa_valor_min: e.target.value })}
+                  className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 font-semibold mb-1">% Comissão</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  required
+                  value={novaRegra.percentual_comissao}
+                  onChange={(e) => setNovaRegra({ ...novaRegra, percentual_comissao: e.target.value })}
+                  className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded text-white font-mono"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded cursor-pointer"
+                >
+                  + Adicionar
+                </button>
+              </div>
+            </form>
+
+            {/* Listagem das Regras */}
+            <div className="max-h-56 overflow-y-auto space-y-1.5 text-xs">
+              {regrasComissao.length === 0 ? (
+                <div className="py-6 text-center text-slate-500">Nenhuma regra cadastrada. Utilizando taxa base de 2.50%.</div>
+              ) : (
+                regrasComissao.map((r) => (
+                  <div key={r.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center">
+                    <div>
+                      <span className="font-bold text-white">{r.cargo_ou_perfil}</span>
+                      <span className="text-slate-400 block text-[11px]">
+                        Faixa: R$ {parseFloat(r.faixa_valor_min).toFixed(2)} até {r.faixa_valor_max ? `R$ ${parseFloat(r.faixa_valor_max).toFixed(2)}` : 'Sem limite'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-bold text-emerald-400 text-sm">{parseFloat(r.percentual_comissao).toFixed(2)}%</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRegraComissao(r.id)}
+                        className="cursor-pointer text-slate-400 hover:text-white"
+                      >
+                        {r.is_ativo ? <ToggleRight className="h-5 w-5 text-emerald-400" /> : <ToggleLeft className="h-5 w-5 text-slate-600" />}
                       </button>
                     </div>
                   </div>
