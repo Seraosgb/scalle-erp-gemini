@@ -27,7 +27,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: false,
     },
   },
 });
@@ -35,31 +35,14 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename="/app">
         <Routes>
-          {/* Rota Pública de Autenticação */}
+          {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
-
-          {/* Portal Público de OS */}
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
 
-          {/* Redirecionamentos da Raiz para o Dashboard */}
-          <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
-          <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
-          <Route path="/wms" element={<Navigate to="/app/wms" replace />} />
-          <Route path="/estoque" element={<Navigate to="/app/wms" replace />} />
-          <Route path="/os" element={<Navigate to="/app/os" replace />} />
-          <Route path="/pcp" element={<Navigate to="/app/pcp" replace />} />
-          <Route path="/vendas" element={<Navigate to="/app/vendas" replace />} />
-          <Route path="/pdv" element={<Navigate to="/app/pdv" replace />} />
-          <Route path="/financeiro" element={<Navigate to="/app/financeiro" replace />} />
-          <Route path="/fiscal" element={<Navigate to="/app/fiscal" replace />} />
-          <Route path="/usuarios" element={<Navigate to="/app/usuarios" replace />} />
-          <Route path="/compras" element={<Navigate to="/app/compras" replace />} />
-          <Route path="/exportacoes" element={<Navigate to="/app/exportacoes" replace />} />
-
-          {/* Rotas Protegidas sob o Layout /app */}
-          <Route path="/app" element={<AppLayout />}>
+          {/* Rotas Protegidas sob o AppLayout */}
+          <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="wms" element={<WmsPage />} />
@@ -78,8 +61,8 @@ export default function App() {
             <Route path="master" element={<MasterPage />} />
           </Route>
 
-          {/* Fallback para o Dashboard */}
-          <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+          {/* Fallback Seguro: Nunca redireciona para login cegamente */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

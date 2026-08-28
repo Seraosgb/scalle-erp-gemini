@@ -16,22 +16,13 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor de Resposta: trata 401 sem loop infinito
+// Interceptor de Resposta: NÃO desloga em 401 de endpoints operacionais
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const url = error.config?.url || '';
-    const isLoginEndpoint = url.includes('/auth/login');
-    const isMeEndpoint = url.includes('/auth/me');
-
-    // Desloga apenas se o próprio endpoint de checagem de perfil (/auth/me) retornar 401
-    if (error.response && error.response.status === 401 && isMeEndpoint) {
-      localStorage.removeItem('scalle_token');
-      localStorage.removeItem('token');
-      localStorage.removeItem('scalle_user');
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
+    // Apenas loga o erro no console sem redirecionar a janela inteira
+    if (error.response) {
+      console.warn(`[API] Erro ${error.response.status} na rota: ${error.config?.url}`, error.response.data);
     }
     return Promise.reject(error);
   }
