@@ -206,7 +206,7 @@ class OrdemServicoController extends Controller
         $diasPeriodo = 30;
         $mtbf = $corretivas > 0 ? round($diasPeriodo / $corretivas, 1) : $diasPeriodo;
 
-        // 3. Taxa de Conformidade com SLA
+        // 3. Taxa de Conformidade Real com SLA (Atrasos reduzem o percentual)
         $dentroDoPrazo = $concluidas->filter(function ($os) {
             return $os->prazo_sla_resolucao && $os->data_conclusao <= $os->prazo_sla_resolucao;
         })->count();
@@ -407,28 +407,46 @@ class OrdemServicoController extends Controller
         $user = $request->user();
         $tenantId = $user->tenant_id;
 
-        // 1. Ordens de Serviço (primeira página)
+        // 1. Ordens de Serviço recentes
         $ordens = OrdemServico::where('tenant_id', $tenantId)
             ->with(['cliente:id,nome_razao_social', 'tecnico:id,name', 'deposito:id,nome'])
             ->orderByDesc('created_at')
             ->limit(50)
             ->get();
 
-        // 2. Métricas CMMS rápidas via agregação no banco
+        // 2. Cálculo real de MTTR, MTBF e Conformidade SLA
         $concluidas = OrdemServico::where('tenant_id', $tenantId)
             ->where('status', 'CONCLUIDA')
-            ->selectRaw('COUNT(*) as total, AVG(EXTRACT(EPOCH FROM (data_conclusao - data_abertura))/3600) as mttr_horas')
-            ->first();
+            ->whereNotNull('data_conclusao')
+            ->get();
+
+        $totalConcluidas = $concluidas->count();
+        $totalHorasReparo = 0;
+
+        foreach ($concluidas as $os) {
+            $abertura = \Carbon\Carbon::parse($os->data_abertura ?? $os->created_at);
+            $conclusao = \Carbon\Carbon::parse($os->data_conclusao);
+            $totalHorasReparo += max(0.5, $conclusao->diffInMinutes($abertura) / 60);
+        }
+
+        $mttr = $totalConcluidas > 0 ? round($totalHorasReparo / $totalConcluidas, 1) : 0;
 
         $corretivasCount = OrdemServico::where('tenant_id', $tenantId)
             ->where('tipo_manutencao', 'CORRETIVA')
             ->count();
 
+        // Atrasos reduzem a conformidade
+        $dentroDoPrazo = $concluidas->filter(function ($os) {
+            return $os->prazo_sla_resolucao && $os->data_conclusao <= $os->prazo_sla_resolucao;
+        })->count();
+
+        $slaConformidade = $totalConcluidas > 0 ? round(($dentroDoPrazo / $totalConcluidas) * 100, 1) : 100;
+
         $metricas = [
-            'mttr_horas' => round((float) ($concluidas->mttr_horas ?? 0), 1),
+            'mttr_horas' => $mttr,
             'mtbf_dias' => $corretivasCount > 0 ? round(30 / $corretivasCount, 1) : 30,
-            'sla_conformidade_percent' => 100,
-            'total_concluidas' => (int) ($concluidas->total ?? 0),
+            'sla_conformidade_percent' => $slaConformidade,
+            'total_concluidas' => $totalConcluidas,
             'total_corretivas' => $corretivasCount,
         ];
 
