@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench, 
   DollarSign, FileText, Users, LogOut, Menu, X, 
-  Building2, ShieldAlert, Factory
+  Building2, ShieldAlert, Factory, FileSpreadsheet
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -67,6 +67,7 @@ export default function AppLayout() {
     { name: 'PDV Balcão', path: 'pdv', icon: ShoppingCart },
     { name: 'Ordens de Serviço', path: 'os', icon: Wrench },
     { name: 'Financeiro', path: 'financeiro', icon: DollarSign },
+    { name: 'Exportação Contábil', path: 'exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: 'fiscal', icon: FileText },
     { name: 'Governança & Equipe', path: 'usuarios', icon: Users },
   ];
