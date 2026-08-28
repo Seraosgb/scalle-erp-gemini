@@ -55,6 +55,7 @@ export default function App() {
           <Route path="/financeiro" element={<Navigate to="/app/financeiro" replace />} />
           <Route path="/fiscal" element={<Navigate to="/app/fiscal" replace />} />
           <Route path="/usuarios" element={<Navigate to="/app/usuarios" replace />} />
+          <Route path="/compras" element={<Navigate to="/app/compras" replace />} />
           <Route path="/exportacoes" element={<Navigate to="/app/exportacoes" replace />} />
 
           {/* Rotas Protegidas sob o Layout /app */}
@@ -77,7 +78,7 @@ export default function App() {
             <Route path="master" element={<MasterPage />} />
           </Route>
 
-          {/* Fallback 404 para o Dashboard autenticado */}
+          {/* Fallback para o Dashboard */}
           <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
         </Routes>
       </BrowserRouter>

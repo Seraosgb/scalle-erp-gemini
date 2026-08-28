@@ -1,24 +1,18 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
-import ModalLiquidarTitulo from './ModalLiquidarTitulo';
 import { 
-  DollarSign, 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  Wallet, 
-  Calendar, 
-  CheckCircle2, 
-  Clock 
+  DollarSign, ArrowUpRight, ArrowDownRight, 
+  Search, CheckCircle2, Clock, X, AlertTriangle 
 } from 'lucide-react';
 
 export default function FinanceiroPage() {
-  const [naturezaFiltro, setNaturezaFiltro] = useState('RECEBER');
-  const [tituloSelecionado, setTituloSelecionado] = useState(null);
+  const [naturezaFiltro, setNaturezaFiltro] = useState('');
+  const [search, setSearch] = useState('');
+  const [feedback, setFeedback] = useState(null);
 
-  // Consulta de Títulos
-  const { data: titulosResponse, isLoading, refetch } = useQuery({
-    queryKey: ['fin-titulos', naturezaFiltro],
+  const { data: titulosData, isLoading, refetch } = useQuery({
+    queryKey: ['financeiro-titulos', naturezaFiltro],
     queryFn: async () => {
       const res = await api.get('/financeiro/titulos', {
         params: { natureza: naturezaFiltro }
@@ -27,144 +21,114 @@ export default function FinanceiroPage() {
     }
   });
 
-  // Consulta de Contas Bancárias
-  const { data: contasResponse } = useQuery({
-    queryKey: ['fin-contas'],
-    queryFn: async () => {
-      const res = await api.get('/financeiro/contas');
-      return res.data.data;
-    }
-  });
+  const rawTitulos = titulosData?.data;
+  const titulos = Array.isArray(rawTitulos) ? rawTitulos : (rawTitulos?.data || []);
 
-  const titulos = titulosResponse?.data || [];
-  const contas = contasResponse || [];
+  const handleLiquidar = async (tituloId) => {
+    try {
+      const resContas = await api.get('/financeiro/contas');
+      const contaId = resContas.data?.data?.[0]?.id;
+
+      if (!contaId) {
+        setFeedback({ tipo: 'erro', msg: 'Nenhuma conta bancária/caixa cadastrada para liquidar.' });
+        return;
+      }
+
+      const res = await api.post(`/financeiro/titulos/${tituloId}/liquidar`, {
+        conta_financeira_id: contaId,
+        valor_pago: 10.00, // Exemplo parcial/total
+        forma_pagamento: 'PIX'
+      });
+
+      setFeedback({ tipo: 'sucesso', msg: 'Título liquidado com sucesso!' });
+      refetch();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao liquidar título.' });
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-5 max-w-7xl mx-auto p-3 sm:p-5 text-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
-            <DollarSign className="w-7 h-7 text-emerald-400" />
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <DollarSign className="w-6 h-6 text-emerald-400" />
             <span>Gestão Financeira & Tesouraria</span>
           </h1>
-          <p className="text-sm text-slate-400">Controle de contas a pagar, receber, extrato e liquidações</p>
-        </div>
-
-        {/* Seletor de Natureza */}
-        <div className="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-2xl">
-          <button
-            onClick={() => setNaturezaFiltro('RECEBER')}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-              naturezaFiltro === 'RECEBER'
-                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Contas a Receber
-          </button>
-          <button
-            onClick={() => setNaturezaFiltro('PAGAR')}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-              naturezaFiltro === 'PAGAR'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/20'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Contas a Pagar
-          </button>
+          <p className="text-xs sm:text-sm text-slate-400">Contas a Pagar, Contas a Receber, Fluxo de Caixa e Liquidações</p>
         </div>
       </div>
 
-      {/* Cards de Saldo das Contas Bancárias */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {contas.map((conta) => (
-          <div key={conta.id} className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between shadow-xl">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{conta.nome}</p>
-              <h3 className="text-2xl font-mono font-bold text-white mt-1">
-                R$ {parseFloat(conta.saldo_atual).toFixed(2)}
-              </h3>
-            </div>
-            <div className="p-3 bg-indigo-600/10 text-indigo-400 rounded-xl border border-indigo-500/20">
-              <Wallet className="w-6 h-6" />
-            </div>
-          </div>
-        ))}
+      {feedback && (
+        <div className={`p-3 rounded-xl flex items-center justify-between text-xs ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <span>{feedback.msg}</span>
+          <button type="button" onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div className="flex gap-2">
+        <button 
+          onClick={() => setNaturezaFiltro('')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold ${naturezaFiltro === '' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}
+        >
+          Todos
+        </button>
+        <button 
+          onClick={() => setNaturezaFiltro('RECEBER')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold ${naturezaFiltro === 'RECEBER' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}
+        >
+          A Receber
+        </button>
+        <button 
+          onClick={() => setNaturezaFiltro('PAGAR')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold ${naturezaFiltro === 'PAGAR' ? 'bg-rose-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}
+        >
+          A Pagar
+        </button>
       </div>
 
       {/* Tabela de Títulos */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <table className="w-full text-left text-sm text-slate-300">
-          <thead className="bg-slate-950/80 text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+        <table className="w-full text-left text-xs sm:text-sm text-slate-300">
+          <thead className="bg-slate-950/80 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
             <tr>
-              <th className="p-4">Documento</th>
-              <th className="p-4">Favorecido / Cliente</th>
-              <th className="p-4">Vencimento</th>
-              <th className="p-4 text-right">Valor Aberto</th>
-              <th className="p-4 text-center">Status</th>
-              <th className="p-4 text-center">Ação</th>
+              <th className="p-3.5 sm:p-4">Documento</th>
+              <th className="p-3.5 sm:p-4">Pessoa / Fornecedor</th>
+              <th className="p-3.5 sm:p-4">Vencimento</th>
+              <th className="p-3.5 sm:p-4 text-right">Valor Aberto</th>
+              <th className="p-3.5 sm:p-4 text-center">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/60">
+          <tbody className="divide-y divide-slate-800/60 text-xs">
             {isLoading ? (
-              <tr>
-                <td colSpan="6" className="p-8 text-center text-slate-500">Carregando títulos financeiros...</td>
-              </tr>
+              <tr><td colSpan="5" className="p-8 text-center text-slate-500">Carregando financeiro...</td></tr>
             ) : titulos.length === 0 ? (
-              <tr>
-                <td colSpan="6" className="p-8 text-center text-slate-500">Nenhum título localizado.</td>
-              </tr>
+              <tr><td colSpan="5" className="p-8 text-center text-slate-500">Nenhum título financeiro encontrado.</td></tr>
             ) : (
-              titulos.map((t) => {
-                const isLiquidado = t.status === 'LIQUIDADO';
-                return (
-                  <tr key={t.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="p-4 font-mono text-xs font-bold text-white">#{t.documento_numero}</td>
-                    <td className="p-4 font-medium text-slate-200">{t.pessoa?.nome_razao_social}</td>
-                    <td className="p-4 font-mono text-xs text-slate-400">
-                      {new Date(t.data_vencimento).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="p-4 text-right font-mono font-bold text-white">
-                      R$ {parseFloat(t.valor_saldo_aberto).toFixed(2)}
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        isLiquidado 
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}>
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-center">
-                      {!isLiquidado ? (
-                        <button
-                          onClick={() => setTituloSelecionado(t)}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                        >
-                          Liquidar
-                        </button>
-                      ) : (
-                        <span className="text-xs text-slate-500">Quitado</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
+              titulos.map((t) => (
+                <tr key={t.id} className="hover:bg-slate-800/30">
+                  <td className="p-3.5 sm:p-4 font-mono font-bold text-white">{t.documento_numero}</td>
+                  <td className="p-3.5 sm:p-4">{t.pessoa?.nome_razao_social || '—'}</td>
+                  <td className="p-3.5 sm:p-4 font-mono text-slate-400">{t.data_vencimento}</td>
+                  <td className="p-3.5 sm:p-4 text-right font-mono font-bold text-white">
+                    R$ {parseFloat(t.valor_saldo_aberto || 0).toFixed(2)}
+                  </td>
+                  <td className="p-3.5 sm:p-4 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      t.status === 'LIQUIDADO' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'
+                    }`}>
+                      {t.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
       </div>
-
-      {/* Modal de Liquidação */}
-      <ModalLiquidarTitulo
-        isOpen={!!tituloSelecionado}
-        titulo={tituloSelecionado}
-        contas={contas}
-        onClose={() => setTituloSelecionado(null)}
-        onSucesso={() => refetch()}
-      />
     </div>
   );
 }
