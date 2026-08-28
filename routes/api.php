@@ -108,6 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/wms/posicoes', [ItemController::class, 'saldosPorDeposito']);
     Route::get('/wms/posicao-estoque', [ItemController::class, 'saldosPorDeposito']);
     Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
+    Route::post('/wms/inventario-lote', [\App\Http\Controllers\Api\ItemController::class, 'inventarioLote']);
 
     // Compras & Suprimentos
     Route::get('/compras', [CompraController::class, 'index']);
@@ -149,6 +150,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);
     Route::post('/os/{id}/pecas', [OrdemServicoController::class, 'adicionarPeca']);
     Route::put('/os/{id}/pecas/{itemId}/almoxarifado', [OrdemServicoController::class, 'tratarPecaAlmoxarifado']);
+    Route::put('/os/{id}/dados-tecnicos', [\App\Http\Controllers\Api\OrdemServicoController::class, 'atualizarDadosTecnicos']);
 
     // Financeiro & Tesouraria
     Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);

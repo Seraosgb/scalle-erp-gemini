@@ -446,4 +446,55 @@ class OrdemServicoController extends Controller
             ]
         ]);
     }
+    public function atualizarDadosTecnicos(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'tecnico_responsavel_id' => 'nullable|uuid|exists:users,id',
+            'diagnostico_tecnico' => 'nullable|string',
+            'prioridade' => 'nullable|string|in:BAIXA,NORMAL,ALTA,URGENTE',
+            'prazo_sla_resolucao' => 'nullable|date',
+            'recalcular_sla' => 'nullable|boolean',
+        ]);
+
+        $dadosUpdate = [];
+
+        if (array_key_exists('tecnico_responsavel_id', $validated)) {
+            $dadosUpdate['tecnico_responsavel_id'] = $validated['tecnico_responsavel_id'];
+        }
+
+        if (array_key_exists('diagnostico_tecnico', $validated)) {
+            $dadosUpdate['diagnostico_tecnico'] = $validated['diagnostico_tecnico'];
+        }
+
+        if (!empty($validated['prioridade'])) {
+            $dadosUpdate['prioridade'] = $validated['prioridade'];
+
+            if (!empty($validated['recalcular_sla'])) {
+                $abertura = \Carbon\Carbon::parse($os->data_abertura ?? now());
+                $horasSla = match ($validated['prioridade']) {
+                    'URGENTE' => 6,
+                    'ALTA' => 12,
+                    'BAIXA' => 72,
+                    default => 24, // NORMAL
+                };
+                $dadosUpdate['prazo_sla_resolucao'] = $abertura->copy()->addHours($horasSla);
+            }
+        }
+
+        if (!empty($validated['prazo_sla_resolucao']) && empty($validated['recalcular_sla'])) {
+            $dadosUpdate['prazo_sla_resolucao'] = $validated['prazo_sla_resolucao'];
+        }
+
+        $os->update($dadosUpdate);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Parâmetros técnicos e SLA atualizados com sucesso!',
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ]
+        ]);
+    }
     }

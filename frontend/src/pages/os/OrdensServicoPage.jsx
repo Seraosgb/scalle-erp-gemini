@@ -5,13 +5,12 @@ import {
   X, Camera, PenTool, Printer, Clock, User, Building2, Upload,
   Kanban, Calendar, ShieldCheck, Share2, Activity, Gauge, TrendingUp,
   Settings, Edit, ToggleLeft, ToggleRight, Play, Pause, PackageCheck,
-  CheckSquare, FileText, ArrowRight, Package
+  CheckSquare, FileText, ArrowRight, Package, Save, RefreshCw
 } from 'lucide-react';
 
 function SlaTimerBadge({ os }) {
   if (!os || !os.prazo_sla_resolucao) return null;
 
-  // 1. Se a OS já está concluída, valida a entrega histórica
   if (os.status === 'CONCLUIDA') {
     const dataConclusao = os.data_conclusao ? new Date(os.data_conclusao) : new Date();
     const prazoSla = new Date(os.prazo_sla_resolucao);
@@ -28,7 +27,6 @@ function SlaTimerBadge({ os }) {
     );
   }
 
-  // 2. Se a OS está aberta/em execução, calcula o tempo restante dinâmico
   const diffMs = new Date(os.prazo_sla_resolucao) - new Date();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
@@ -57,7 +55,7 @@ function SlaTimerBadge({ os }) {
 }
 
 export default function OrdensServicoPage() {
-  const [abaAtiva, setAbaAtiva] = useState('kanban'); // 'kanban' | 'lista' | 'pmoc' | 'ativos' | 'slas'
+  const [abaAtiva, setAbaAtiva] = useState('kanban');
   const [ordens, setOrdens] = useState([]);
   const [planosPmoc, setPlanosPmoc] = useState([]);
   const [ativos, setAtivos] = useState([]);
@@ -92,6 +90,15 @@ export default function OrdensServicoPage() {
     defeito_reclamado: '', prioridade: 'NORMAL', tipo_manutencao: 'CORRETIVA',
   });
 
+  // Form Edição Técnica no Modal
+  const [formEdicaoTecnica, setFormEdicaoTecnica] = useState({
+    tecnico_responsavel_id: '',
+    diagnostico_tecnico: '',
+    prioridade: 'NORMAL',
+    prazo_sla_resolucao: '',
+    recalcular_sla: false,
+  });
+
   // Form PMOC
   const [formPmoc, setFormPmoc] = useState({
     id: null, cliente_id: '', ativo_id: '', tecnico_padrao_id: '',
@@ -111,7 +118,7 @@ export default function OrdensServicoPage() {
   });
   const [prioridadeEmEdicao, setPrioridadeEmEdicao] = useState(null);
 
-  // Form Requisitar Peça ao Almoxarifado
+  // Form Peça
   const [novaPeca, setNovaPeca] = useState({ item_id: '', quantidade: 1, valor_unitario: 0 });
 
   // Form Conclusão
@@ -180,6 +187,30 @@ export default function OrdensServicoPage() {
   useEffect(() => {
     carregarDadosIniciais();
   }, [search]);
+
+  const abrirPainelDetalhes = (os) => {
+    setOsSelecionada(os);
+    setFormEdicaoTecnica({
+      tecnico_responsavel_id: os.tecnico_responsavel_id || '',
+      diagnostico_tecnico: os.diagnostico_tecnico || '',
+      prioridade: os.prioridade || 'NORMAL',
+      prazo_sla_resolucao: os.prazo_sla_resolucao ? os.prazo_sla_resolucao.substring(0, 16) : '',
+      recalcular_sla: false,
+    });
+    setModalDetalhes(true);
+  };
+
+  const handleSalvarEdicaoTecnica = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.put(`/os/${osSelecionada.id}/dados-tecnicos`, formEdicaoTecnica);
+      setOsSelecionada(res.data.data.os);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDadosIniciais();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros técnicos.' });
+    }
+  };
 
   const handleSalvarAtivo = async (e) => {
     e.preventDefault();
@@ -403,7 +434,7 @@ export default function OrdensServicoPage() {
             Ordens de Serviço & CMMS 100%
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Apontamento contínuo de horas técnicas, workflow de almoxarifado, PMOC e laudo com assinatura digital (MP 2.200-2)
+            Diagnóstico de campo, gestão de SLA, workflow com almoxarifado e assinatura MP 2.200-2
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -552,13 +583,13 @@ export default function OrdensServicoPage() {
                   {ordensColuna.map((os) => (
                     <div
                       key={os.id}
-                      onClick={() => { setOsSelecionada(os); setModalDetalhes(true); }}
+                      onClick={() => abrirPainelDetalhes(os)}
                       className="bg-slate-950 border border-slate-800/80 hover:border-indigo-500/50 p-3 rounded-xl cursor-pointer transition shadow-sm space-y-2 group"
                     >
                       <div className="flex justify-between items-center text-xs">
                         <span className="font-mono font-bold text-indigo-400">#{os.numero_os}</span>
                         <div className="flex items-center gap-1.5">
-                          <SlaTimerBadge prazo={os.prazo_sla_resolucao} />
+                          <SlaTimerBadge os={os} />
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             os.prioridade === 'URGENTE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
                             os.prioridade === 'ALTA' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
@@ -790,7 +821,7 @@ export default function OrdensServicoPage() {
                   <td className="py-3 px-4">{os.prioridade}</td>
                   <td className="py-3 px-4 text-center">{os.status}</td>
                   <td className="py-3 px-4 text-center">
-                    <button type="button" onClick={() => { setOsSelecionada(os); setModalDetalhes(true); }} className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
+                    <button type="button" onClick={() => abrirPainelDetalhes(os)} className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
                       Ver Painel
                     </button>
                   </td>
@@ -979,7 +1010,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Detalhes da OS */}
+      {/* Modal Detalhes da OS com Painel de Parâmetros Técnicos & SLA */}
       {modalDetalhes && osSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
@@ -1036,6 +1067,73 @@ export default function OrdensServicoPage() {
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* Painel de Parâmetros Técnicos & Ajuste de SLA */}
+              {osSelecionada.status !== 'CONCLUIDA' && (
+                <form onSubmit={handleSalvarEdicaoTecnica} className="bg-slate-950 p-4 rounded-xl border border-indigo-900/50 space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                    <span className="font-bold text-white flex items-center gap-2">
+                      <Settings className="h-4 w-4 text-indigo-400" /> Parâmetros de Campo, Técnico & Prazo SLA
+                    </span>
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <Save className="h-3.5 w-3.5" /> Salvar Alterações
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-400 font-semibold mb-1">Técnico de Campo Responsável</label>
+                      <select
+                        value={formEdicaoTecnica.tecnico_responsavel_id}
+                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, tecnico_responsavel_id: e.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-medium"
+                      >
+                        <option value="">Não atribuído</option>
+                        {tecnicos.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 font-semibold mb-1">Prioridade do Chamado</label>
+                      <select
+                        value={formEdicaoTecnica.prioridade}
+                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, prioridade: e.target.value, recalcular_sla: true })}
+                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-medium"
+                      >
+                        {prioridades.map((p) => (
+                          <option key={p.codigo} value={p.codigo}>{p.nome}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 font-semibold mb-1">Prazo Limite SLA de Resolução</label>
+                      <input
+                        type="datetime-local"
+                        value={formEdicaoTecnica.prazo_sla_resolucao}
+                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, prazo_sla_resolucao: e.target.value, recalcular_sla: false })}
+                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <label className="block text-slate-400 font-semibold mb-1">Diagnóstico Técnico Preliminar de Campo</label>
+                      <textarea
+                        rows="2"
+                        placeholder="Insira as observações técnicas, testes de pressão, tensão elétrica e diagnóstico inicial..."
+                        value={formEdicaoTecnica.diagnostico_tecnico}
+                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, diagnostico_tecnico: e.target.value })}
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white"
+                      />
+                    </div>
+                  </div>
+                </form>
               )}
 
               {/* Informações Gerais & Prazos */}
@@ -1146,8 +1244,8 @@ export default function OrdensServicoPage() {
                   <p className="text-slate-300 whitespace-pre-line">{osSelecionada.defeito_reclamado || 'Nenhum defeito detalhado.'}</p>
                 </div>
                 <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1">
-                  <span className="text-slate-500 block font-bold">Diagnóstico Técnico Preliminar:</span>
-                  <p className="text-slate-300 whitespace-pre-line">{osSelecionada.diagnostico_tecnico || 'Aguardando diagnóstico em campo.'}</p>
+                  <span className="text-slate-500 block font-bold">Diagnóstico Técnico Registrado:</span>
+                  <p className="text-slate-300 whitespace-pre-line">{osSelecionada.diagnostico_tecnico || 'Aguardando preenchimento do diagnóstico em campo.'}</p>
                 </div>
               </div>
 
@@ -1199,7 +1297,7 @@ export default function OrdensServicoPage() {
               {/* Conclusão */}
               {osSelecionada.status === 'CONCLUIDA' && (
                 <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                  <div><span className="text-slate-500 block font-bold mb-1">Laudo Técnico Executado:</span><p className="text-slate-200">{osSelecionada.servico_executado}</p></div>
+                  <div><span className="text-slate-500 block font-bold mb-1">Laudo Técnico Final:</span><p className="text-slate-200">{osSelecionada.servico_executado}</p></div>
                   <div className="border-t border-slate-800 pt-3 flex flex-col sm:flex-row items-center justify-between gap-3">
                     <div>
                       <span className="text-slate-500 block font-bold">Aceite Jurídico Coletado (MP 2.200-2):</span>
@@ -1218,7 +1316,7 @@ export default function OrdensServicoPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setLaudoTecnico('');
+                    setLaudoTecnico(osSelecionada.diagnostico_tecnico || '');
                     setNomeResponsavel(osSelecionada.cliente?.nome_razao_social || '');
                     setModalConcluir(true);
                   }}
@@ -1415,7 +1513,6 @@ export default function OrdensServicoPage() {
 
             {/* Documento A4 */}
             <div id="laudo-oficial-impressao" className="bg-white text-slate-900 p-6 sm:p-8 rounded-xl font-sans text-xs space-y-4 select-text">
-              {/* Cabeçalho */}
               <div className="flex justify-between items-start border-b border-slate-300 pb-4">
                 <div className="space-y-1">
                   <div className="text-xl font-black tracking-tight text-indigo-900">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ENTERPRISE'}</div>
@@ -1429,7 +1526,6 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
 
-              {/* Cliente e Equipamento */}
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px]">
                 <div>
                   <span className="font-bold text-slate-700 block">CLIENTE:</span>
@@ -1443,11 +1539,14 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
 
-              {/* Diagnóstico e Laudo */}
               <div className="space-y-2">
                 <div>
                   <span className="font-bold text-slate-800 block">DEFEITO RECLAMADO:</span>
                   <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.defeito_reclamado}</p>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-800 block">DIAGNÓSTICO TÉCNICO DE CAMPO:</span>
+                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.diagnostico_tecnico || 'Nenhum diagnóstico preliminar detalhado.'}</p>
                 </div>
                 <div>
                   <span className="font-bold text-slate-800 block">LAUDO TÉCNICO & SERVIÇO EXECUTADO:</span>
@@ -1455,7 +1554,6 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
 
-              {/* Peças e Insumos */}
               {osSelecionada.itens && osSelecionada.itens.length > 0 && (
                 <div className="space-y-1.5 pt-1">
                   <span className="font-bold text-slate-800 block">MATERIAIS E PEÇAS APLICADOS:</span>
@@ -1482,7 +1580,6 @@ export default function OrdensServicoPage() {
                 </div>
               )}
 
-              {/* Evidências Fotográficas */}
               {osSelecionada.fotos && osSelecionada.fotos.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-200">
                   <span className="font-bold text-slate-800 block">EVIDÊNCIAS FOTOGRÁFICAS (COMPROVAÇÃO TÉCNICA):</span>
@@ -1497,7 +1594,6 @@ export default function OrdensServicoPage() {
                 </div>
               )}
 
-              {/* Assinatura Jurídica e Hash MP 2.200-2 */}
               <div className="border-t border-slate-300 pt-4 flex justify-between items-end">
                 <div className="space-y-1 font-mono text-[9px] text-slate-500 max-w-sm">
                   <div className="font-bold text-slate-700">CONFORMIDADE JURÍDICA MP 2.200-2/2001:</div>
