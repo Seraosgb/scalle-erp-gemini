@@ -16,17 +16,30 @@ export default function AppLayout() {
 
   const carregarContexto = async () => {
     try {
-      const [resMe, resEmps] = await Promise.all([
+      const [resMe, resEmps] = await Promise.allSettled([
         api.get('/auth/me'),
         api.get('/empresas')
       ]);
-      const user = resMe.data.data;
-      const emps = resEmps.data.data || [];
-      setUsuario(user);
-      setEmpresas(emps);
-      setEmpresaAtivaId(user.empresa_padrao_id || (emps[0]?.id ?? ''));
+
+      if (resMe.status === 'fulfilled' && resMe.value.data?.data) {
+        setUsuario(resMe.value.data.data);
+      } else {
+        // Fallback local caso a API demore
+        const localUser = localStorage.getItem('scalle_user');
+        if (localUser) {
+          try { setUsuario(JSON.parse(localUser)); } catch (e) {}
+        }
+      }
+
+      if (resEmps.status === 'fulfilled' && resEmps.value.data?.data) {
+        const emps = Array.isArray(resEmps.value.data.data) ? resEmps.value.data.data : [];
+        setEmpresas(emps);
+        if (emps.length > 0) {
+          setEmpresaAtivaId(emps[0].id);
+        }
+      }
     } catch (e) {
-      console.error(e);
+      console.warn('Erro ao carregar contexto inicial do layout:', e);
     }
   };
 
@@ -41,6 +54,7 @@ export default function AppLayout() {
       console.error(e);
     } finally {
       localStorage.removeItem('scalle_token');
+      localStorage.removeItem('token');
       localStorage.removeItem('scalle_user');
       navigate('/login');
     }
@@ -180,7 +194,7 @@ export default function AppLayout() {
 
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <div className="text-xs font-bold text-white">{usuario?.name || 'Carregando...'}</div>
+              <div className="text-xs font-bold text-white">{usuario?.name || 'Operador Conectado'}</div>
               <div className={`text-[11px] font-medium ${usuario?.is_master ? 'text-rose-400 font-bold' : 'text-indigo-400'}`}>
                 {usuario?.is_master ? 'SaaS Owner (Global)' : (usuario?.perfil?.nome || 'Operador')}
               </div>

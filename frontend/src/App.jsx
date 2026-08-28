@@ -20,7 +20,7 @@ import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
-import MasterPage from './pages/master/MasterPage';
+import MasterPage from './pages/master/MasterDashboardPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
