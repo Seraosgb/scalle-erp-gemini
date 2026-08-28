@@ -41,7 +41,7 @@ class PedidoVenda extends Model
     ];
 
     protected $casts = [
-        'data_emissao' => 'date',
+        'data_emissao' => 'datetime',
         'data_validade_orcamento' => 'date',
         'valor_subtotal_itens' => 'decimal:2',
         'valor_frete' => 'decimal:2',
