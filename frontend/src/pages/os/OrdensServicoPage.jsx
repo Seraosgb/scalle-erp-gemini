@@ -5,7 +5,7 @@ import {
   X, Camera, PenTool, Printer, Clock, User, Building2, Upload,
   Kanban, Calendar, ShieldCheck, Share2, Activity, Gauge, TrendingUp,
   Settings, Edit, ToggleLeft, ToggleRight, Play, Pause, PackageCheck,
-  CheckSquare, FileText, ArrowRight, Package, Save, RefreshCw
+  CheckSquare, FileText, ArrowRight, Package, Save, Lock
 } from 'lucide-react';
 
 function SlaTimerBadge({ os }) {
@@ -423,6 +423,14 @@ export default function OrdensServicoPage() {
     { id: 'MATERIAL_DISPONIVEL', titulo: 'Material Disponível', cor: 'border-purple-500' },
     { id: 'CONCLUIDA', titulo: 'Concluídas & Faturadas', cor: 'border-emerald-500' },
   ];
+
+  // Regra de Negócio: Campo desbloqueado apenas se a execução já foi iniciada
+  const emExecucaoOuPosterior = osSelecionada && (
+    osSelecionada.status === 'EM_EXECUCAO' || 
+    osSelecionada.status === 'EM_ANDAMENTO' || 
+    osSelecionada.status === 'AGUARDANDO_PECA' || 
+    osSelecionada.status === 'MATERIAL_DISPONIVEL'
+  );
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
@@ -1010,7 +1018,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Detalhes da OS com Painel de Parâmetros Técnicos & SLA */}
+      {/* Modal Detalhes da OS com Trava de Ciclo de Vida */}
       {modalDetalhes && osSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
@@ -1044,7 +1052,11 @@ export default function OrdensServicoPage() {
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5">
                   <div>
                     <span className="font-bold text-white text-xs block">Controle Operacional de Campo:</span>
-                    <span className="text-[11px] text-slate-400">Ao iniciar a execução, a mão de obra passa a ser computada atomicamente.</span>
+                    <span className="text-[11px] text-slate-400">
+                      {osSelecionada.status === 'ABERTA'
+                        ? 'Inicie a execução para desbloquear apontamento de jornada, fotos, peças e diagnóstico.'
+                        : 'Execução em andamento. Horas técnicas computadas continuamente.'}
+                    </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {osSelecionada.status !== 'EM_EXECUCAO' && osSelecionada.status !== 'EM_ANDAMENTO' && (
@@ -1066,6 +1078,16 @@ export default function OrdensServicoPage() {
                       </button>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Alerta Visual de Bloqueio se OS estiver ABERTA */}
+              {!emExecucaoOuPosterior && osSelecionada.status !== 'CONCLUIDA' && (
+                <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl flex items-center gap-2.5 text-amber-300 text-xs">
+                  <Lock className="h-4 w-4 shrink-0 text-amber-400" />
+                  <span>
+                    <strong>Campos de Diagnóstico, Fotos e Almoxarifado Bloqueados:</strong> Clique no botão <strong>"Iniciar Execução"</strong> acima para liberar os apontamentos técnicos de campo.
+                  </span>
                 </div>
               )}
 
@@ -1123,13 +1145,17 @@ export default function OrdensServicoPage() {
                     </div>
 
                     <div className="sm:col-span-3">
-                      <label className="block text-slate-400 font-semibold mb-1">Diagnóstico Técnico Preliminar de Campo</label>
+                      <label className="block text-slate-400 font-semibold mb-1">
+                        Diagnóstico Técnico Preliminar de Campo
+                        {!emExecucaoOuPosterior && <span className="text-amber-400 font-normal ml-1.5">(Disponível após iniciar execução)</span>}
+                      </label>
                       <textarea
                         rows="2"
-                        placeholder="Insira as observações técnicas, testes de pressão, tensão elétrica e diagnóstico inicial..."
+                        disabled={!emExecucaoOuPosterior}
+                        placeholder={emExecucaoOuPosterior ? "Insira as observações técnicas, testes de pressão, tensão elétrica e diagnóstico inicial..." : "Inicie a execução para preencher o diagnóstico técnico de campo."}
                         value={formEdicaoTecnica.diagnostico_tecnico}
                         onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, diagnostico_tecnico: e.target.value })}
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -1177,7 +1203,7 @@ export default function OrdensServicoPage() {
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                   <h3 className="font-bold text-white flex items-center gap-2"><Package className="h-4 w-4 text-indigo-400" /> Peças & Materiais da OS</h3>
-                  {osSelecionada.status !== 'CONCLUIDA' && (
+                  {osSelecionada.status !== 'CONCLUIDA' && emExecucaoOuPosterior && (
                     <button
                       type="button"
                       onClick={() => setModalAddPeca(true)}
@@ -1189,7 +1215,9 @@ export default function OrdensServicoPage() {
                 </div>
                 <div className="space-y-2">
                   {osSelecionada.itens?.length === 0 ? (
-                    <div className="py-3 text-center text-slate-500">Nenhum material solicitado para esta OS.</div>
+                    <div className="py-3 text-center text-slate-500">
+                      {!emExecucaoOuPosterior ? 'Inicie a execução para requisitar materiais.' : 'Nenhum material solicitado para esta OS.'}
+                    </div>
                   ) : (
                     osSelecionada.itens?.map((it) => (
                       <div key={it.id} className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -1272,7 +1300,7 @@ export default function OrdensServicoPage() {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5"><Camera className="h-4 w-4 text-indigo-400" /> Evidências Fotográficas</h3>
-                  {osSelecionada.status !== 'CONCLUIDA' && (
+                  {osSelecionada.status !== 'CONCLUIDA' && emExecucaoOuPosterior && (
                     <button type="button" onClick={() => setModalFoto(true)} className="px-2.5 py-1 rounded bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-500/30 text-[11px] font-semibold cursor-pointer flex items-center gap-1">
                       <Upload className="h-3 w-3" /> Anexar Foto
                     </button>
@@ -1280,7 +1308,9 @@ export default function OrdensServicoPage() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {osSelecionada.fotos?.length === 0 ? (
-                    <div className="col-span-full py-6 text-center text-slate-500 bg-slate-950 rounded-xl border border-slate-800">Nenhuma foto de evidência anexada.</div>
+                    <div className="col-span-full py-6 text-center text-slate-500 bg-slate-950 rounded-xl border border-slate-800">
+                      {!emExecucaoOuPosterior ? 'Inicie a execução para anexar fotos de evidência.' : 'Nenhuma foto de evidência anexada.'}
+                    </div>
                   ) : (
                     osSelecionada.fotos?.map(f => (
                       <div key={f.id} className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
@@ -1315,12 +1345,13 @@ export default function OrdensServicoPage() {
               {osSelecionada.status !== 'CONCLUIDA' ? (
                 <button
                   type="button"
+                  disabled={!emExecucaoOuPosterior}
                   onClick={() => {
                     setLaudoTecnico(osSelecionada.diagnostico_tecnico || '');
                     setNomeResponsavel(osSelecionada.cliente?.nome_razao_social || '');
                     setModalConcluir(true);
                   }}
-                  className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
+                  className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
                 >
                   <PenTool className="h-4 w-4" /> Concluir OS & Coletar Assinatura Digital
                 </button>
