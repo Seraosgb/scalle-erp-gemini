@@ -1,27 +1,15 @@
 sempre trazer estes procedimentos para sincronizar os assets em ambas as rotas (`/` e `/app/`) atualizar o commit de acordo com o contexto:
 
-**1. Recompilar o Frontend Localmente**
+**1. Recompilar o Frontend Localmente e versionar o git**
 
 No terminal PowerShell do VS Code:
 
-PowerShell
-    cd C:\Projetos\scalle-erp-gemini\frontend
-    npm run build
-
-    cd C:\Projetos\scalle-erp-gemini
-    Remove-Item "public\dist.zip" -Force -ErrorAction SilentlyContinue
-    Compress-Archive -Path "frontend\dist\*" -DestinationPath "public\dist.zip" -Force
-
-**2. Versionamento Git**
 
 PowerShell
-    cd C:\Projetos\scalle-erp-gemini
-    git status
-    git add -f public/dist.zip
-    git commit -m "*atualizar esta parte de acordo com o contexto*"
-    git push origin main
+    .\deploy.ps1 "feat: atualiza o texto do commit aqui"
 
-**3. Deploy e Sincronização no Servidor Hostoo**
+
+**2. Deploy e Sincronização no Servidor Hostoo**
 
 No terminal SSH da Hostoo:
 

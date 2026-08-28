@@ -2,20 +2,26 @@
 
 use App\Http\Controllers\Api\AtivoController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CertificadoFiscalController;
 use App\Http\Controllers\Api\CompraController;
+use App\Http\Controllers\Api\CotacaoCompraController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmpresaController;
+use App\Http\Controllers\Api\ExportacaoContabilController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FiscalController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\MasterController;
 use App\Http\Controllers\Api\OrdemServicoController;
+use App\Http\Controllers\Api\PcpController;
 use App\Http\Controllers\Api\PerfilController;
 use App\Http\Controllers\Api\PessoaController;
 use App\Http\Controllers\Api\PortalClienteController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VendaController;
 use App\Http\Middleware\CheckMaster;
+use App\Http\Middleware\CheckSubscriptionStatus;
+use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
 
 // ==========================================
@@ -29,9 +35,9 @@ Route::get('/portal/os/{token}', [PortalClienteController::class, 'consultarOs']
 Route::post('/portal/os/{token}/aprovar', [PortalClienteController::class, 'aprovarOrcamento']);
 
 // ==========================================
-// Rotas Protegidas por Autenticação (Sanctum)
+// Rotas Protegidas por Autenticação (Sanctum + Tenant + Subscription)
 // ==========================================
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatus::class])->group(function () {
 
     // Sessão do Usuário
     Route::prefix('auth')->group(function () {
@@ -91,28 +97,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/wms/depositos/{id}', [ItemController::class, 'updateDeposito']);
     Route::delete('/wms/depositos/{id}', [ItemController::class, 'destroyDeposito']);
 
-    // Posições de Estoque & Saldos (Aliases compatíveis)
     Route::get('/wms/saldos', [ItemController::class, 'saldosPorDeposito']);
     Route::get('/wms/posicoes', [ItemController::class, 'saldosPorDeposito']);
+    Route::get('/wms/posicao-estoque', [ItemController::class, 'saldosPorDeposito']);
     Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
+    Route::post('/wms/inventario-lote', [ItemController::class, 'inventarioLote']);
 
-    // Transferências & Curva ABC
     Route::get('/wms/transferencias', [ItemController::class, 'transferencias']);
     Route::post('/wms/transferir', [ItemController::class, 'transferir']);
     Route::put('/wms/transferencias/{id}/conferir', [ItemController::class, 'conferirTransferencia']);
     Route::get('/wms/curva-abc', [ItemController::class, 'relatorioCurvaAbc']);
     Route::post('/wms/importar-xml', [ItemController::class, 'importarXml']);
 
-    // Posições de Estoque & Saldos (Aliases compatíveis)
-    Route::get('/wms/saldos', [ItemController::class, 'saldosPorDeposito']);
-    Route::get('/wms/posicoes', [ItemController::class, 'saldosPorDeposito']);
-    Route::get('/wms/posicao-estoque', [ItemController::class, 'saldosPorDeposito']);
-    Route::post('/wms/ajustar-saldo', [ItemController::class, 'ajustarSaldo']);
-    Route::post('/wms/inventario-lote', [\App\Http\Controllers\Api\ItemController::class, 'inventarioLote']);
-
     // Compras & Suprimentos
     Route::get('/compras', [CompraController::class, 'index']);
     Route::post('/compras', [CompraController::class, 'store']);
+    Route::get('/compras/cotacoes', [CotacaoCompraController::class, 'index']);
+    Route::post('/compras/cotacoes', [CotacaoCompraController::class, 'store']);
+    Route::post('/compras/cotacoes/{id}/propostas', [CotacaoCompraController::class, 'adicionarProposta']);
+    Route::put('/compras/cotacoes/{cotacaoId}/propostas/{propostaId}/aprovar', [CotacaoCompraController::class, 'aprovarPropostaVencedora']);
 
     // Comercial, Vendas & PDV
     Route::get('/vendas/metricas', [VendaController::class, 'metricas']);
@@ -122,7 +125,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/vendas/orcamento', [VendaController::class, 'orcamento']);
     Route::post('/vendas/{id}/converter', [VendaController::class, 'converter']);
     Route::post('/vendas/{id}/cancelar', [VendaController::class, 'cancelar']);
-    Route::post('/vendas/{id}/emitir-fiscal', [VendaController::class, 'emitirFiscal']);
 
     // Prestação de Serviços & CMMS
     Route::get('/os/bootstrap', [OrdemServicoController::class, 'bootstrapData']);
@@ -150,7 +152,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ordens-servico/{id}/concluir', [OrdemServicoController::class, 'concluir']);
     Route::post('/os/{id}/pecas', [OrdemServicoController::class, 'adicionarPeca']);
     Route::put('/os/{id}/pecas/{itemId}/almoxarifado', [OrdemServicoController::class, 'tratarPecaAlmoxarifado']);
-    Route::put('/os/{id}/dados-tecnicos', [\App\Http\Controllers\Api\OrdemServicoController::class, 'atualizarDadosTecnicos']);
+    Route::put('/os/{id}/dados-tecnicos', [OrdemServicoController::class, 'atualizarDadosTecnicos']);
 
     // Financeiro & Tesouraria
     Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);
@@ -158,34 +160,28 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/financeiro/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
     Route::post('/financeiro/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
 
-    // Motor Fiscal
+    // Exportações Contábeis & SPED
+    Route::get('/exportacoes/metricas', [ExportacaoContabilController::class, 'metricas']);
+    Route::get('/exportacoes/download', [ExportacaoContabilController::class, 'download']);
+
+    // Motor Fiscal & Certificado A1
+    Route::get('/fiscal', [FiscalController::class, 'index']);
     Route::get('/fiscal/documentos', [FiscalController::class, 'index']);
     Route::get('/fiscal/regras', [FiscalController::class, 'regras']);
     Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
+    Route::get('/fiscal/certificado', [CertificadoFiscalController::class, 'show']);
+    Route::post('/fiscal/certificado', [CertificadoFiscalController::class, 'upload']);
 
     // Indústria & PCP (Planejamento e Controle da Produção)
-    Route::get('/pcp/metricas', [\App\Http\Controllers\Api\PcpController::class, 'metricasKpi']);
-    Route::get('/pcp/ordens-producao', [\App\Http\Controllers\Api\PcpController::class, 'ordensProducao']);
-    Route::post('/pcp/ordens-producao', [\App\Http\Controllers\Api\PcpController::class, 'storeOrdemProducao']);
-    Route::put('/pcp/ordens-producao/{id}', [\App\Http\Controllers\Api\PcpController::class, 'updateOrdemProducao']);
-    Route::post('/pcp/ordens-producao/{id}/cancelar', [\App\Http\Controllers\Api\PcpController::class, 'cancelarOrdemProducao']);
-    Route::delete('/pcp/ordens-producao/{id}', [\App\Http\Controllers\Api\PcpController::class, 'destroyOrdemProducao']);
-    Route::post('/pcp/ordens-producao/{id}/apontar', [\App\Http\Controllers\Api\PcpController::class, 'apontarOrdemProducao']);
-    Route::post('/pcp/ordens-producao/{id}/finalizar', [\App\Http\Controllers\Api\PcpController::class, 'finalizarOrdemProducao']);
-    Route::get('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'estruturas']);
-    Route::post('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'storeEstrutura']);
-    Route::delete('/pcp/estruturas/{id}', [\App\Http\Controllers\Api\PcpController::class, 'destroyEstruturaItem']);
-});
-Route::middleware(['auth:sanctum', \App\Http\Middleware\IdentifyTenant::class, \App\Http\Middleware\CheckSubscriptionStatus::class])->group(function () {
-    Route::get('/exportacoes/metricas', [\App\Http\Controllers\Api\ExportacaoContabilController::class, 'metricas']);
-    Route::get('/exportacoes/download', [\App\Http\Controllers\Api\ExportacaoContabilController::class, 'download']);
-    // Cotações de Compras
-    Route::get('/compras/cotacoes', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'index']);
-    Route::post('/compras/cotacoes', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'store']);
-    Route::post('/compras/cotacoes/{id}/propostas', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'adicionarProposta']);
-    Route::put('/compras/cotacoes/{cotacaoId}/propostas/{propostaId}/aprovar', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'aprovarPropostaVencedora']);
-
-    // Certificado Digital A1
-    Route::get('/fiscal/certificado', [\App\Http\Controllers\Api\CertificadoFiscalController::class, 'show']);
-    Route::post('/fiscal/certificado', [\App\Http\Controllers\Api\CertificadoFiscalController::class, 'upload']);
+    Route::get('/pcp/metricas', [PcpController::class, 'metricasKpi']);
+    Route::get('/pcp/ordens-producao', [PcpController::class, 'ordensProducao']);
+    Route::post('/pcp/ordens-producao', [PcpController::class, 'storeOrdemProducao']);
+    Route::put('/pcp/ordens-producao/{id}', [PcpController::class, 'updateOrdemProducao']);
+    Route::post('/pcp/ordens-producao/{id}/cancelar', [PcpController::class, 'cancelarOrdemProducao']);
+    Route::delete('/pcp/ordens-producao/{id}', [PcpController::class, 'destroyOrdemProducao']);
+    Route::post('/pcp/ordens-producao/{id}/apontar', [PcpController::class, 'apontarOrdemProducao']);
+    Route::post('/pcp/ordens-producao/{id}/finalizar', [PcpController::class, 'finalizarOrdemProducao']);
+    Route::get('/pcp/estruturas', [PcpController::class, 'estruturas']);
+    Route::post('/pcp/estruturas', [PcpController::class, 'storeEstrutura']);
+    Route::delete('/pcp/estruturas/{id}', [PcpController::class, 'destroyEstruturaItem']);
 });

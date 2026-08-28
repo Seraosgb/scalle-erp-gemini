@@ -683,4 +683,75 @@ class ItemController extends Controller
             ]
         ]);
     }
+    public function inventarioLote(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'contagens' => 'required|array|min:1',
+            'contagens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'contagens.*.quantidade_contada' => 'required|numeric|min:0',
+            'contagens.*.lote' => 'nullable|string|max:50',
+            'motivo' => 'nullable|string|max:255',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $depositoId = $validated['deposito_id'];
+        $motivoGeral = $validated['motivo'] ?? 'Inventário Físico Periódico';
+        $usuarioId = $request->user()->id;
+
+        try {
+            DB::transaction(function () use ($validated, $tenantId, $depositoId, $motivoGeral, $usuarioId) {
+                foreach ($validated['contagens'] as $contagem) {
+                    $itemId = $contagem['item_id'];
+                    $qtdContada = (float) $contagem['quantidade_contada'];
+                    $lote = $contagem['lote'] ?? null;
+
+                    $saldoAtual = EstoqueDeposito::where('deposito_id', $depositoId)
+                        ->where('item_id', $itemId)
+                        ->when($lote, fn($q) => $q->where('lote', $lote))
+                        ->lockForUpdate()
+                        ->first();
+
+                    $qtdAnterior = $saldoAtual ? (float) $saldoAtual->quantidade_saldo : 0.00;
+                    $diferenca = $qtdContada - $qtdAnterior;
+
+                    if ($diferenca != 0) {
+                        if (!$saldoAtual) {
+                            $saldoAtual = EstoqueDeposito::create([
+                                'id' => (string) Str::uuid(),
+                                'tenant_id' => $tenantId,
+                                'deposito_id' => $depositoId,
+                                'item_id' => $itemId,
+                                'lote' => $lote,
+                                'quantidade_saldo' => $qtdContada,
+                                'quantidade_reservada' => 0.0000,
+                            ]);
+                        } else {
+                            $saldoAtual->update(['quantidade_saldo' => $qtdContada]);
+                        }
+
+                        MovimentacaoEstoque::create([
+                            'id' => (string) Str::uuid(),
+                            'tenant_id' => $tenantId,
+                            'deposito_id' => $depositoId,
+                            'item_id' => $itemId,
+                            'usuario_id' => $usuarioId,
+                            'tipo_movimento' => 'AJUSTE_INVENTARIO',
+                            'quantidade' => abs($diferenca),
+                            'saldo_anterior' => $qtdAnterior,
+                            'saldo_posterior' => $qtdContada,
+                            'custo_unitario' => 0.00,
+                            'documento_origem_tipo' => 'inventario_lote',
+                            'motivo' => "{$motivoGeral} (Divergência: " . ($diferenca > 0 ? "+{$diferenca}" : $diferenca) . ")",
+                            'created_at' => now(),
+                        ]);
+                    }
+                }
+            });
+
+            return response()->json(['data' => ['message' => 'Inventário em lote processado e saldos auditados com sucesso!']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
 }
