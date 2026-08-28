@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { 
   Boxes, Plus, Search, ArrowRightLeft, Upload, CheckCircle2, 
-  AlertTriangle, X, Check, TrendingUp, Warehouse, Package, MapPin
+  AlertTriangle, X, Check, TrendingUp, Warehouse, Package, MapPin, Edit3, Power
 } from 'lucide-react';
 
 export default function WmsPage() {
-  const [abaAtiva, setAbaAtiva] = useState('saldos'); // 'saldos' | 'transferencias' | 'depositos' | 'abc'
+  const [abaAtiva, setAbaAtiva] = useState('saldos'); // 'saldos' | 'itens' | 'transferencias' | 'depositos' | 'abc'
   const [saldos, setSaldos] = useState([]);
   const [depositos, setDepositos] = useState([]);
   const [itens, setItens] = useState([]);
@@ -22,23 +22,25 @@ export default function WmsPage() {
   const [modalTransf, setModalTransf] = useState(false);
   const [modalConferir, setModalConferir] = useState(false);
   const [modalXml, setModalXml] = useState(false);
-  const [modalNovoDeposito, setModalNovoDeposito] = useState(false);
+  const [modalDeposito, setModalDeposito] = useState(false);
+  const [modalItem, setModalItem] = useState(false);
+  
   const [transfSelecionada, setTransfSelecionada] = useState(null);
+  const [depositoEditando, setDepositoEditando] = useState(null);
+  const [itemEditando, setItemEditando] = useState(null);
 
   // Formulários
   const [formAjuste, setFormAjuste] = useState({ 
-    deposito_id: '', 
-    item_id: '', 
-    novo_saldo: '', 
-    motivo: 'Inventário Físico', 
-    lote: '', 
-    data_validade: '',
-    localizacao_rua: '',
-    localizacao_predio: ''
+    deposito_id: '', item_id: '', novo_saldo: '', motivo: 'Inventário Físico', lote: '', data_validade: '', localizacao_rua: '', localizacao_predio: ''
   });
   const [formTransf, setFormTransf] = useState({ deposito_origem_id: '', deposito_destino_id: '', item_id: '', quantidade: '', modalidade: 'EM_TRANSITO', lote: '', observacoes: '' });
   const [formConferencia, setFormConferencia] = useState({ quantidade_recebida: '', motivo_divergencia: '' });
-  const [formDeposito, setFormDeposito] = useState({ nome: '', codigo: '', descricao: '', is_padrao: false });
+  const [formDeposito, setFormDeposito] = useState({ nome: '', codigo: '', descricao: '', is_padrao: false, is_ativo: true });
+  
+  const [formItem, setFormItem] = useState({
+    nome: '', codigo_sku: '', tipo_item: 'PRODUTO', preco_venda: 0, preco_custo: 0, unidade_medida: 'UN', ncm: '', controla_estoque: true, is_ativo: true
+  });
+
   const [arquivoXml, setArquivoXml] = useState(null);
   const [depositoXml, setDepositoXml] = useState('');
 
@@ -48,7 +50,7 @@ export default function WmsPage() {
       const [resSaldos, resDeps, resItens, resTransfs, resAbc] = await Promise.all([
         api.get('/wms/saldos', { params: { search, deposito_id: depositoFiltro } }),
         api.get('/wms/depositos'),
-        api.get('/itens'),
+        api.get('/itens', { params: { search } }),
         api.get('/wms/transferencias').catch(() => ({ data: { data: [] } })),
         api.get('/wms/curva-abc').catch(() => ({ data: { data: { valor_total_saidas_90d: 0, itens: [] } } }))
       ]);
@@ -84,7 +86,7 @@ export default function WmsPage() {
     try {
       await api.post('/wms/ajustar-saldo', formAjuste);
       setModalAjuste(false);
-      setFeedback({ tipo: 'sucesso', msg: 'Saldo ajustado e endereçamento logístico gravado com sucesso!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Saldo ajustado e endereçamento gravado com sucesso!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao ajustar saldo.' });
@@ -118,13 +120,58 @@ export default function WmsPage() {
   const handleSalvarDeposito = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/wms/depositos', formDeposito);
-      setModalNovoDeposito(false);
-      setFormDeposito({ nome: '', codigo: '', descricao: '', is_padrao: false });
-      setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado cadastrado com sucesso!' });
+      if (depositoEditando) {
+        await api.put(`/wms/depositos/${depositoEditando.id}`, formDeposito);
+        setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado atualizado com sucesso!' });
+      } else {
+        await api.post('/wms/depositos', formDeposito);
+        setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado cadastrado com sucesso!' });
+      }
+      setModalDeposito(false);
+      setDepositoEditando(null);
+      setFormDeposito({ nome: '', codigo: '', descricao: '', is_padrao: false, is_ativo: true });
       carregarDados();
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao cadastrar depósito.' });
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar depósito.' });
+    }
+  };
+
+  const handleSalvarItem = async (e) => {
+    e.preventDefault();
+    try {
+      if (itemEditando) {
+        await api.put(`/itens/${itemEditando.id}`, formItem);
+        setFeedback({ tipo: 'sucesso', msg: 'Item do catálogo atualizado com sucesso!' });
+      } else {
+        await api.post('/itens', formItem);
+        setFeedback({ tipo: 'sucesso', msg: 'Item cadastrado no catálogo com sucesso!' });
+      }
+      setModalItem(false);
+      setItemEditando(null);
+      setFormItem({ nome: '', codigo_sku: '', tipo_item: 'PRODUTO', preco_venda: 0, preco_custo: 0, unidade_medida: 'UN', ncm: '', controla_estoque: true, is_ativo: true });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar item.' });
+    }
+  };
+
+  const handleToggleAtivoItem = async (item) => {
+    try {
+      await api.put(`/itens/${item.id}`, { ...item, is_ativo: !item.is_ativo });
+      setFeedback({ tipo: 'sucesso', msg: `Item ${!item.is_ativo ? 'ativado' : 'inativado'} com sucesso!` });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao alterar status do item.' });
+    }
+  };
+
+  const handleToggleAtivoDeposito = async (dep) => {
+    try {
+      await api.put(`/wms/depositos/${dep.id}`, { ...dep, is_ativo: !dep.is_ativo });
+      setFeedback({ tipo: 'sucesso', msg: `Almoxarifado ${!dep.is_ativo ? 'ativado' : 'inativado'} com sucesso!` });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao alterar status do almoxarifado.' });
     }
   };
 
@@ -155,16 +202,31 @@ export default function WmsPage() {
             Almoxarifado & WMS
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Múltiplos depósitos, transferências em trânsito, FEFO, Lotes e Curva ABC
+            Gestão de almoxarifados, catálogo de itens, FEFO, Lotes e Curva ABC
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setModalNovoDeposito(true)}
+            onClick={() => {
+              setDepositoEditando(null);
+              setFormDeposito({ nome: '', codigo: '', descricao: '', is_padrao: false, is_ativo: true });
+              setModalDeposito(true);
+            }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
           >
             <Plus className="h-4 w-4 text-indigo-400" /> Novo Almoxarifado
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setItemEditando(null);
+              setFormItem({ nome: '', codigo_sku: '', tipo_item: 'PRODUTO', preco_venda: 0, preco_custo: 0, unidade_medida: 'UN', ncm: '', controla_estoque: true, is_ativo: true });
+              setModalItem(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Package className="h-4 w-4 text-indigo-400" /> Novo Item
           </button>
           <button
             type="button"
@@ -210,6 +272,15 @@ export default function WmsPage() {
           </button>
           <button
             type="button"
+            onClick={() => setAbaAtiva('itens')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'itens' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Catálogo de Itens ({itens.length})
+          </button>
+          <button
+            type="button"
             onClick={() => setAbaAtiva('transferencias')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
               abaAtiva === 'transferencias' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
@@ -238,14 +309,16 @@ export default function WmsPage() {
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select
-            value={depositoFiltro}
-            onChange={(e) => setDepositoFiltro(e.target.value)}
-            className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
-          >
-            <option value="">Todos os Almoxarifados</option>
-            {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-          </select>
+          {abaAtiva === 'saldos' && (
+            <select
+              value={depositoFiltro}
+              onChange={(e) => setDepositoFiltro(e.target.value)}
+              className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+            >
+              <option value="">Todos os Almoxarifados</option>
+              {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+            </select>
+          )}
           <div className="relative w-full sm:w-60">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
@@ -322,7 +395,78 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Aba 2: Transferências em Trânsito */}
+      {/* Aba 2: Catálogo de Itens */}
+      {abaAtiva === 'itens' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">SKU / CÓDIGO</th>
+                <th className="py-3 px-4">NOME DO ITEM</th>
+                <th className="py-3 px-4">TIPO</th>
+                <th className="py-3 px-4 text-right">PREÇO VENDA</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+                <th className="py-3 px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {itens.length === 0 ? (
+                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhum item cadastrado.</td></tr>
+              ) : (
+                itens.map((i) => (
+                  <tr key={i.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-mono font-bold text-indigo-400">{i.codigo_sku}</td>
+                    <td className="py-3 px-4 font-medium text-white">{i.nome}</td>
+                    <td className="py-3 px-4 text-slate-400">{i.tipo_item}</td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">R$ {parseFloat(i.preco_venda || 0).toFixed(2)}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        i.is_ativo ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
+                      }`}>
+                        {i.is_ativo ? 'ATIVO' : 'INATIVO'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItemEditando(i);
+                          setFormItem({
+                            nome: i.nome,
+                            codigo_sku: i.codigo_sku,
+                            tipo_item: i.tipo_item,
+                            preco_venda: i.preco_venda,
+                            preco_custo: i.preco_custo || 0,
+                            unidade_medida: i.unidade_medida,
+                            ncm: i.ncm || '',
+                            controla_estoque: i.controla_estoque,
+                            is_ativo: i.is_ativo
+                          });
+                          setModalItem(true);
+                        }}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-400 font-bold cursor-pointer"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAtivoItem(i)}
+                        className={`px-2.5 py-1 rounded font-bold cursor-pointer ${
+                          i.is_ativo ? 'bg-rose-950/60 text-rose-300 hover:bg-rose-900' : 'bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900'
+                        }`}
+                      >
+                        {i.is_ativo ? 'Inativar' : 'Ativar'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aba 3: Transferências em Trânsito */}
       {abaAtiva === 'transferencias' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-left text-sm text-slate-300">
@@ -380,7 +524,7 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Aba 3: Almoxarifados Cadastrados */}
+      {/* Aba 4: Almoxarifados Cadastrados */}
       {abaAtiva === 'depositos' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-left text-sm text-slate-300">
@@ -391,6 +535,7 @@ export default function WmsPage() {
                 <th className="py-3 px-4">DESCRIÇÃO</th>
                 <th className="py-3 px-4 text-center">TIPO</th>
                 <th className="py-3 px-4 text-center">STATUS</th>
+                <th className="py-3 px-4 text-center">AÇÕES</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-xs">
@@ -407,7 +552,39 @@ export default function WmsPage() {
                     )}
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">ATIVO</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      d.is_ativo !== false ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
+                    }`}>
+                      {d.is_ativo !== false ? 'ATIVO' : 'INATIVO'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDepositoEditando(d);
+                        setFormDeposito({
+                          nome: d.nome,
+                          codigo: d.codigo,
+                          descricao: d.descricao || '',
+                          is_padrao: d.is_padrao,
+                          is_ativo: d.is_ativo !== false
+                        });
+                        setModalDeposito(true);
+                      }}
+                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-400 font-bold cursor-pointer"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAtivoDeposito(d)}
+                      className={`px-2.5 py-1 rounded font-bold cursor-pointer ${
+                        d.is_ativo !== false ? 'bg-rose-950/60 text-rose-300 hover:bg-rose-900' : 'bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900'
+                      }`}
+                    >
+                      {d.is_ativo !== false ? 'Inativar' : 'Ativar'}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -416,7 +593,7 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Aba 4: Curva ABC */}
+      {/* Aba 5: Curva ABC */}
       {abaAtiva === 'abc' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm space-y-4 p-4">
           <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -468,6 +645,65 @@ export default function WmsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Modal Cadastro/Edição de Item */}
+      {modalItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Package className="h-4 w-4 text-indigo-400" /> {itemEditando ? 'Editar Item do Catálogo' : 'Novo Item do Catálogo'}
+              </h3>
+              <button type="button" onClick={() => setModalItem(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarItem} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Nome do Produto / Serviço *</label>
+                <input type="text" required placeholder="Ex: Sensor NTC 10K" value={formItem.nome} onChange={(e) => setFormItem({ ...formItem, nome: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">SKU / Código *</label>
+                  <input type="text" required placeholder="Ex: SKU-001" value={formItem.codigo_sku} onChange={(e) => setFormItem({ ...formItem, codigo_sku: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono uppercase" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Tipo *</label>
+                  <select value={formItem.tipo_item} onChange={(e) => setFormItem({ ...formItem, tipo_item: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="PRODUTO">Produto</option>
+                    <option value="SERVICO">Serviço</option>
+                    <option value="MATERIA_PRIMA">Matéria-Prima</option>
+                    <option value="INSUMO">Insumo</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Preço Venda (R$) *</label>
+                  <input type="number" step="0.01" min="0" required value={formItem.preco_venda} onChange={(e) => setFormItem({ ...formItem, preco_venda: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Preço Custo (R$)</label>
+                  <input type="number" step="0.01" min="0" value={formItem.preco_custo} onChange={(e) => setFormItem({ ...formItem, preco_custo: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Unidade *</label>
+                  <input type="text" required placeholder="Ex: UN, KG, PC" value={formItem.unidade_medida} onChange={(e) => setFormItem({ ...formItem, unidade_medida: e.target.value.toUpperCase() })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono uppercase" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">NCM</label>
+                  <input type="text" placeholder="Ex: 90251990" value={formItem.ncm} onChange={(e) => setFormItem({ ...formItem, ncm: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalItem(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Salvar Item</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -613,13 +849,15 @@ export default function WmsPage() {
         </div>
       )}
 
-      {/* Modal Novo Almoxarifado */}
-      {modalNovoDeposito && (
+      {/* Modal Cadastro/Edição de Almoxarifado */}
+      {modalDeposito && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Warehouse className="h-4 w-4 text-indigo-400" /> Cadastrar Almoxarifado</h3>
-              <button type="button" onClick={() => setModalNovoDeposito(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Warehouse className="h-4 w-4 text-indigo-400" /> {depositoEditando ? 'Editar Almoxarifado' : 'Cadastrar Almoxarifado'}
+              </h3>
+              <button type="button" onClick={() => setModalDeposito(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
             </div>
             <form onSubmit={handleSalvarDeposito} className="space-y-3 text-xs">
               <div>
@@ -635,8 +873,8 @@ export default function WmsPage() {
                 <input type="text" placeholder="Ex: Galpão Logístico Bloco B" value={formDeposito.descricao} onChange={(e) => setFormDeposito({ ...formDeposito, descricao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovoDeposito(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Cadastrar</button>
+                <button type="button" onClick={() => setModalDeposito(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Salvar Almoxarifado</button>
               </div>
             </form>
           </div>
