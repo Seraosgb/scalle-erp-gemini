@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { 
   Boxes, Plus, Search, ArrowRightLeft, Upload, CheckCircle2, 
-  AlertTriangle, X, Check, TrendingUp, Warehouse, Package, MapPin
+  AlertTriangle, X, Check, TrendingUp, Warehouse, Package
 } from 'lucide-react';
 
 export default function WmsPage() {
@@ -26,16 +26,7 @@ export default function WmsPage() {
   const [transfSelecionada, setTransfSelecionada] = useState(null);
 
   // Formulários
-  const [formAjuste, setFormAjuste] = useState({ 
-    deposito_id: '', 
-    item_id: '', 
-    novo_saldo: '', 
-    motivo: 'Inventário Físico', 
-    lote: '', 
-    data_validade: '',
-    localizacao_rua: '',
-    localizacao_predio: ''
-  });
+  const [formAjuste, setFormAjuste] = useState({ deposito_id: '', item_id: '', novo_saldo: '', motivo: 'Inventário Físico', lote: '', data_validade: '' });
   const [formTransf, setFormTransf] = useState({ deposito_origem_id: '', deposito_destino_id: '', item_id: '', quantidade: '', modalidade: 'EM_TRANSITO', lote: '', observacoes: '' });
   const [formConferencia, setFormConferencia] = useState({ quantidade_recebida: '', motivo_divergencia: '' });
   const [formDeposito, setFormDeposito] = useState({ nome: '', codigo: '', descricao: '', is_padrao: false });
@@ -84,7 +75,7 @@ export default function WmsPage() {
     try {
       await api.post('/wms/ajustar-saldo', formAjuste);
       setModalAjuste(false);
-      setFeedback({ tipo: 'sucesso', msg: 'Saldo ajustado e endereçamento logístico gravado com sucesso!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Saldo ajustado com sucesso!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao ajustar saldo.' });
@@ -121,7 +112,7 @@ export default function WmsPage() {
       await api.post('/wms/depositos', formDeposito);
       setModalNovoDeposito(false);
       setFormDeposito({ nome: '', codigo: '', descricao: '', is_padrao: false });
-      setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado cadastrado com sucesso!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado cadastrado!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao cadastrar depósito.' });
@@ -155,7 +146,7 @@ export default function WmsPage() {
             Almoxarifado & WMS
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Múltiplos depósitos, transferências em trânsito, FEFO, Lotes e Curva ABC
+            Múltiplos depósitos, transferências em trânsito, FEFO e Curva ABC
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -186,7 +177,7 @@ export default function WmsPage() {
           <button
             type="button"
             onClick={() => {
-              setFormAjuste({ deposito_id: depositos[0]?.id || '', item_id: '', novo_saldo: '', motivo: 'Inventário Físico', lote: '', data_validade: '', localizacao_rua: '', localizacao_predio: '' });
+              setFormAjuste({ deposito_id: depositos[0]?.id || '', item_id: '', novo_saldo: '', motivo: 'Inventário Físico', lote: '', data_validade: '' });
               setModalAjuste(true);
             }}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 cursor-pointer transition"
@@ -280,7 +271,7 @@ export default function WmsPage() {
                 <th className="py-3 px-4">ITEM / DESCRIÇÃO</th>
                 <th className="py-3 px-4">ALMOXARIFADO</th>
                 <th className="py-3 px-4">LOTE / VALIDADE (FEFO)</th>
-                <th className="py-3 px-4">ENDEREÇAMENTO LOGÍSTICO</th>
+                <th className="py-3 px-4">ENDEREÇAMENTO</th>
                 <th className="py-3 px-4 text-right">SALDO FÍSICO</th>
               </tr>
             </thead>
@@ -307,9 +298,8 @@ export default function WmsPage() {
                         <span className="text-slate-500">Sem lote</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-slate-400 text-[11px] font-mono flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-indigo-400" />
-                      {s.localizacao_rua ? `Rua ${s.localizacao_rua} / Prédio ${s.localizacao_predio || 'P01'}` : 'Não Endereçado'}
+                    <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
+                      {s.localizacao_rua ? `Rua ${s.localizacao_rua} / Prédio ${s.localizacao_predio}` : '-'}
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-sm font-bold text-emerald-400">
                       {parseFloat(s.quantidade_saldo || 0).toFixed(2)}
@@ -500,17 +490,7 @@ export default function WmsPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Lote</label>
-                  <input type="text" placeholder="Ex: LOT-2026" value={formAjuste.lote} onChange={(e) => setFormAjuste({ ...formAjuste, lote: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono uppercase" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Rua / Corredor</label>
-                  <input type="text" placeholder="Ex: A01" value={formAjuste.localizacao_rua} onChange={(e) => setFormAjuste({ ...formAjuste, localizacao_rua: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono uppercase" />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Prédio / Estante</label>
-                  <input type="text" placeholder="Ex: P02" value={formAjuste.localizacao_predio} onChange={(e) => setFormAjuste({ ...formAjuste, localizacao_predio: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono uppercase" />
+                  <input type="text" placeholder="Ex: LOT-2026" value={formAjuste.lote} onChange={(e) => setFormAjuste({ ...formAjuste, lote: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
                 </div>
               </div>
               <div>
@@ -523,7 +503,7 @@ export default function WmsPage() {
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalAjuste(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Gravar Ajuste</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Gravar Ajuste</button>
               </div>
             </form>
           </div>
@@ -576,7 +556,7 @@ export default function WmsPage() {
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalTransf(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Despachar Transferência</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Despachar Transferência</button>
               </div>
             </form>
           </div>
@@ -606,7 +586,7 @@ export default function WmsPage() {
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalConferir(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer">Confirmar Entrada no WMS</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Confirmar Entrada no WMS</button>
               </div>
             </form>
           </div>
@@ -628,7 +608,7 @@ export default function WmsPage() {
               </div>
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Código Identificador (TAG) *</label>
-                <input type="text" required placeholder="Ex: DEP-02" value={formDeposito.codigo} onChange={(e) => setFormDeposito({ ...formDeposito, codigo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono uppercase" />
+                <input type="text" required placeholder="Ex: DEP-02" value={formDeposito.codigo} onChange={(e) => setFormDeposito({ ...formDeposito, codigo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
               </div>
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Descrição / Localização</label>
@@ -636,7 +616,7 @@ export default function WmsPage() {
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalNovoDeposito(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Cadastrar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Cadastrar</button>
               </div>
             </form>
           </div>
@@ -660,11 +640,11 @@ export default function WmsPage() {
               </div>
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Arquivo XML da NF-e *</label>
-                <input type="file" accept=".xml" required onChange={(e) => setArquivoXml(e.target.files[0])} className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white cursor-pointer" />
+                <input type="file" accept=".xml" required onChange={(e) => setArquivoXml(e.target.files[0])} className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white" />
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => setModalXml(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Processar XML</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Processar XML</button>
               </div>
             </form>
           </div>
