@@ -20,7 +20,7 @@ import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
-import MasterPage from './pages/master/MasterDashboardPage';
+import MasterPage from './pages/master/MasterPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -35,14 +35,17 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/app">
+      <BrowserRouter>
         <Routes>
           {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
 
-          {/* Rotas Protegidas sob o AppLayout */}
-          <Route path="/" element={<AppLayout />}>
+          {/* Redirecionamento da raiz pura */}
+          <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+
+          {/* Rotas Protegidas sob o Layout /app */}
+          <Route path="/app" element={<AppLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="wms" element={<WmsPage />} />
@@ -61,8 +64,8 @@ export default function App() {
             <Route path="master" element={<MasterPage />} />
           </Route>
 
-          {/* Fallback Seguro: Nunca redireciona para login cegamente */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* Fallback de Segurança */}
+          <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
