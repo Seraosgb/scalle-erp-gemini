@@ -38,6 +38,7 @@ export default function OrdensServicoPage() {
   const [modalConcluir, setModalConcluir] = useState(false);
   const [modalFoto, setModalFoto] = useState(false);
   const [modalAddPeca, setModalAddPeca] = useState(false);
+  const [modalImprimirLaudo, setModalImprimirLaudo] = useState(false);
   const [osSelecionada, setOsSelecionada] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
@@ -91,32 +92,30 @@ export default function OrdensServicoPage() {
   const carregarDadosIniciais = async () => {
     setLoading(true);
     try {
-      // 1. Carregamento ultra-rápido via Endpoint Bootstrap
       const resBootstrap = await api.get('/os/bootstrap', { params: { search } });
       const data = resBootstrap.data?.data || {};
-      
+
       setOrdens(data.ordens || []);
       setMetricasCmms(data.metricas || { mttr_horas: 0, mtbf_dias: 0, sla_conformidade_percent: 100, total_concluidas: 0, total_corretivas: 0 });
       setPrioridades(data.prioridades || []);
     } catch (err) {
-      // Fallback em caso de lentidão
       try {
         const resOs = await api.get('/os', { params: { search } });
-        setOrdens(resOs.data.data || []);
+        const raw = resOs.data?.data;
+        setOrdens(Array.isArray(raw) ? raw : (raw?.data || []));
       } catch (e) {}
     } finally {
       setLoading(false);
     }
 
-    // 2. Carregamento assíncrono em segundo plano (não bloqueia a renderização)
     try {
       const [resCli, resUsers, resDeps, resItens, resAtivos, resPmoc] = await Promise.all([
-        api.get('/pessoas', { params: { tipo: 'CLIENTE' } }),
-        api.get('/usuarios'),
-        api.get('/wms/depositos'),
-        api.get('/itens'),
-        api.get('/ativos'),
-        api.get('/os/planos-preventivos')
+        api.get('/pessoas', { params: { tipo: 'CLIENTE' } }).catch(() => ({ data: { data: [] } })),
+        api.get('/usuarios').catch(() => ({ data: { data: [] } })),
+        api.get('/wms/depositos').catch(() => ({ data: { data: [] } })),
+        api.get('/itens').catch(() => ({ data: { data: [] } })),
+        api.get('/ativos').catch(() => ({ data: { data: [] } })),
+        api.get('/os/planos-preventivos').catch(() => ({ data: { data: [] } }))
       ]);
 
       const cliList = resCli.data?.data || [];
@@ -359,23 +358,6 @@ export default function OrdensServicoPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
-      {/* Estilo CSS A4 Dedicado para Impressão */}
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          #laudo-impressao-a4, #laudo-impressao-a4 * { visibility: visible; }
-          #laudo-impressao-a4 {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            background: white !important;
-            color: black !important;
-            padding: 20px;
-          }
-        }
-      `}</style>
-
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
@@ -384,7 +366,7 @@ export default function OrdensServicoPage() {
             Ordens de Serviço & CMMS 100%
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Apontamento contínuo de horas técnicas, workflow de almoxarifado, PMOC e assinatura digital (MP 2.200-2)
+            Apontamento contínuo de horas técnicas, workflow de almoxarifado, PMOC e laudo com assinatura digital (MP 2.200-2)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -505,7 +487,6 @@ export default function OrdensServicoPage() {
         </div>
       </div>
 
-      {/* Feedback Toast */}
       {feedback && (
         <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
           feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
@@ -848,7 +829,7 @@ export default function OrdensServicoPage() {
               </div>
 
               <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovaOs(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="button" onClick={() => setModalNovaOs(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
                 <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Registrar Chamado</button>
               </div>
             </form>
@@ -895,7 +876,7 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovoAtivo(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="button" onClick={() => setModalNovoAtivo(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
                 <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Ativo</button>
               </div>
             </form>
@@ -953,7 +934,7 @@ export default function OrdensServicoPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovoPmoc(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="button" onClick={() => setModalNovoPmoc(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
                 <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Cronograma</button>
               </div>
             </form>
@@ -965,7 +946,7 @@ export default function OrdensServicoPage() {
       {modalDetalhes && osSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
-            
+
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 gap-3 shrink-0">
               <div>
@@ -989,7 +970,7 @@ export default function OrdensServicoPage() {
 
             {/* Corpo do Painel */}
             <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 text-xs">
-              
+
               {/* Barra de Transição de Status */}
               {osSelecionada.status !== 'CONCLUIDA' && (
                 <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5">
@@ -1090,7 +1071,6 @@ export default function OrdensServicoPage() {
                             {it.status_requisicao || 'RETIRADO'}
                           </span>
 
-                          {/* Ações do Almoxarife */}
                           {osSelecionada.status !== 'CONCLUIDA' && (
                             <div className="flex items-center gap-1">
                               {it.status_requisicao === 'SOLICITADO' && (
@@ -1210,8 +1190,8 @@ export default function OrdensServicoPage() {
                   <PenTool className="h-4 w-4" /> Concluir OS & Coletar Assinatura Digital
                 </button>
               ) : (
-                <button type="button" onClick={() => window.print()} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5">
-                  <Printer className="h-4 w-4" /> Imprimir Relatório
+                <button type="button" onClick={() => setModalImprimirLaudo(true)} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md">
+                  <Printer className="h-4 w-4" /> Visualizar & Imprimir Laudo Oficial
                 </button>
               )}
               <button type="button" onClick={() => setModalDetalhes(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium text-xs cursor-pointer">Fechar</button>
@@ -1260,7 +1240,7 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalAddPeca(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="button" onClick={() => setModalAddPeca(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
                 <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Requisitar</button>
               </div>
             </form>
@@ -1284,7 +1264,6 @@ export default function OrdensServicoPage() {
                 <textarea required rows="3" placeholder="Descreva os reparos, testes de pressão e parametrizações realizadas..." value={laudoTecnico} onChange={(e) => setLaudoTecnico(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
               </div>
 
-              {/* Responsável e Assinatura */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Nome do Recebedor *</label>
@@ -1377,76 +1356,126 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Relatório A4 Vetorial Oculto para Impressão */}
-      {osSelecionada && (
-        <div id="laudo-impressao-a4" className="hidden">
-          <div className="border-b-2 border-slate-900 pb-4 mb-4 flex justify-between items-start">
-            <div>
-              <h1 className="text-xl font-bold uppercase">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ERP'}</h1>
-              <p className="text-xs text-slate-600">CNPJ: {osSelecionada.empresa?.cnpj || '00.000.000/0001-91'}</p>
+      {/* Modal Laudo Técnico Oficial para Visualização e Impressão A4 */}
+      {modalImprimirLaudo && osSelecionada && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl p-6 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <FileText className="h-4 w-4 text-indigo-400" /> Laudo Técnico Oficial: OS #{osSelecionada.numero_os}
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Imprimir Laudo (A4)
+                </button>
+                <button type="button" onClick={() => setModalImprimirLaudo(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+              </div>
             </div>
-            <div className="text-right">
-              <h2 className="text-lg font-mono font-bold">RELATÓRIO TÉCNICO DE OS #{osSelecionada.numero_os}</h2>
-              <p className="text-xs text-slate-600">Emissão: {new Date().toLocaleString('pt-BR')}</p>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-4 text-xs border p-3 rounded">
-            <div>
-              <strong>Cliente:</strong> {osSelecionada.cliente?.nome_razao_social}<br />
-              <strong>Equipamento:</strong> {osSelecionada.equipamento_descricao}<br />
-              <strong>Marca/Modelo:</strong> {osSelecionada.equipamento_marca_modelo || '-'}<br />
-              <strong>Nº de Série:</strong> {osSelecionada.equipamento_numero_serie || '-'}
-            </div>
-            <div>
-              <strong>Técnico Responsável:</strong> {osSelecionada.tecnico?.name || '-'}<br />
-              <strong>Tipo de Manutenção:</strong> {osSelecionada.tipo_manutencao}<br />
-              <strong>Data de Abertura:</strong> {new Date(osSelecionada.data_abertura).toLocaleString('pt-BR')}<br />
-              <strong>Data de Conclusão:</strong> {osSelecionada.data_conclusao ? new Date(osSelecionada.data_conclusao).toLocaleString('pt-BR') : 'Em andamento'}
-            </div>
-          </div>
+            {/* Documento A4 */}
+            <div id="laudo-oficial-impressao" className="bg-white text-slate-900 p-6 sm:p-8 rounded-xl font-sans text-xs space-y-4 select-text">
+              {/* Cabeçalho */}
+              <div className="flex justify-between items-start border-b border-slate-300 pb-4">
+                <div className="space-y-1">
+                  <div className="text-xl font-black tracking-tight text-indigo-900">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ENTERPRISE'}</div>
+                  <div className="text-[11px] text-slate-600">{osSelecionada.empresa?.razao_social || 'Aliados da Manutenção'}</div>
+                  <div className="text-[10px] text-slate-500">CNPJ: {osSelecionada.empresa?.cnpj || '00.000.000/0001-91'}</div>
+                </div>
+                <div className="text-right space-y-1 font-mono">
+                  <div className="text-base font-black text-indigo-600">OS #{osSelecionada.numero_os}</div>
+                  <div className="text-[11px] text-slate-600">Data: {new Date(osSelecionada.data_abertura).toLocaleDateString('pt-BR')}</div>
+                  <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold">{osSelecionada.tipo_manutencao}</div>
+                </div>
+              </div>
 
-          <div className="mb-4 text-xs border p-3 rounded">
-            <strong className="block mb-1">Defeito Reclamado pelo Cliente:</strong>
-            <p className="text-slate-700">{osSelecionada.defeito_reclamado}</p>
-          </div>
+              {/* Cliente e Equipamento */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px]">
+                <div>
+                  <span className="font-bold text-slate-700 block">CLIENTE:</span>
+                  <div className="font-medium text-slate-900">{osSelecionada.cliente?.nome_razao_social}</div>
+                  <div className="text-slate-500">Documento: {osSelecionada.cliente?.cpf_cnpj}</div>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-700 block">EQUIPAMENTO / ATIVO:</span>
+                  <div className="font-medium text-slate-900">{osSelecionada.equipamento_descricao}</div>
+                  <div className="text-slate-500">Marca/Modelo: {osSelecionada.equipamento_marca_modelo || 'N/A'} | Série: {osSelecionada.equipamento_numero_serie || 'N/A'}</div>
+                </div>
+              </div>
 
-          <div className="mb-4 text-xs border p-3 rounded">
-            <strong className="block mb-1">Laudo Técnico dos Serviços Executados:</strong>
-            <p className="text-slate-700">{osSelecionada.servico_executado || osSelecionada.diagnostico_tecnico || 'Sem laudo registrado.'}</p>
-          </div>
+              {/* Diagnóstico e Laudo */}
+              <div className="space-y-2">
+                <div>
+                  <span className="font-bold text-slate-800 block">DEFEITO RECLAMADO:</span>
+                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.defeito_reclamado}</p>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-800 block">LAUDO TÉCNICO & SERVIÇO EXECUTADO:</span>
+                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.servico_executado || osSelecionada.diagnostico_tecnico || 'Execução técnica em conformidade com as normas.'}</p>
+                </div>
+              </div>
 
-          <div className="mb-4 text-xs">
-            <strong className="block mb-2">Materiais, Peças e Insumos Aplicados:</strong>
-            <table className="w-full text-left border text-xs">
-              <thead className="bg-slate-100 border-b">
-                <tr>
-                  <th className="p-2">Item / Descrição</th>
-                  <th className="p-2 text-center">Qtd</th>
-                  <th className="p-2 text-right">Valor Un.</th>
-                  <th className="p-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {osSelecionada.itens?.map((it) => (
-                  <tr key={it.id}>
-                    <td className="p-2">{it.item?.nome}</td>
-                    <td className="p-2 text-center">{it.quantidade}</td>
-                    <td className="p-2 text-right">R$ {parseFloat(it.valor_unitario).toFixed(2)}</td>
-                    <td className="p-2 text-right">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              {/* Peças e Insumos */}
+              {osSelecionada.itens && osSelecionada.itens.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <span className="font-bold text-slate-800 block">MATERIAIS E PEÇAS APLICADOS:</span>
+                  <table className="w-full text-left border border-slate-200 text-[10px]">
+                    <thead className="bg-slate-100 border-b border-slate-200">
+                      <tr>
+                        <th className="p-1.5">Item</th>
+                        <th className="p-1.5 text-center">Qtd</th>
+                        <th className="p-1.5 text-right">Valor Unitário</th>
+                        <th className="p-1.5 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 font-mono">
+                      {osSelecionada.itens.map((it) => (
+                        <tr key={it.id}>
+                          <td className="p-1.5 font-sans">{it.item?.nome}</td>
+                          <td className="p-1.5 text-center">{it.quantidade}</td>
+                          <td className="p-1.5 text-right">R$ {parseFloat(it.valor_unitario).toFixed(2)}</td>
+                          <td className="p-1.5 text-right font-bold">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-          <div className="border-t-2 border-slate-900 pt-4 flex justify-between items-end text-xs">
-            <div>
-              <p><strong>Aceite do Cliente (MP 2.200-2/2001):</strong> {osSelecionada.nome_responsavel_recebimento || '_______________________________'}</p>
-              <p className="text-[10px] text-slate-500 font-mono">Hash SHA-256: {osSelecionada.hash_assinatura_sha256 || 'Assinatura pendente'}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-base font-bold">TOTAL DA OS: R$ {parseFloat(osSelecionada.valor_total || 0).toFixed(2)}</p>
+              {/* Evidências Fotográficas */}
+              {osSelecionada.fotos && osSelecionada.fotos.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                  <span className="font-bold text-slate-800 block">EVIDÊNCIAS FOTOGRÁFICAS (COMPROVAÇÃO TÉCNICA):</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {osSelecionada.fotos.map((f) => (
+                      <div key={f.id} className="border border-slate-200 rounded p-1 text-center bg-slate-50">
+                        <img src={f.url_arquivo} alt="Evidência" className="h-24 w-full object-cover rounded" />
+                        <span className="text-[9px] font-bold text-indigo-700 block mt-1">{f.tipo_etapa}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Assinatura Jurídica e Hash MP 2.200-2 */}
+              <div className="border-t border-slate-300 pt-4 flex justify-between items-end">
+                <div className="space-y-1 font-mono text-[9px] text-slate-500 max-w-sm">
+                  <div className="font-bold text-slate-700">CONFORMIDADE JURÍDICA MP 2.200-2/2001:</div>
+                  <div className="truncate">Hash SHA-256: {osSelecionada.hash_assinatura_sha256 || 'Assinatura Registrada'}</div>
+                  <div>IP: {osSelecionada.ip_assinatura || '127.0.0.1'} | Data: {osSelecionada.assinado_em ? new Date(osSelecionada.assinado_em).toLocaleString('pt-BR') : 'N/A'}</div>
+                </div>
+                <div className="text-center">
+                  {osSelecionada.assinatura_cliente_base64 && (
+                    <img src={osSelecionada.assinatura_cliente_base64} alt="Assinatura" className="h-12 mx-auto" />
+                  )}
+                  <div className="border-t border-slate-400 w-48 mt-1 pt-1 font-bold text-[10px] text-slate-800">
+                    {osSelecionada.nome_responsavel_recebimento || osSelecionada.cliente?.nome_razao_social}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
