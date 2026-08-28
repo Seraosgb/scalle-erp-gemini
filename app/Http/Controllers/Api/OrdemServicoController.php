@@ -406,13 +406,28 @@ class OrdemServicoController extends Controller
     {
         $user = $request->user();
         $tenantId = $user->tenant_id;
+        $search = trim((string) $request->get('search'));
 
-        // 1. Ordens de Serviço recentes
-        $ordens = OrdemServico::where('tenant_id', $tenantId)
-            ->with(['cliente:id,nome_razao_social', 'tecnico:id,name', 'deposito:id,nome'])
-            ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
+        // 1. Query com filtro por busca
+        $query = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente:id,nome_razao_social', 'tecnico:id,name', 'deposito:id,nome']);
+
+        if (!empty($search)) {
+            $apenasNumero = preg_replace('/[^0-9]/', '', $search);
+
+            $query->where(function ($q) use ($search, $apenasNumero) {
+                if (!empty($apenasNumero)) {
+                    $q->where('numero_os', (int) $apenasNumero);
+                }
+                $q->orWhere('equipamento_descricao', 'ILIKE', "%{$search}%")
+                  ->orWhere('equipamento_marca_modelo', 'ILIKE', "%{$search}%")
+                  ->orWhere('defeito_reclamado', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('cliente', fn($c) => $c->where('nome_razao_social', 'ILIKE', "%{$search}%"))
+                  ->orWhereHas('tecnico', fn($t) => $t->where('name', 'ILIKE', "%{$search}%"));
+            });
+        }
+
+        $ordens = $query->orderByDesc('created_at')->limit(50)->get();
 
         // 2. Cálculo real de MTTR, MTBF e Conformidade SLA
         $concluidas = OrdemServico::where('tenant_id', $tenantId)
@@ -435,7 +450,6 @@ class OrdemServicoController extends Controller
             ->where('tipo_manutencao', 'CORRETIVA')
             ->count();
 
-        // Atrasos reduzem a conformidade
         $dentroDoPrazo = $concluidas->filter(function ($os) {
             return $os->prazo_sla_resolucao && $os->data_conclusao <= $os->prazo_sla_resolucao;
         })->count();

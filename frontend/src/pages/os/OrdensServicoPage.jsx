@@ -185,7 +185,11 @@ export default function OrdensServicoPage() {
   };
 
   useEffect(() => {
-    carregarDadosIniciais();
+    const delay = setTimeout(() => {
+      carregarDadosIniciais();
+    }, 300);
+
+    return () => clearTimeout(delay);
   }, [search]);
 
   const abrirPainelDetalhes = (os) => {
