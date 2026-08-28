@@ -14,6 +14,7 @@ import PortalOsPage from './pages/portal/PortalOsPage';
 import PcpPage from './pages/pcp/PcpPage';
 import VendasPage from './pages/vendas/VendasPage';
 import PdvPage from './pages/vendas/PdvPage';
+import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -57,6 +58,7 @@ export default function App() {
             <Route path="pcp" element={<PcpPage />} />
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />
+            <Route path="/app/exportacoes" element={<ExportacoesPage />} />
           </Route>
 
           {/* Fallback 404 */}

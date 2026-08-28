@@ -176,3 +176,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/pcp/estruturas', [\App\Http\Controllers\Api\PcpController::class, 'storeEstrutura']);
     Route::delete('/pcp/estruturas/{id}', [\App\Http\Controllers\Api\PcpController::class, 'destroyEstruturaItem']);
 });
+Route::middleware(['auth:sanctum', \App\Http\Middleware\IdentifyTenant::class, \App\Http\Middleware\CheckSubscriptionStatus::class])->group(function () {
+    Route::get('/exportacoes/metricas', [\App\Http\Controllers\Api\ExportacaoContabilController::class, 'metricas']);
+    Route::get('/exportacoes/download', [\App\Http\Controllers\Api\ExportacaoContabilController::class, 'download']);
+});
