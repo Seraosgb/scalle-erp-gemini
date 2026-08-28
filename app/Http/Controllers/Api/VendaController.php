@@ -272,4 +272,97 @@ class VendaController extends Controller
         }
         return $consumidor->id;
     }
+    public function listarAlcadasPendentes(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $alcadas = \App\Models\AlcadaAprovacao::where('tenant_id', $tenantId)
+            ->where('status', 'PENDENTE')
+            ->with(['solicitante'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $alcadas]);
+    }
+
+    public function responderAlcada(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $alcada = \App\Models\AlcadaAprovacao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'status' => 'required|string|in:APROVADO,REJEITADO',
+            'justificativa' => 'nullable|string|max:255',
+        ]);
+
+        $statusAprov = $validated['status'];
+        $user = $request->user();
+
+        \DB::transaction(function () use ($alcada, $statusAprov, $validated, $user) {
+            $alcada->update([
+                'aprovador_id' => $user->id,
+                'status' => $statusAprov,
+                'justificativa_resposta' => $validated['justificativa'] ?? null,
+                'respondido_em' => now(),
+            ]);
+
+            // Se for aprovado, libera o pedido e executa a baixa no WMS e financeiro
+            if ($alcada->entidade_origem === 'pedidos' || $alcada->entidade_origem === 'vendas') {
+                $pedido = \App\Models\PedidoVenda::find($alcada->registro_origem_id);
+                if ($pedido) {
+                    if ($statusAprov === 'APROVADO') {
+                        $pedido->update(['status' => 'FATURADO']);
+
+                        foreach ($pedido->itens as $item) {
+                            \App\Services\EstoqueService::movimentar(
+                                $pedido->deposito_saida_id,
+                                $item->item_id,
+                                (float) $item->quantidade,
+                                'SAIDA_VENDA',
+                                $user->id,
+                                'vendas',
+                                $pedido->id,
+                                $item->lote,
+                                (float) $item->preco_venda_unitario
+                            );
+                        }
+                    } else {
+                        $pedido->update(['status' => 'CANCELADO', 'observacoes' => 'Desconto rejeitado pela gerência']);
+                    }
+                }
+            }
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => "Solicitação de alçada {$statusAprov} com sucesso!",
+                'alcada' => $alcada
+            ]
+        ]);
+    }
+
+    public function extratoComissoes(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $dtInicio = $request->get('data_inicio', now()->startOfMonth()->toDateString());
+        $dtFim = $request->get('data_fim', now()->endOfMonth()->toDateString());
+
+        $vendas = \App\Models\PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereBetween('data_emissao', [$dtInicio, $dtFim])
+            ->with(['vendedor', 'cliente'])
+            ->orderByDesc('data_emissao')
+            ->get();
+
+        $totalComissoes = $vendas->sum('valor_comissao_vendedor') ?? 0.00;
+        $totalVendas = $vendas->sum('valor_total_liquido') ?? 0.00;
+
+        return response()->json([
+            'data' => [
+                'periodo' => ['inicio' => $dtInicio, 'fim' => $dtFim],
+                'total_faturamento' => (float) $totalVendas,
+                'total_comissoes' => (float) $totalComissoes,
+                'vendas' => $vendas,
+            ]
+        ]);
+    }
 }

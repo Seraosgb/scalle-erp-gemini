@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
+import { pdvOfflineService } from '../../services/pdvOfflineService';
 import { 
   ShoppingCart, Plus, Trash2, CheckCircle2, AlertTriangle, 
   X, Search, DollarSign, CreditCard, QrCode, Banknote, 
-  Receipt, ArrowRight, Printer, Package, Layers, AlertCircle, Minus
+  Receipt, ArrowRight, Printer, Package, Layers, AlertCircle, Minus,
+  Wifi, WifiOff, RefreshCw, ShieldCheck
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -19,9 +21,16 @@ export default function PdvPage() {
   const [descontoGeral, setDescontoGeral] = useState('0');
   const [emitirCupom, setEmitirCupom] = useState(true);
 
+  // Status de Conexão e Fila Offline
+  const [isOnline, setIsOnline] = useState(window.navigator.onLine);
+  const [pendentesOffline, setPendentesOffline] = useState(0);
+  const [sincronizando, setSincronizando] = useState(false);
+
   // Modais e Pagamento
   const [modalPagamento, setModalPagamento] = useState(false);
   const [modalComprovante, setModalComprovante] = useState(false);
+  const [modalAlcadas, setModalAlcadas] = useState(false);
+  const [alcadasPendentes, setAlcadasPendentes] = useState([]);
   const [vendaFinalizada, setVendaFinalizada] = useState(null);
   const [linhasPagamento, setLinhasPagamento] = useState([
     { forma_pagamento: 'DINHEIRO', valor_pago: '' }
@@ -30,6 +39,55 @@ export default function PdvPage() {
   const [loading, setLoading] = useState(false);
 
   const inputBuscaRef = useRef(null);
+
+  // Monitorar Status de Rede e Contar Fila Offline
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      sincronizarFilaOffline();
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    atualizarContadorOffline();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const atualizarContadorOffline = async () => {
+    try {
+      const lista = await pdvOfflineService.listarVendasPendentes();
+      setPendentesOffline(lista.length);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const sincronizarFilaOffline = async () => {
+    try {
+      const lista = await pdvOfflineService.listarVendasPendentes();
+      if (lista.length === 0) return;
+
+      setSincronizando(true);
+      const res = await api.post('/vendas/sincronizar-lote', { vendas: lista });
+      
+      for (const item of lista) {
+        await pdvOfflineService.removerVendaSincronizada(item.offline_id);
+      }
+
+      setFeedback({ tipo: 'sucesso', msg: `${res.data.data.total_sincronizadas} venda(s) offline sincronizada(s) com sucesso!` });
+      atualizarContadorOffline();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSincronizando(false);
+    }
+  };
 
   const carregarDados = async () => {
     try {
@@ -69,6 +127,15 @@ export default function PdvPage() {
     }
   };
 
+  const carregarAlcadas = async () => {
+    try {
+      const res = await api.get('/vendas/alcadas/pendentes');
+      setAlcadasPendentes(res.data?.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     carregarDados();
     if (inputBuscaRef.current) inputBuscaRef.current.focus();
@@ -78,7 +145,7 @@ export default function PdvPage() {
     carregarSaldosDoDeposito();
   }, [depositoId]);
 
-  // Listener de Atalhos de Teclado de Frente de Caixa
+  // Listener de Atalhos de Teclado
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F2') {
@@ -93,6 +160,7 @@ export default function PdvPage() {
       } else if (e.key === 'Escape') {
         setModalPagamento(false);
         setModalComprovante(false);
+        setModalAlcadas(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -172,29 +240,48 @@ export default function PdvPage() {
     e.preventDefault();
     if (carrinho.length === 0) return;
     if (totalPagoDigitado < totalLiquido) {
-      alert(`O valor total pago (R$ ${totalPagoDigitado.toFixed(2)}) não pode ser inferior ao total da venda (R$ ${totalLiquido.toFixed(2)}).`);
+      alert(`O valor total pago (R$ ${totalPagoDigitado.toFixed(2)}) não pode ser inferior ao total da venda.`);
       return;
     }
 
-    setLoading(true);
-    try {
-      const payload = {
-        deposito_id: depositoId,
-        cliente_id: clienteId || null,
-        desconto_geral: desconto,
-        emitir_cupom_fiscal: emitirCupom,
-        itens: carrinho.map((i) => ({
-          item_id: i.item_id,
-          quantidade: i.quantidade,
-          preco_unitario: i.preco_unitario,
-        })),
-        pagamentos: linhasPagamento.map((l) => ({
-          forma_pagamento: l.forma_pagamento,
-          valor_pago: parseFloat(l.valor_pago) || 0,
-          valor_troco: l.forma_pagamento === 'DINHEIRO' ? troco : 0,
-        })),
-      };
+    const payload = {
+      deposito_id: depositoId,
+      cliente_id: clienteId || null,
+      desconto_geral: desconto,
+      emitir_cupom_fiscal: emitirCupom,
+      itens: carrinho.map((i) => ({
+        item_id: i.item_id,
+        quantidade: i.quantidade,
+        preco_unitario: i.preco_unitario,
+      })),
+      pagamentos: linhasPagamento.map((l) => ({
+        forma_pagamento: l.forma_pagamento,
+        valor_pago: parseFloat(l.valor_pago) || 0,
+        valor_troco: l.forma_pagamento === 'DINHEIRO' ? troco : 0,
+      })),
+    };
 
+    setLoading(true);
+
+    // Se offline ou falha de rede, persiste localmente
+    if (!isOnline) {
+      await pdvOfflineService.salvarVendaOffline(payload);
+      setVendaFinalizada({
+        numero_pedido: 'OFFLINE',
+        valor_total_liquido: totalLiquido,
+        itens: carrinho.map(i => ({ item: { nome: i.nome }, quantidade: i.quantidade, valor_total_liquido: i.total }))
+      });
+      setFeedback({ tipo: 'sucesso', msg: 'Venda salva em CONTINGÊNCIA OFFLINE com sucesso!' });
+      setCarrinho([]);
+      setDescontoGeral('0');
+      setModalPagamento(false);
+      setModalComprovante(true);
+      atualizarContadorOffline();
+      setLoading(false);
+      return;
+    }
+
+    try {
       const res = await api.post('/vendas/faturar', payload);
       const pedidoCriado = res.data.data.pedido;
       setVendaFinalizada(pedidoCriado);
@@ -205,9 +292,29 @@ export default function PdvPage() {
       setModalComprovante(true);
       carregarSaldosDoDeposito();
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao processar venda no PDV.' });
+      // Fallback em caso de erro de rede
+      if (!window.navigator.onLine || err.message?.includes('Network Error')) {
+        await pdvOfflineService.salvarVendaOffline(payload);
+        setFeedback({ tipo: 'sucesso', msg: 'Sem conexão. Venda salva em CONTINGÊNCIA OFFLINE!' });
+        setCarrinho([]);
+        setModalPagamento(false);
+        atualizarContadorOffline();
+      } else {
+        setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao processar venda no PDV.' });
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResponderAlcada = async (id, status) => {
+    try {
+      await api.put(`/vendas/alcadas/${id}/responder`, { status });
+      setFeedback({ tipo: 'sucesso', msg: `Alçada ${status.toLowerCase()} com sucesso!` });
+      carregarAlcadas();
+      carregarSaldosDoDeposito();
+    } catch (e) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao responder alçada.' });
     }
   };
 
@@ -224,30 +331,39 @@ export default function PdvPage() {
     <div className="p-3 sm:p-5 space-y-4 max-w-7xl mx-auto text-slate-200">
       <style>{`
         @media print {
-          body * {
-            visibility: hidden;
-          }
-          #cupom-termico-print, #cupom-termico-print * {
-            visibility: visible;
-          }
-          #cupom-termico-print {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 80mm;
-            padding: 2mm;
-            margin: 0;
-          }
+          body * { visibility: hidden; }
+          #cupom-termico-print, #cupom-termico-print * { visibility: visible; }
+          #cupom-termico-print { position: absolute; left: 0; top: 0; width: 80mm; padding: 2mm; margin: 0; }
         }
       `}</style>
 
       {/* Header PDV */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <ShoppingCart className="h-6 w-6 text-indigo-500" />
-            Frente de Caixa (PDV Balcão)
-          </h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-white">Frente de Caixa (PDV Balcão)</h1>
+            {isOnline ? (
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                <Wifi className="h-3 w-3" /> ONLINE
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-800 animate-pulse">
+                <WifiOff className="h-3 w-3" /> CONTINGÊNCIA OFFLINE
+              </span>
+            )}
+            {pendentesOffline > 0 && (
+              <button
+                type="button"
+                onClick={sincronizarFilaOffline}
+                disabled={!isOnline || sincronizando}
+                className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800 hover:bg-amber-900 cursor-pointer transition"
+              >
+                <RefreshCw className={`h-3 w-3 ${sincronizando ? 'animate-spin' : ''}`} />
+                {pendentesOffline} pendente(s) de sync
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-0.5">
             <span>Atalhos:</span>
             <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300 font-mono">F2: Buscar</kbd>
@@ -255,12 +371,22 @@ export default function PdvPage() {
             <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300 font-mono">F8: Limpar</kbd>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              carregarAlcadas();
+              setModalAlcadas(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <ShieldCheck className="h-4 w-4" /> Alçadas Pendentes
+          </button>
           <Link
             to="/app/vendas"
             className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition flex items-center gap-1.5"
           >
-            <Layers className="h-4 w-4 text-indigo-400" /> Ver Orçamentos & Pedidos
+            <Layers className="h-4 w-4 text-indigo-400" /> Pedidos
           </Link>
           <select
             value={depositoId}
@@ -268,7 +394,7 @@ export default function PdvPage() {
             className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
           >
             {depositos.map((d) => (
-              <option key={d.id} value={d.id}>Almoxarifado: {d.nome}</option>
+              <option key={d.id} value={d.id}>{d.nome}</option>
             ))}
           </select>
         </div>
@@ -568,7 +694,7 @@ export default function PdvPage() {
                   disabled={loading || totalPagoDigitado < totalLiquido}
                   className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold cursor-pointer"
                 >
-                  {loading ? 'Faturando...' : 'Finalizar Venda'}
+                  {loading ? 'Processando...' : 'Finalizar Venda'}
                 </button>
               </div>
             </form>
@@ -625,6 +751,52 @@ export default function PdvPage() {
               >
                 <Printer className="h-4 w-4" /> Imprimir Cupom
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Aprovação de Alçadas Gerenciais */}
+      {modalAlcadas && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-amber-400" /> Aprovação de Alçadas de Desconto Pendentes
+              </h3>
+              <button type="button" onClick={() => setModalAlcadas(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto space-y-2 text-xs">
+              {alcadasPendentes.length === 0 ? (
+                <div className="py-8 text-center text-slate-500">Nenhuma solicitação de desconto pendente.</div>
+              ) : (
+                alcadasPendentes.map((a) => (
+                  <div key={a.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                    <div>
+                      <span className="font-bold text-white block">Vendedor: {a.solicitante?.name}</span>
+                      <span className="text-amber-400 font-mono">Desconto Solicitado: {a.percentual_solicitado}% (R$ {parseFloat(a.valor_solicitado).toFixed(2)})</span>
+                      <span className="text-slate-400 text-[10px] block mt-0.5">{a.justificativa_solicitacao}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleResponderAlcada(a.id, 'REJEITADO')}
+                        className="px-3 py-1.5 rounded-lg bg-rose-950 text-rose-300 border border-rose-800 font-bold hover:bg-rose-900 cursor-pointer"
+                      >
+                        Rejeitar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResponderAlcada(a.id, 'APROVADO')}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
+                      >
+                        Aprovar
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
