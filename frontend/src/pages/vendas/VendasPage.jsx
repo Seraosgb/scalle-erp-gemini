@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { 
   ShoppingBag, Plus, Search, DollarSign, CheckCircle2, 
-  AlertTriangle, X, FileText, Ban, RefreshCw, Layers
+  AlertTriangle, X, FileText, Ban, RefreshCw, ShoppingCart, Check
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -37,6 +37,22 @@ export default function VendasPage() {
     return () => clearTimeout(delay);
   }, [search, filtroStatus]);
 
+  const handleConverterOrcamento = async (pedido) => {
+    if (!window.confirm(`Confirma a conversão do Orçamento #${pedido.numero_pedido} em Venda Faturada?`)) return;
+
+    try {
+      const res = await api.post(`/vendas/${pedido.id}/converter`, {
+        pagamentos: [
+          { forma_pagamento: 'DINHEIRO', valor_pago: parseFloat(pedido.valor_total_liquido) }
+        ]
+      });
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao converter orçamento.' });
+    }
+  };
+
   const handleCancelar = async (pedido) => {
     const motivo = window.prompt(`Motivo do cancelamento do Pedido #${pedido.numero_pedido}:`);
     if (!motivo) return;
@@ -57,10 +73,10 @@ export default function VendasPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
             <ShoppingBag className="h-6 w-6 text-indigo-500" />
-            Comércio & Vendas
+            Gestão Comercial: Pedidos & Orçamentos
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Gestão de Pedidos faturados, Orçamentos e Frente de Caixa PDV
+            Acompanhe propostas comerciais, orçamentos pendentes e pedidos faturados
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -68,7 +84,7 @@ export default function VendasPage() {
             to="/app/pdv"
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition"
           >
-            Abrir Frente de Caixa (PDV)
+            <ShoppingCart className="h-4 w-4" /> Abrir PDV Balcão
           </Link>
         </div>
       </div>
@@ -87,7 +103,7 @@ export default function VendasPage() {
             <span className="text-lg sm:text-xl font-bold font-mono text-white mt-1 block">{metricas.vendas_hoje_qtd}</span>
           </div>
           <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-            <span className="text-[11px] text-slate-400 font-semibold block">Orçamentos Abertos</span>
+            <span className="text-[11px] text-slate-400 font-semibold block">Orçamentos em Aberto</span>
             <span className="text-lg sm:text-xl font-bold font-mono text-amber-400 mt-1 block">{metricas.orcamentos_abertos_qtd}</span>
           </div>
           <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
@@ -102,16 +118,22 @@ export default function VendasPage() {
       {/* Filtros */}
       <div className="flex flex-col sm:flex-row justify-between gap-3 border-b border-slate-800 pb-2">
         <div className="flex gap-2">
-          {['', 'FATURADO', 'ORCAMENTO', 'AGUARDANDO_APROVACAO', 'CANCELADO'].map((st) => (
+          {[
+            { id: '', label: 'Todos' },
+            { id: 'ORCAMENTO', label: 'Orçamentos Abertos' },
+            { id: 'FATURADO', label: 'Faturados' },
+            { id: 'AGUARDANDO_APROVACAO', label: 'Alçada Pendente' },
+            { id: 'CANCELADO', label: 'Cancelados' },
+          ].map((st) => (
             <button
-              key={st}
+              key={st.id}
               type="button"
-              onClick={() => setFiltroStatus(st)}
+              onClick={() => setFiltroStatus(st.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                filtroStatus === st ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+                filtroStatus === st.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
               }`}
             >
-              {st === '' ? 'Todos' : st}
+              {st.label}
             </button>
           ))}
         </div>
@@ -136,14 +158,15 @@ export default function VendasPage() {
         </div>
       )}
 
-      {/* Tabela de Vendas */}
+      {/* Tabela de Vendas e Orçamentos */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
         <table className="w-full text-left text-sm text-slate-300">
           <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
             <tr>
               <th className="py-3 px-4">NÚMERO</th>
+              <th className="py-3 px-4">TIPO</th>
               <th className="py-3 px-4">CLIENTE</th>
-              <th className="py-3 px-4 text-center">DATA</th>
+              <th className="py-3 px-4 text-center">EMISSÃO</th>
               <th className="py-3 px-4 text-right">TOTAL LÍQUIDO</th>
               <th className="py-3 px-4 text-center">STATUS</th>
               <th className="py-3 px-4 text-center">AÇÕES</th>
@@ -151,11 +174,18 @@ export default function VendasPage() {
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-xs">
             {pedidos.length === 0 ? (
-              <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhum pedido ou venda registrado.</td></tr>
+              <tr><td colSpan="7" className="text-center py-10 text-slate-500">Nenhum registro comercial encontrado.</td></tr>
             ) : (
               pedidos.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-800/40 transition">
                   <td className="py-3 px-4 font-mono font-bold text-indigo-400">#{p.numero_pedido}</td>
+                  <td className="py-3 px-4">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      p.tipo_documento === 'ORCAMENTO' ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                    }`}>
+                      {p.tipo_documento}
+                    </span>
+                  </td>
                   <td className="py-3 px-4 text-white font-medium">{p.cliente?.nome_razao_social}</td>
                   <td className="py-3 px-4 text-center text-slate-400 font-mono">{p.data_emissao}</td>
                   <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
@@ -172,16 +202,28 @@ export default function VendasPage() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
-                    {p.status !== 'CANCELADO' && (
-                      <button
-                        type="button"
-                        onClick={() => handleCancelar(p)}
-                        title="Cancelar Venda"
-                        className="p-1.5 rounded bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-800"
-                      >
-                        <Ban className="h-3.5 w-3.5" />
-                      </button>
-                    )}
+                    <div className="flex items-center justify-center gap-1.5">
+                      {p.status === 'ORCAMENTO' && (
+                        <button
+                          type="button"
+                          onClick={() => handleConverterOrcamento(p)}
+                          title="Converter em Venda Faturada"
+                          className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer shadow flex items-center gap-1"
+                        >
+                          <Check className="h-3.5 w-3.5" /> Faturar
+                        </button>
+                      )}
+                      {p.status !== 'CANCELADO' && (
+                        <button
+                          type="button"
+                          onClick={() => handleCancelar(p)}
+                          title="Cancelar Pedido/Orçamento"
+                          className="p-1.5 rounded bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-800 cursor-pointer"
+                        >
+                          <Ban className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

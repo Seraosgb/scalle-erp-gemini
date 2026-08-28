@@ -8,15 +8,52 @@ import {
   CheckSquare, FileText, ArrowRight, Package
 } from 'lucide-react';
 
-function SlaTimerBadge({ prazo }) {
-  if (!prazo) return null;
-  const diffMs = new Date(prazo) - new Date();
+function SlaTimerBadge({ os }) {
+  if (!os || !os.prazo_sla_resolucao) return null;
+
+  // 1. Se a OS já está concluída, valida a entrega histórica
+  if (os.status === 'CONCLUIDA') {
+    const dataConclusao = os.data_conclusao ? new Date(os.data_conclusao) : new Date();
+    const prazoSla = new Date(os.prazo_sla_resolucao);
+    const entregueNoPrazo = dataConclusao <= prazoSla;
+
+    return entregueNoPrazo ? (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+        No Prazo
+      </span>
+    ) : (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+        Concluída c/ Atraso
+      </span>
+    );
+  }
+
+  // 2. Se a OS está aberta/em execução, calcula o tempo restante dinâmico
+  const diffMs = new Date(os.prazo_sla_resolucao) - new Date();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
-  if (diffMs <= 0) return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">SLA Estourado</span>;
-  if (diffHours < 2) return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">Risco ({diffHours}h {diffMins}m)</span>;
-  return <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">{diffHours}h {diffMins}m</span>;
+  if (diffMs <= 0) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">
+        SLA Estourado
+      </span>
+    );
+  }
+
+  if (diffHours < 2) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+        Risco ({diffHours}h {diffMins}m)
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+      {diffHours}h {diffMins}m
+    </span>
+  );
 }
 
 export default function OrdensServicoPage() {
