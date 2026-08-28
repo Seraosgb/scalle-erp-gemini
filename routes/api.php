@@ -125,6 +125,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/vendas/orcamento', [VendaController::class, 'orcamento']);
     Route::post('/vendas/{id}/converter', [VendaController::class, 'converter']);
     Route::post('/vendas/{id}/cancelar', [VendaController::class, 'cancelar']);
+    Route::post('/vendas/sincronizar-lote', [VendaController::class, 'sincronizarLoteOffline']);
 
     // Prestação de Serviços & CMMS
     Route::get('/os/bootstrap', [OrdemServicoController::class, 'bootstrapData']);

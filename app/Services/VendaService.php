@@ -404,4 +404,61 @@ class VendaService
             ]);
         }
     }
+    public function sincronizarLoteOffline(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'vendas' => 'required|array|min:1',
+            'vendas.*.offline_id' => 'required|string',
+            'vendas.*.payload' => 'required|array',
+        ]);
+
+        $vendedor = $request->user();
+        $processadas = [];
+        $erros = [];
+
+        foreach ($validated['vendas'] as $vendaItem) {
+            $offlineId = $vendaItem['offline_id'];
+            $payload = $vendaItem['payload'];
+
+            // Idempotência: verifica se o lote offline já foi sincronizado
+            $jaExiste = PedidoVenda::where('pdv_offline_uuid', $offlineId)->first();
+            if ($jaExiste) {
+                $processadas[] = ['offline_id' => $offlineId, 'numero_pedido' => $jaExiste->numero_pedido];
+                continue;
+            }
+
+            try {
+                $clienteId = self::resolverClienteId($payload['cliente_id'] ?? null, $vendedor->tenant_id);
+                $empresaId = $vendedor->empresa_padrao_id ?? Empresa::where('tenant_id', $vendedor->tenant_id)->first()->id;
+
+                $pedido = VendaService::faturarVenda(
+                    $empresaId,
+                    $clienteId,
+                    $payload['deposito_id'],
+                    $vendedor,
+                    $payload['itens'],
+                    $payload['pagamentos'],
+                    (float) ($payload['desconto_geral'] ?? 0.00),
+                    'PDV_OFFLINE'
+                );
+
+                $pedido->update([
+                    'pdv_offline_uuid' => $offlineId,
+                    'sincronizado_em' => now(),
+                ]);
+
+                $processadas[] = ['offline_id' => $offlineId, 'numero_pedido' => $pedido->numero_pedido];
+            } catch (Exception $e) {
+                $erros[] = ['offline_id' => $offlineId, 'erro' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'processadas' => $processadas,
+                'erros' => $erros,
+                'total_sincronizadas' => count($processadas),
+            ]
+        ]);
+    }
 }
