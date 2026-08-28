@@ -3,7 +3,7 @@ import { api } from '../../services/api';
 import { 
   ShoppingCart, Plus, Trash2, CheckCircle2, AlertTriangle, 
   X, Search, DollarSign, CreditCard, QrCode, Banknote, 
-  Receipt, ArrowRight, Printer, Package, Layers
+  Receipt, ArrowRight, Printer, Package, Layers, AlertCircle, Minus
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -19,7 +19,7 @@ export default function PdvPage() {
   const [descontoGeral, setDescontoGeral] = useState('0');
   const [emitirCupom, setEmitirCupom] = useState(true);
 
-  // Pagamento Múltiplo
+  // Modais e Pagamento
   const [modalPagamento, setModalPagamento] = useState(false);
   const [modalComprovante, setModalComprovante] = useState(false);
   const [vendaFinalizada, setVendaFinalizada] = useState(null);
@@ -78,6 +78,27 @@ export default function PdvPage() {
     carregarSaldosDoDeposito();
   }, [depositoId]);
 
+  // Listener de Atalhos de Teclado de Frente de Caixa
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        inputBuscaRef.current?.focus();
+      } else if (e.key === 'F8') {
+        e.preventDefault();
+        setCarrinho([]);
+      } else if (e.key === 'F10') {
+        e.preventDefault();
+        if (carrinho.length > 0) handleAbrirPagamento();
+      } else if (e.key === 'Escape') {
+        setModalPagamento(false);
+        setModalComprovante(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [carrinho]);
+
   const adicionarAoCarrinho = (item) => {
     const saldoAtual = saldosEstoque[item.id] || 0;
     setCarrinho((prev) => {
@@ -104,6 +125,7 @@ export default function PdvPage() {
       ];
     });
     setSearchItem('');
+    inputBuscaRef.current?.focus();
   };
 
   const atualizarQtd = (itemId, novaQtd) => {
@@ -174,7 +196,8 @@ export default function PdvPage() {
       };
 
       const res = await api.post('/vendas/faturar', payload);
-      setVendaFinalizada(res.data.data.pedido);
+      const pedidoCriado = res.data.data.pedido;
+      setVendaFinalizada(pedidoCriado);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
       setCarrinho([]);
       setDescontoGeral('0');
@@ -198,7 +221,26 @@ export default function PdvPage() {
     : [];
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto text-slate-200">
+    <div className="p-3 sm:p-5 space-y-4 max-w-7xl mx-auto text-slate-200">
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #cupom-termico-print, #cupom-termico-print * {
+            visibility: visible;
+          }
+          #cupom-termico-print {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 80mm;
+            padding: 2mm;
+            margin: 0;
+          }
+        }
+      `}</style>
+
       {/* Header PDV */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
         <div>
@@ -206,7 +248,12 @@ export default function PdvPage() {
             <ShoppingCart className="h-6 w-6 text-indigo-500" />
             Frente de Caixa (PDV Balcão)
           </h1>
-          <span className="text-xs text-slate-400">Emissão rápida com saldo em estoque em tempo real</span>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+            <span>Atalhos:</span>
+            <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300 font-mono">F2: Buscar</kbd>
+            <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300 font-mono">F10: Pagar</kbd>
+            <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300 font-mono">F8: Limpar</kbd>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -221,7 +268,7 @@ export default function PdvPage() {
             className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
           >
             {depositos.map((d) => (
-              <option key={d.id} value={d.id}>{d.nome}</option>
+              <option key={d.id} value={d.id}>Almoxarifado: {d.nome}</option>
             ))}
           </select>
         </div>
@@ -235,7 +282,7 @@ export default function PdvPage() {
             {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
             <span>{feedback.msg}</span>
           </div>
-          <button type="button" onClick={() => setFeedback(null)} className="p-1"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -248,10 +295,10 @@ export default function PdvPage() {
             <input
               ref={inputBuscaRef}
               type="text"
-              placeholder="Escanear Código de Barras (EAN), SKU ou Nome..."
+              placeholder="[F2] Escanear Código de Barras (EAN), SKU ou Nome..."
               value={searchItem}
               onChange={(e) => setSearchItem(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-sm text-white font-medium focus:outline-none focus:border-indigo-500"
+              className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-sm text-white font-medium focus:outline-none focus:border-indigo-500 shadow-inner"
             />
           </div>
 
@@ -314,7 +361,7 @@ export default function PdvPage() {
           </div>
         </div>
 
-        {/* Direita: Carrinho */}
+        {/* Direita: Carrinho e Fechamento */}
         <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl space-y-4">
           <div className="space-y-3">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -324,43 +371,53 @@ export default function PdvPage() {
                 onClick={() => setCarrinho([])}
                 className="text-[11px] text-rose-400 hover:underline cursor-pointer"
               >
-                Limpar Carrinho
+                Limpar Carrinho [F8]
               </button>
             </div>
 
             <div className="max-h-64 overflow-y-auto space-y-1.5 divide-y divide-slate-800/50">
               {carrinho.length === 0 ? (
-                <div className="py-12 text-center text-slate-500 text-xs">O carrinho está vazio.</div>
+                <div className="py-12 text-center text-slate-500 text-xs">O carrinho está vazio. Adicione itens com o leitor ou busca.</div>
               ) : (
-                carrinho.map((item) => (
-                  <div key={item.item_id} className="pt-2 flex justify-between items-center text-xs">
-                    <div className="flex-1 pr-2">
-                      <div className="font-medium text-white truncate">{item.nome}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">
-                        R$ {item.preco_unitario.toFixed(2)} / {item.unidade} (Disp: {item.saldo_disponivel})
+                carrinho.map((item) => {
+                  const saldoInsuficiente = item.quantidade > item.saldo_disponivel;
+                  return (
+                    <div key={item.item_id} className="pt-2 flex justify-between items-center text-xs">
+                      <div className="flex-1 pr-2">
+                        <div className="font-medium text-white truncate flex items-center gap-1">
+                          {saldoInsuficiente && <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" title="Quantidade superior ao saldo disponível" />}
+                          <span className="truncate">{item.nome}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          R$ {item.preco_unitario.toFixed(2)} / {item.unidade} (Disp: <span className={saldoInsuficiente ? 'text-rose-400 font-bold' : ''}>{item.saldo_disponivel}</span>)
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg">
+                          <button type="button" onClick={() => atualizarQtd(item.item_id, item.quantidade - 1)} className="px-1.5 py-1 text-slate-400 hover:text-white"><Minus className="h-3 w-3" /></button>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantidade}
+                            onChange={(e) => atualizarQtd(item.item_id, e.target.value)}
+                            className="w-10 py-1 bg-transparent text-center text-white font-mono text-xs focus:outline-none"
+                          />
+                          <button type="button" onClick={() => atualizarQtd(item.item_id, item.quantidade + 1)} className="px-1.5 py-1 text-slate-400 hover:text-white"><Plus className="h-3 w-3" /></button>
+                        </div>
+                        <span className="font-mono font-bold text-white w-16 text-right">
+                          R$ {item.total.toFixed(2)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => atualizarQtd(item.item_id, 0)}
+                          className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantidade}
-                        onChange={(e) => atualizarQtd(item.item_id, e.target.value)}
-                        className="w-14 px-2 py-1 bg-slate-950 border border-slate-800 rounded text-center text-white font-mono"
-                      />
-                      <span className="font-mono font-bold text-white w-16 text-right">
-                        R$ {item.total.toFixed(2)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => atualizarQtd(item.item_id, 0)}
-                        className="p-1 text-slate-500 hover:text-rose-400"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -375,6 +432,7 @@ export default function PdvPage() {
               <input
                 type="number"
                 min="0"
+                step="0.01"
                 value={descontoGeral}
                 onChange={(e) => setDescontoGeral(e.target.value)}
                 className="w-20 px-2 py-1 bg-slate-950 border border-slate-800 rounded text-right text-white font-mono text-xs"
@@ -393,7 +451,7 @@ export default function PdvPage() {
               onClick={handleAbrirPagamento}
               className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer transition"
             >
-              <DollarSign className="h-5 w-5" /> Fechar Venda (Pagamento Misto)
+              <DollarSign className="h-5 w-5" /> Fechar Venda [F10]
             </button>
           </div>
         </div>
@@ -407,7 +465,7 @@ export default function PdvPage() {
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Receipt className="h-4 w-4 text-emerald-400" /> Fechamento & Pagamento Misto
               </h3>
-              <button type="button" onClick={() => setModalPagamento(false)} className="p-1"><X className="h-4 w-4 text-slate-400" /></button>
+              <button type="button" onClick={() => setModalPagamento(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
             </div>
 
             <form onSubmit={handleFinalizarVenda} className="space-y-4 text-xs">
@@ -453,6 +511,7 @@ export default function PdvPage() {
                         <option value="PIX">PIX Nativo</option>
                         <option value="CARTAO_DEBITO">Cartão de Débito</option>
                         <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                        <option value="BOLETO">Boleto / A Prazo</option>
                       </select>
                       <input
                         type="number"
@@ -467,7 +526,7 @@ export default function PdvPage() {
                         <button
                           type="button"
                           onClick={() => removerLinhaPagamento(idx)}
-                          className="p-1 text-slate-500 hover:text-rose-400"
+                          className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -507,7 +566,7 @@ export default function PdvPage() {
                 <button
                   type="submit"
                   disabled={loading || totalPagoDigitado < totalLiquido}
-                  className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold"
+                  className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold cursor-pointer"
                 >
                   {loading ? 'Faturando...' : 'Finalizar Venda'}
                 </button>
@@ -525,10 +584,10 @@ export default function PdvPage() {
               <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
                 <Printer className="h-4 w-4 text-indigo-400" /> Cupom de Venda
               </h3>
-              <button type="button" onClick={() => setModalComprovante(false)} className="p-1"><X className="h-4 w-4 text-slate-400" /></button>
+              <button type="button" onClick={() => setModalComprovante(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
             </div>
 
-            <div id="cupom-termico" className="bg-white text-black p-4 rounded font-mono text-[11px] leading-tight space-y-2 select-text">
+            <div id="cupom-termico-print" className="bg-white text-black p-4 rounded font-mono text-[11px] leading-tight space-y-2 select-text">
               <div className="text-center font-bold pb-2 border-b border-dashed border-black">
                 <div>SCALLE ENTERPRISE</div>
                 <div className="text-[9px] font-normal">COMPROVANTE DE VENDA NÃO FISCAL</div>
@@ -562,7 +621,7 @@ export default function PdvPage() {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-600/30"
               >
                 <Printer className="h-4 w-4" /> Imprimir Cupom
               </button>

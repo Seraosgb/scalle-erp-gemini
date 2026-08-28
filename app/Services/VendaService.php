@@ -2,12 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\AlcadaAprovacao;
 use App\Models\ContaFinanceira;
+use App\Models\Empresa;
 use App\Models\EstoqueDeposito;
+use App\Models\Item;
 use App\Models\MovimentacaoExtrato;
 use App\Models\PedidoVenda;
 use App\Models\PedidoVendaItem;
 use App\Models\PedidoVendaPagamento;
+use App\Models\Pessoa;
 use App\Models\TituloFinanceiro;
 use App\Models\User;
 use Exception;
@@ -40,6 +44,8 @@ class VendaService
             $pedidoId = (string) Str::uuid();
             $subtotalItens = 0.00;
 
+            $cliente = Pessoa::findOrFail($clienteId);
+
             $ultimoNumero = PedidoVenda::where('empresa_id', $empresaId)->max('numero_pedido') ?? 1000;
             $numeroPedido = $ultimoNumero + 1;
 
@@ -50,6 +56,25 @@ class VendaService
             $totalLiquidoPedido = max(0.00, $subtotalItens - $descontoGeral);
             $percentualDesconto = $subtotalItens > 0 ? ($descontoGeral / $subtotalItens) * 100 : 0.00;
 
+            // 1. Trava de Limite de Crédito para pagamentos a prazo
+            $formasPrazo = ['BOLETO', 'CREDIARIO', 'A_PRAZO', 'FATURADO'];
+            $temPagamentoPrazo = collect($pagamentosPayload)->contains(
+                fn($p) => in_array(strtoupper($p['forma_pagamento'] ?? ''), $formasPrazo)
+            );
+
+            if ($temPagamentoPrazo && (float) ($cliente->limite_credito ?? 0) > 0) {
+                $saldoDevedorAberto = TituloFinanceiro::where('pessoa_id', $cliente->id)
+                    ->where('natureza', 'RECEBER')
+                    ->whereIn('status', ['ABERTO', 'PARCIAL'])
+                    ->sum('valor_saldo_aberto') ?? 0.00;
+
+                if (($saldoDevedorAberto + $totalLiquidoPedido) > (float) $cliente->limite_credito) {
+                    $disponivel = max(0.00, (float) $cliente->limite_credito - $saldoDevedorAberto);
+                    throw new Exception("Limite de crédito excedido. Limite: R$ {$cliente->limite_credito} | Disponível: R$ {$disponivel} | Solicitado: R$ {$totalLiquidoPedido}");
+                }
+            }
+
+            // 2. Validação de Alçada de Desconto
             $validacaoAlcada = MotorAlcadaService::validarDesconto(
                 $vendedor,
                 'pedidos',
@@ -59,6 +84,10 @@ class VendaService
             );
 
             $statusInicial = $validacaoAlcada['requer_aprovacao'] ? 'AGUARDANDO_APROVACAO' : 'FATURADO';
+
+            // 3. Cálculo de Comissão do Vendedor (2.5% padrão)
+            $pctComissao = 2.50;
+            $valorComissao = $statusInicial === 'FATURADO' ? round($totalLiquidoPedido * ($pctComissao / 100), 2) : 0.00;
 
             $pedido = PedidoVenda::create([
                 'id' => $pedidoId,
@@ -75,6 +104,8 @@ class VendaService
                 'percentual_desconto' => $percentualDesconto,
                 'valor_desconto' => $descontoGeral,
                 'valor_total_liquido' => $totalLiquidoPedido,
+                'percentual_comissao_vendedor' => $pctComissao,
+                'valor_comissao_vendedor' => $valorComissao,
             ]);
 
             foreach ($itensPayload as $itemData) {
@@ -84,6 +115,7 @@ class VendaService
                 $precoFinal = max(0.00, $precoUnitario - $descontoItem);
 
                 PedidoVendaItem::create([
+                    'id' => (string) Str::uuid(),
                     'pedido_id' => $pedido->id,
                     'item_id' => $itemData['item_id'],
                     'quantidade' => $quantidade,
@@ -114,6 +146,7 @@ class VendaService
                 $valorPago = (float) $pagamentoData['valor_pago'];
 
                 PedidoVendaPagamento::create([
+                    'id' => (string) Str::uuid(),
                     'pedido_id' => $pedido->id,
                     'forma_pagamento' => $pagamentoData['forma_pagamento'],
                     'parcelas' => $pagamentoData['parcelas'] ?? 1,
@@ -188,6 +221,7 @@ class VendaService
                 $precoFinal = max(0.00, $precoUnitario - $descontoItem);
 
                 PedidoVendaItem::create([
+                    'id' => (string) Str::uuid(),
                     'pedido_id' => $orcamento->id,
                     'item_id' => $itemData['item_id'],
                     'quantidade' => $quantidade,
@@ -199,7 +233,7 @@ class VendaService
                     'lote' => $itemData['lote'] ?? null,
                 ]);
 
-                // Reserva de estoque atômica no WMS
+                // Reserva atômica de saldo no WMS
                 $estoque = EstoqueDeposito::where('deposito_id', $depositoId)
                     ->where('item_id', $itemData['item_id'])
                     ->lockForUpdate()
@@ -222,17 +256,17 @@ class VendaService
             }
 
             foreach ($orcamento->itens as $item) {
-                // Estorna a reserva do estoque
+                // Estorno de reserva
                 $estoque = EstoqueDeposito::where('deposito_id', $orcamento->deposito_saida_id)
                     ->where('item_id', $item->item_id)
                     ->lockForUpdate()
                     ->first();
 
                 if ($estoque) {
-                    $estoque->decrement('quantidade_reservada', min((float)$estoque->quantidade_reservada, (float)$item->quantidade));
+                    $estoque->decrement('quantidade_reservada', min((float) $estoque->quantidade_reservada, (float) $item->quantidade));
                 }
 
-                // Efetua a baixa física definitiva
+                // Baixa física definitiva
                 EstoqueService::movimentar(
                     $orcamento->deposito_saida_id,
                     $item->item_id,
@@ -248,6 +282,7 @@ class VendaService
 
             foreach ($pagamentosPayload as $pagamentoData) {
                 PedidoVendaPagamento::create([
+                    'id' => (string) Str::uuid(),
                     'pedido_id' => $orcamento->id,
                     'forma_pagamento' => $pagamentoData['forma_pagamento'],
                     'parcelas' => $pagamentoData['parcelas'] ?? 1,
@@ -257,11 +292,17 @@ class VendaService
                 ]);
             }
 
+            // Comissão e Financeiro
+            $pctComissao = 2.50;
+            $valorComissao = round((float) $orcamento->valor_total_liquido * ($pctComissao / 100), 2);
+
             self::gerarFinanceiroVenda($orcamento, $pagamentosPayload, (float) $orcamento->valor_total_liquido, $usuario);
 
             $orcamento->update([
                 'tipo_documento' => 'PEDIDO',
                 'status' => 'FATURADO',
+                'percentual_comissao_vendedor' => $pctComissao,
+                'valor_comissao_vendedor' => $valorComissao,
             ]);
 
             return $orcamento;
@@ -294,14 +335,13 @@ class VendaService
                     ->where('origem_id', $pedido->id)
                     ->update(['status' => 'CANCELADO', 'historico' => "Cancelado: {$motivo}"]);
             } elseif ($pedido->status === 'ORCAMENTO') {
-                // Se for orçamento cancelado, remove a reserva do WMS
                 foreach ($pedido->itens as $item) {
                     $estoque = EstoqueDeposito::where('deposito_id', $pedido->deposito_saida_id)
                         ->where('item_id', $item->item_id)
                         ->first();
 
                     if ($estoque) {
-                        $estoque->decrement('quantidade_reservada', min((float)$estoque->quantidade_reservada, (float)$item->quantidade));
+                        $estoque->decrement('quantidade_reservada', min((float) $estoque->quantidade_reservada, (float) $item->quantidade));
                     }
                 }
             }
