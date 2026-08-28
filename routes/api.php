@@ -179,4 +179,13 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware(['auth:sanctum', \App\Http\Middleware\IdentifyTenant::class, \App\Http\Middleware\CheckSubscriptionStatus::class])->group(function () {
     Route::get('/exportacoes/metricas', [\App\Http\Controllers\Api\ExportacaoContabilController::class, 'metricas']);
     Route::get('/exportacoes/download', [\App\Http\Controllers\Api\ExportacaoContabilController::class, 'download']);
+    // Cotações de Compras
+    Route::get('/compras/cotacoes', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'index']);
+    Route::post('/compras/cotacoes', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'store']);
+    Route::post('/compras/cotacoes/{id}/propostas', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'adicionarProposta']);
+    Route::put('/compras/cotacoes/{cotacaoId}/propostas/{propostaId}/aprovar', [\App\Http\Controllers\Api\CotacaoCompraController::class, 'aprovarPropostaVencedora']);
+
+    // Certificado Digital A1
+    Route::get('/fiscal/certificado', [\App\Http\Controllers\Api\CertificadoFiscalController::class, 'show']);
+    Route::post('/fiscal/certificado', [\App\Http\Controllers\Api\CertificadoFiscalController::class, 'upload']);
 });
