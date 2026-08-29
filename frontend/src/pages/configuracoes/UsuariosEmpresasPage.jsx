@@ -85,13 +85,13 @@ export default function UsuariosEmpresasPage() {
   const abrirEdicaoUsuario = (u) => {
     setEditandoId(u.id);
     setFormUsuario({
-      name: u.name,
-      email: u.email,
-      password: '',
+      name: u.name || '',
+      email: u.email || '',
+      password: '', // Senha em branco por padrão na edição
       telefone: u.telefone || '',
       perfil_id: u.perfil_id || '',
       empresa_padrao_id: u.empresa_padrao_id || (empresas[0]?.id ?? ''),
-      is_ativo: u.is_ativo,
+      is_ativo: u.is_ativo ?? true,
     });
     setModalUsuario(true);
   };
@@ -129,11 +129,17 @@ export default function UsuariosEmpresasPage() {
   const handleSalvarUsuario = async (e) => {
     e.preventDefault();
     try {
+      const payload = { ...formUsuario };
+      // Se estiver editando e a senha estiver vazia, remove para não sobrescrever com hash vazio
+      if (editandoId && !payload.password) {
+        delete payload.password;
+      }
+
       if (editandoId) {
-        await api.put(`/usuarios/${editandoId}`, formUsuario);
+        await api.put(`/usuarios/${editandoId}`, payload);
         setFeedback({ tipo: 'sucesso', msg: 'Usuário atualizado com sucesso!' });
       } else {
-        await api.post('/usuarios', formUsuario);
+        await api.post('/usuarios', payload);
         setFeedback({ tipo: 'sucesso', msg: 'Usuário cadastrado com sucesso!' });
       }
       setModalUsuario(false);
@@ -343,7 +349,7 @@ export default function UsuariosEmpresasPage() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold text-xs ${user.is_ativo ? 'bg-indigo-950/80 border-indigo-800 text-indigo-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-                    {user.name.charAt(0)}
+                    {user.name?.charAt(0) || 'U'}
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-bold text-white text-sm truncate">{user.name}</h3>
