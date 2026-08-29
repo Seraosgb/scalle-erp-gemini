@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AtivoController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BillingWebhookController;
 use App\Http\Controllers\Api\CertificadoFiscalController;
 use App\Http\Controllers\Api\CompraController;
 use App\Http\Controllers\Api\CotacaoCompraController;
@@ -23,13 +24,18 @@ use App\Http\Middleware\CheckMaster;
 use App\Http\Middleware\CheckSubscriptionStatus;
 use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuditoriaController;
+use App\Http\Controllers\Api\SessaoController;
 
 // ==========================================
-// Rotas Públicas
+// Rotas Públicas (Sem login / Sem Sanctum)
 // ==========================================
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
+
+// Webhooks de Gateways (Asaas, etc)
+Route::post('/billing/webhook/asaas', [BillingWebhookController::class, 'handleAsaas']);
 
 // Rotas Públicas do Portal do Cliente (Token Temporário)
 Route::prefix('portal')->group(function () {
@@ -132,14 +138,13 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/vendas/orcamento', [VendaController::class, 'orcamento']);
     Route::post('/vendas/{id}/converter', [VendaController::class, 'converter']);
     Route::post('/vendas/{id}/cancelar', [VendaController::class, 'cancelar']);
-    Route::post('/vendas/sincronizar-lote', [VendaController::class, 'sincronizarLoteOffline']);
     Route::get('/vendas/alcadas/pendentes', [VendaController::class, 'listarAlcadasPendentes']);
-Route::put('/vendas/alcadas/{id}/responder', [VendaController::class, 'responderAlcada']);
-Route::get('/vendas/comissoes/extrato', [VendaController::class, 'extratoComissoes']);
-Route::get('/vendas/comissoes/regras', [VendaController::class, 'listarRegrasComissao']);
-Route::post('/vendas/comissoes/regras', [VendaController::class, 'storeRegraComissao']);
-Route::put('/vendas/comissoes/regras/{id}/toggle', [VendaController::class, 'toggleRegraComissao']);
-Route::post('/vendas/pdv/processar-cartao', [VendaController::class, 'processarCartaoPdv']);
+    Route::put('/vendas/alcadas/{id}/responder', [VendaController::class, 'responderAlcada']);
+    Route::get('/vendas/comissoes/extrato', [VendaController::class, 'extratoComissoes']);
+    Route::get('/vendas/comissoes/regras', [VendaController::class, 'listarRegrasComissao']);
+    Route::post('/vendas/comissoes/regras', [VendaController::class, 'storeRegraComissao']);
+    Route::put('/vendas/comissoes/regras/{id}/toggle', [VendaController::class, 'toggleRegraComissao']);
+    Route::post('/vendas/pdv/processar-cartao', [VendaController::class, 'processarCartaoPdv']);
 
     // Prestação de Serviços & CMMS
     Route::get('/os/bootstrap', [OrdemServicoController::class, 'bootstrapData']);
@@ -200,10 +205,19 @@ Route::post('/vendas/pdv/processar-cartao', [VendaController::class, 'processarC
     Route::post('/pcp/estruturas', [PcpController::class, 'storeEstrutura']);
     Route::delete('/pcp/estruturas/{id}', [PcpController::class, 'destroyEstruturaItem']);
     Route::get('/pcp/mrp/analise', [PcpController::class, 'analiseMrp']);
-Route::post('/pcp/mrp/gerar-cotacao', [PcpController::class, 'gerarCotacaoMrp']);
-Route::get('/pcp/ordens/{id}/genealogia', [PcpController::class, 'genealogiaLote']);
-// Gestão de MFA / 2FA
+    Route::post('/pcp/mrp/gerar-cotacao', [PcpController::class, 'gerarCotacaoMrp']);
+    Route::get('/pcp/ordens/{id}/genealogia', [PcpController::class, 'genealogiaLote']);
+
+    // Gestão de MFA / 2FA
     Route::post('/auth/mfa/setup', [AuthController::class, 'mfaSetup']);
     Route::post('/auth/mfa/confirmar', [AuthController::class, 'mfaConfirmar']);
     Route::post('/auth/mfa/desativar', [AuthController::class, 'mfaDesativar']);
+
+    // Self-Service do Usuário (Identidade)
+    Route::post('/auth/password/update', [AuthController::class, 'updatePassword']);
+    Route::get('/auth/sessoes', [SessaoController::class, 'index']);
+    Route::delete('/auth/sessoes/{id}', [SessaoController::class, 'revogar']);
+
+    // Auditoria (Administradores)
+    Route::get('/auditoria', [AuditoriaController::class, 'index']);
 });

@@ -163,4 +163,24 @@ class AuthController extends Controller
             ]
         ]);
     }
+    public function updatePassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'senha_atual' => 'required|string',
+            'nova_senha' => 'required|string|min:6|different:senha_atual',
+        ]);
+
+        $user = $request->user();
+
+        if (!\Illuminate\Support\Facades\Hash::check($validated['senha_atual'], $user->password)) {
+            return response()->json(['error' => ['message' => 'A senha atual informada está incorreta.']], 422);
+        }
+
+        $user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['nova_senha'])]);
+
+        // Revoga outras sessões por segurança, mantendo a atual
+        $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
+
+        return response()->json(['data' => ['message' => 'Senha atualizada com sucesso. Demais dispositivos foram desconectados.']]);
+    }
 }
