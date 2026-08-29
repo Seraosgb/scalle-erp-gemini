@@ -6,9 +6,6 @@ class TotpService
 {
     private const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
-    /**
-     * Gera uma chave secreta aleatória Base32 de 16 caracteres
-     */
     public static function gerarSecret(int $tamanho = 16): string
     {
         $secret = '';
@@ -18,9 +15,6 @@ class TotpService
         return $secret;
     }
 
-    /**
-     * Gera a URL otpauth:// para carregar no Google Authenticator / Authy
-     */
     public static function gerarQrCodeUrl(string $usuarioEmail, string $secret, string $emissor = 'Scalle ERP'): string
     {
         $otpauth = sprintf(
@@ -34,9 +28,6 @@ class TotpService
         return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' . urlencode($otpauth);
     }
 
-    /**
-     * Valida o token de 6 dígitos considerando tolerância de janela de tempo
-     */
     public static function validarCodigo(string $secret, string $codigo, int $janelaTolerancia = 1): bool
     {
         $timeSlice = floor(time() / 30);
