@@ -61,10 +61,10 @@ export default function UsuariosEmpresasPage() {
         api.get('/perfis', { params: { search } })
       ]);
 
-      setUsuarios(resUsers.data.data.usuarios || []);
+      setUsuarios(resUsers.data.data.usuarios || resUsers.data.data || []);
       const emps = resEmps.data.data || [];
       setEmpresas(emps);
-      setPerfis(resPerfis.data.data.perfis || []);
+      setPerfis(resPerfis.data.data.perfis || resPerfis.data.data || []);
       setPermissoesDisponiveis(resPerfis.data.data.permissoes || []);
 
       if (emps.length > 0 && !formUsuario.empresa_padrao_id) {
@@ -369,7 +369,7 @@ export default function UsuariosEmpresasPage() {
               <div className="pt-2 border-t border-slate-800/80 space-y-1 text-xs">
                 <div className="flex justify-between text-slate-400">
                   <span>Perfil de Acesso:</span>
-                  <span className="font-semibold text-slate-200">{user.perfil?.nome || 'Operador Padrão'}</span>
+                  <span className="font-semibold text-slate-200">{user.perfil?.nome || (user.is_master ? 'SaaS Master' : 'Operador Padrão')}</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
                   <span>Filial Vinculada:</span>
