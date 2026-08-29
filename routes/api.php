@@ -26,6 +26,8 @@ use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\SessaoController;
+use App\Http\Controllers\Api\CrmInboundController;
+use App\Http\Controllers\Api\CrmController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -33,6 +35,9 @@ use App\Http\Controllers\Api\SessaoController;
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
+
+// Webhook de Captação de Leads (Landing Pages / RD Station)
+Route::post('/crm/webhook/lead/{token}', [CrmInboundController::class, 'receberLead']);
 
 // Webhooks de Gateways (Asaas, etc)
 Route::post('/billing/webhook/asaas', [BillingWebhookController::class, 'handleAsaas']);
@@ -220,4 +225,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
 
     // Auditoria (Administradores)
     Route::get('/auditoria', [AuditoriaController::class, 'index']);
+
+    // CRM & Funil de Vendas
+    Route::get('/crm/board', [CrmController::class, 'board']);
+    Route::put('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
 });
