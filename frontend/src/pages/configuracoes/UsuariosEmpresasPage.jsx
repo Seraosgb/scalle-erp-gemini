@@ -3,7 +3,7 @@ import { api } from '../../services/api';
 import { 
   Building2, Users, Plus, RefreshCw, CheckCircle2, 
   AlertTriangle, X, Shield, Mail, Check, Edit2, Trash2, Search, Power,
-  ShieldCheck, KeyRound
+  ShieldCheck, KeyRound, Phone, UserCheck
 } from 'lucide-react';
 import MfaConfigModal from '../../components/MfaConfigModal';
 
@@ -87,7 +87,7 @@ export default function UsuariosEmpresasPage() {
     setFormUsuario({
       name: u.name || '',
       email: u.email || '',
-      password: '', // Senha em branco por padrão na edição
+      password: '',
       telefone: u.telefone || '',
       perfil_id: u.perfil_id || '',
       empresa_padrao_id: u.empresa_padrao_id || (empresas[0]?.id ?? ''),
@@ -240,7 +240,7 @@ export default function UsuariosEmpresasPage() {
             Governança, ACL & Equipe
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Gestão completa de filiais, matriz de permissões e controle de usuários
+            Controle de acessos, perfis, assentos e operadores do tenant
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -296,7 +296,7 @@ export default function UsuariosEmpresasPage() {
               activeTab === 'usuarios' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Users className="h-4 w-4" /> Usuários ({usuarios.length})
+            <Users className="h-4 w-4" /> Operadores & Assentos ({usuarios.length})
           </button>
           <button
             type="button"
@@ -368,13 +368,19 @@ export default function UsuariosEmpresasPage() {
               </div>
               <div className="pt-2 border-t border-slate-800/80 space-y-1 text-xs">
                 <div className="flex justify-between text-slate-400">
-                  <span>Perfil:</span>
+                  <span>Perfil de Acesso:</span>
                   <span className="font-semibold text-slate-200">{user.perfil?.nome || 'Operador Padrão'}</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
-                  <span>Filial Padrão:</span>
+                  <span>Filial Vinculada:</span>
                   <span className="font-semibold text-slate-200">{user.empresa_padrao?.nome_fantasia || 'Matriz'}</span>
                 </div>
+                {user.telefone && (
+                  <div className="flex justify-between text-slate-400">
+                    <span>Telefone:</span>
+                    <span className="font-semibold text-slate-200">{user.telefone}</span>
+                  </div>
+                )}
               </div>
               <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
                 <button
@@ -538,6 +544,15 @@ export default function UsuariosEmpresasPage() {
                   required={!editandoId}
                   value={formUsuario.password}
                   onChange={(e) => setFormUsuario({ ...formUsuario, password: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Telefone / WhatsApp</label>
+                <input 
+                  type="text" 
+                  value={formUsuario.telefone}
+                  onChange={(e) => setFormUsuario({ ...formUsuario, telefone: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
