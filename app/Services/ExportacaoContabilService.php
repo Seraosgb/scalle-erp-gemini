@@ -56,7 +56,6 @@ class ExportacaoContabilService
         $dtFimSped = Carbon::parse($dataFim)->format('dmY');
 
         $linhas = [];
-        $totalLinhas = 0;
 
         // --- BLOCO 0: ABERTURA E IDENTIFICAÇÃO ---
         $linhas[] = "|0000|018|0|{$dtIniSped}|{$dtFimSped}|" . strtoupper($empresa->razao_social) . "|" . preg_replace('/[^0-9]/', '', $empresa->cnpj) . "||RJ|" . ($empresa->inscricao_estadual ?? 'ISENTO') . "|||A|1|";
@@ -157,14 +156,14 @@ class ExportacaoContabilService
                 number_format((float) $t->valor_pago_acumulado, 2, ',', '.'),
                 number_format((float) $t->valor_saldo_aberto, 2, ',', '.'),
                 $t->status,
-                $t->historico,
+                $t->historico ?? '',
             ], ';');
         }
 
         rewind($output);
-        $csv = stream_get_contents($output);
+        $csvConteudo = stream_get_contents($output);
         fclose($output);
 
-        return $csv;
+        return $csvConteudo;
     }
 }

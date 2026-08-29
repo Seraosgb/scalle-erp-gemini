@@ -3,15 +3,18 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench, 
   DollarSign, FileText, Users, LogOut, Menu, X, 
-  Building2, ShieldAlert, Factory, FileSpreadsheet
+  Building2, ShieldAlert, Factory, FileSpreadsheet,
+  Truck, UserCheck, ShieldCheck, Monitor
 } from 'lucide-react';
 import { api } from '../services/api';
+import MfaConfigModal from '../components/MfaConfigModal';
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [empresas, setEmpresas] = useState([]);
   const [empresaAtivaId, setEmpresaAtivaId] = useState('');
   const [usuario, setUsuario] = useState(null);
+  const [modalMfaAberto, setModalMfaAberto] = useState(false);
   const navigate = useNavigate();
 
   const carregarContexto = async () => {
@@ -24,7 +27,6 @@ export default function AppLayout() {
       if (resMe.status === 'fulfilled' && resMe.value.data?.data) {
         setUsuario(resMe.value.data.data);
       } else {
-        // Fallback local caso a API demore
         const localUser = localStorage.getItem('scalle_user');
         if (localUser) {
           try { setUsuario(JSON.parse(localUser)); } catch (e) {}
@@ -76,10 +78,13 @@ export default function AppLayout() {
     { name: 'Dashboard', path: 'dashboard', icon: LayoutDashboard },
     { name: 'WMS & Estoque', path: 'wms', icon: Boxes },
     { name: 'Indústria & PCP', path: 'pcp', icon: Factory },
+    { name: 'Terminal Chão de Fábrica', path: 'pcp/terminal', icon: Monitor },
     { name: 'Compras & Suprimentos', path: 'compras', icon: ShoppingCart },
     { name: 'Pedidos & Vendas', path: 'vendas', icon: ShoppingBag },
-    { name: 'PDV Balcão', path: 'pdv', icon: ShoppingCart },
+    { name: 'PDV Balcão', path: 'pdv', icon: ShoppingBag },
     { name: 'Ordens de Serviço', path: 'os', icon: Wrench },
+    { name: 'Frotas & Ativos', path: 'frotas', icon: Truck },
+    { name: 'RH & Ponto REP-P', path: 'rh', icon: UserCheck },
     { name: 'Financeiro', path: 'financeiro', icon: DollarSign },
     { name: 'Exportação Contábil', path: 'exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: 'fiscal', icon: FileText },
@@ -193,6 +198,21 @@ export default function AppLayout() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Botão de Gestão de 2FA / MFA */}
+            <button
+              type="button"
+              onClick={() => setModalMfaAberto(true)}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+                usuario?.mfa_ativo 
+                  ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300 hover:bg-emerald-900/50' 
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Configuração de Autenticação em 2 Etapas (MFA/2FA)"
+            >
+              <ShieldCheck className={`h-4 w-4 ${usuario?.mfa_ativo ? 'text-emerald-400' : 'text-slate-500'}`} />
+              <span className="hidden md:inline">{usuario?.mfa_ativo ? '2FA Ativo' : 'Ativar 2FA'}</span>
+            </button>
+
             <div className="text-right hidden sm:block">
               <div className="text-xs font-bold text-white">{usuario?.name || 'Operador Conectado'}</div>
               <div className={`text-[11px] font-medium ${usuario?.is_master ? 'text-rose-400 font-bold' : 'text-indigo-400'}`}>
@@ -214,6 +234,19 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Modal de Gestão de 2FA / MFA */}
+      {modalMfaAberto && (
+        <MfaConfigModal
+          usuario={usuario}
+          onClose={() => setModalMfaAberto(false)}
+          onAtualizado={(status) => {
+            const updated = { ...usuario, mfa_ativo: status };
+            setUsuario(updated);
+            localStorage.setItem('scalle_user', JSON.stringify(updated));
+          }}
+        />
+      )}
     </div>
   );
 }
