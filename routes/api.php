@@ -202,4 +202,8 @@ Route::post('/vendas/pdv/processar-cartao', [VendaController::class, 'processarC
     Route::get('/pcp/mrp/analise', [PcpController::class, 'analiseMrp']);
 Route::post('/pcp/mrp/gerar-cotacao', [PcpController::class, 'gerarCotacaoMrp']);
 Route::get('/pcp/ordens/{id}/genealogia', [PcpController::class, 'genealogiaLote']);
+// Gestão de MFA / 2FA
+    Route::post('/auth/mfa/setup', [AuthController::class, 'mfaSetup']);
+    Route::post('/auth/mfa/confirmar', [AuthController::class, 'mfaConfirmar']);
+    Route::post('/auth/mfa/desativar', [AuthController::class, 'mfaDesativar']);
 });
