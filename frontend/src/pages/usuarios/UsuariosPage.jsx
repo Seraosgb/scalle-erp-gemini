@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import MfaConfigModal from '../../components/MfaConfigModal';
 
-export default function UsuariosEmpresasPage() {
+export default function UsuariosPage() {
   const [activeTab, setActiveTab] = useState('usuarios');
   const [usuarios, setUsuarios] = useState([]);
   const [empresas, setEmpresas] = useState([]);
@@ -25,7 +25,7 @@ export default function UsuariosEmpresasPage() {
   const [editandoId, setEditandoId] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
-  // Forms
+  // Formulários
   const [formUsuario, setFormUsuario] = useState({
     name: '',
     email: '',
@@ -286,7 +286,7 @@ export default function UsuariosEmpresasPage() {
         </div>
       </div>
 
-      {/* Navegação e Busca */}
+      {/* Navegação por Abas e Barra de Busca */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
         <div className="flex items-center gap-2">
           <button
