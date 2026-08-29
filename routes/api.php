@@ -31,6 +31,13 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
+// Rotas Públicas do Portal do Cliente (Token Temporário)
+Route::prefix('portal')->group(function () {
+    Route::get('/os/{token}', [PortalClienteController::class, 'consultarOs']);
+    Route::post('/os/{token}/aprovar', [PortalClienteController::class, 'aprovarOrcamento']);
+    Route::post('/os/{token}/assinar', [PortalClienteController::class, 'assinarLaudoCliente']);
+});
+
 Route::get('/portal/os/{token}', [PortalClienteController::class, 'consultarOs']);
 Route::post('/portal/os/{token}/aprovar', [PortalClienteController::class, 'aprovarOrcamento']);
 

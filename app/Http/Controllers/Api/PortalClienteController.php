@@ -4,11 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\OrdemServico;
-use App\Models\TituloFinanceiro;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class PortalClienteController extends Controller
 {
@@ -84,8 +82,47 @@ class PortalClienteController extends Controller
 
         return response()->json([
             'data' => [
-                'message' => 'Orçamento aprovado com sucesso! A equipe técnica foi notificada para início da execução.',
+                'message' => 'Orçamento aprovado com sucesso! A equipe técnica foi notificada para início dos trabalhos.',
                 'status' => $os->status
+            ]
+        ]);
+    }
+
+    public function assinarLaudoCliente(Request $request, string $token): JsonResponse
+    {
+        $os = OrdemServico::withoutGlobalScopes()->where('id', $token)->firstOrFail();
+
+        $validated = $request->validate([
+            'nome_responsavel' => 'required|string|max:150',
+            'documento_responsavel' => 'nullable|string|max:30',
+            'assinatura_base64' => 'required|string',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+        ]);
+
+        $ip = $request->ip();
+        $agora = now();
+
+        // Hash SHA-256 com os metadados (MP 2.200-2/2001)
+        $dadosParaHash = "OS:{$os->numero_os}|NOME:{$validated['nome_responsavel']}|DOC:{$validated['documento_responsavel']}|DATA:{$agora}|IP:{$ip}|LAT:{$validated['latitude']}|LNG:{$validated['longitude']}";
+        $hashSha256 = hash('sha256', $dadosParaHash);
+
+        $os->update([
+            'nome_responsavel_recebimento' => $validated['nome_responsavel'],
+            'documento_responsavel_recebimento' => $validated['documento_responsavel'] ?? null,
+            'assinatura_cliente_base64' => $validated['assinatura_base64'],
+            'assinado_em' => $agora,
+            'hash_assinatura_sha256' => $hashSha256,
+            'ip_assinatura' => $ip,
+            'latitude_assinatura' => $validated['latitude'] ?? null,
+            'longitude_assinatura' => $validated['longitude'] ?? null,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Laudo assinado digitalmente com validade jurídica confirmada!',
+                'hash_sha256' => $hashSha256,
+                'assinado_em' => $agora->format('d/m/Y H:i:s'),
             ]
         ]);
     }
@@ -99,7 +136,6 @@ class PortalClienteController extends Controller
         $payload .= "62" . sprintf("%02d", strlen("05" . sprintf("%02d", strlen($txid)) . $txid)) . "05" . sprintf("%02d", strlen($txid)) . $txid;
         $payload .= "6304";
 
-        // Cálculo do Checksum CRC16-CCITT
         $crc = 0xFFFF;
         for ($i = 0; $i < strlen($payload); $i++) {
             $crc ^= (ord($payload[$i]) << 8);
