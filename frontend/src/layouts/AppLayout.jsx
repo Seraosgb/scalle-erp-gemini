@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench, 
   DollarSign, FileText, Users, LogOut, Menu, X, 
   Building2, ShieldAlert, Factory, FileSpreadsheet,
-  Truck, UserCheck, ShieldCheck, Monitor
+  Truck, UserCheck, ShieldCheck, Monitor, Kanban
 } from 'lucide-react';
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
@@ -76,6 +76,7 @@ export default function AppLayout() {
   const menu = [
     ...(usuario?.is_master ? [{ name: 'Painel Master SaaS', path: 'master', icon: ShieldAlert, isMaster: true }] : []),
     { name: 'Dashboard', path: 'dashboard', icon: LayoutDashboard },
+    { name: 'CRM & Funil', path: 'crm', icon: Kanban },
     { name: 'WMS & Estoque', path: 'wms', icon: Boxes },
     { name: 'Indústria & PCP', path: 'pcp', icon: Factory },
     { name: 'Terminal Chão de Fábrica', path: 'pcp/terminal', icon: Monitor },
