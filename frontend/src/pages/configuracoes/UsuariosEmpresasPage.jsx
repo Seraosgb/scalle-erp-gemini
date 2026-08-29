@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { 
   Building2, Users, Plus, RefreshCw, CheckCircle2, 
-  AlertTriangle, X, Shield, Mail, Check, Edit2, Trash2, Search, Power
+  AlertTriangle, X, Shield, Mail, Check, Edit2, Trash2, Search, Power,
+  ShieldCheck, KeyRound
 } from 'lucide-react';
+import MfaConfigModal from '../../components/MfaConfigModal';
 
 export default function UsuariosEmpresasPage() {
   const [activeTab, setActiveTab] = useState('usuarios');
@@ -18,6 +20,8 @@ export default function UsuariosEmpresasPage() {
   const [modalUsuario, setModalUsuario] = useState(false);
   const [modalEmpresa, setModalEmpresa] = useState(false);
   const [modalPerfil, setModalPerfil] = useState(false);
+  const [modalMfa, setModalMfa] = useState(false);
+  const [usuarioMfaSelecionado, setUsuarioMfaSelecionado] = useState(null);
   const [editandoId, setEditandoId] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
@@ -81,13 +85,13 @@ export default function UsuariosEmpresasPage() {
   const abrirEdicaoUsuario = (u) => {
     setEditandoId(u.id);
     setFormUsuario({
-      name: u.name,
-      email: u.email,
-      password: '',
+      name: u.name || '',
+      email: u.email || '',
+      password: '', // Senha em branco por padrão na edição
       telefone: u.telefone || '',
       perfil_id: u.perfil_id || '',
       empresa_padrao_id: u.empresa_padrao_id || (empresas[0]?.id ?? ''),
-      is_ativo: u.is_ativo,
+      is_ativo: u.is_ativo ?? true,
     });
     setModalUsuario(true);
   };
@@ -116,15 +120,25 @@ export default function UsuariosEmpresasPage() {
     setModalPerfil(true);
   };
 
+  const abrirConfigMfa = (u) => {
+    setUsuarioMfaSelecionado(u);
+    setModalMfa(true);
+  };
+
   // Submits
   const handleSalvarUsuario = async (e) => {
     e.preventDefault();
     try {
+      const payload = { ...formUsuario };
+      if (editandoId && !payload.password) {
+        delete payload.password;
+      }
+
       if (editandoId) {
-        await api.put(`/usuarios/${editandoId}`, formUsuario);
+        await api.put(`/usuarios/${editandoId}`, payload);
         setFeedback({ tipo: 'sucesso', msg: 'Usuário atualizado com sucesso!' });
       } else {
-        await api.post('/usuarios', formUsuario);
+        await api.post('/usuarios', payload);
         setFeedback({ tipo: 'sucesso', msg: 'Usuário cadastrado com sucesso!' });
       }
       setModalUsuario(false);
@@ -217,7 +231,7 @@ export default function UsuariosEmpresasPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto text-slate-200">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
@@ -334,7 +348,7 @@ export default function UsuariosEmpresasPage() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold text-xs ${user.is_ativo ? 'bg-indigo-950/80 border-indigo-800 text-indigo-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-                    {user.name.charAt(0)}
+                    {user.name?.charAt(0) || 'U'}
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-bold text-white text-sm truncate">{user.name}</h3>
@@ -343,9 +357,14 @@ export default function UsuariosEmpresasPage() {
                     </span>
                   </div>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${user.is_ativo ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
-                  {user.is_ativo ? 'Ativo' : 'Inativo'}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${user.is_ativo ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+                    {user.is_ativo ? 'Ativo' : 'Inativo'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-mono flex items-center gap-1 ${user.mfa_ativo ? 'bg-indigo-950 text-indigo-300 border border-indigo-800' : 'bg-slate-950 text-slate-500 border border-slate-800'}`}>
+                    <ShieldCheck className="h-3 w-3" /> {user.mfa_ativo ? '2FA Ativo' : '2FA Off'}
+                  </span>
+                </div>
               </div>
               <div className="pt-2 border-t border-slate-800/80 space-y-1 text-xs">
                 <div className="flex justify-between text-slate-400">
@@ -357,21 +376,31 @@ export default function UsuariosEmpresasPage() {
                   <span className="font-semibold text-slate-200">{user.empresa_padrao?.nome_fantasia || 'Matriz'}</span>
                 </div>
               </div>
-              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-end gap-2">
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  onClick={() => abrirEdicaoUsuario(user)}
-                  className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 cursor-pointer"
+                  onClick={() => abrirConfigMfa(user)}
+                  className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-indigo-400 border border-slate-700 flex items-center gap-1 cursor-pointer"
+                  title="Configurar Autenticação em 2 Etapas (MFA)"
                 >
-                  <Edit2 className="h-3 w-3 text-indigo-400" /> Editar
+                  <KeyRound className="h-3 w-3" /> 2FA
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleExcluirUsuario(user.id)}
-                  className="px-2.5 py-1 text-xs rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800 flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 className="h-3 w-3" /> Excluir
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => abrirEdicaoUsuario(user)}
+                    className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Edit2 className="h-3 w-3 text-indigo-400" /> Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExcluirUsuario(user.id)}
+                    className="px-2.5 py-1 text-xs rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="h-3 w-3" /> Excluir
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -703,6 +732,20 @@ export default function UsuariosEmpresasPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Modal de Gestão de MFA / 2FA */}
+      {modalMfa && usuarioMfaSelecionado && (
+        <MfaConfigModal
+          usuario={usuarioMfaSelecionado}
+          onClose={() => {
+            setModalMfa(false);
+            setUsuarioMfaSelecionado(null);
+          }}
+          onAtualizado={(status) => {
+            setUsuarios(prev => prev.map(u => u.id === usuarioMfaSelecionado.id ? { ...u, mfa_ativo: status } : u));
+          }}
+        />
       )}
     </div>
   );
