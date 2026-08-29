@@ -37,7 +37,12 @@ class EstoqueService
             $lote,
             $custoUnitario
         ) {
-            $isSaida = in_array($tipoMovimento, ['SAIDA_VENDA', 'SAIDA_OS', 'TRANSFERENCIA_SAIDA']);
+            $isSaida = in_array($tipoMovimento, [
+                'SAIDA_VENDA', 
+                'SAIDA_OS', 
+                'TRANSFERENCIA_SAIDA', 
+                'SAIDA_PRODUCAO'
+            ]);
 
             // 1. Resolução Automática de Lote via FEFO/FIFO se não informado
             if ($isSaida && empty($lote)) {
@@ -104,7 +109,6 @@ class EstoqueService
      */
     public static function resolverLoteFefo(string $depositoId, string $itemId, float $quantidade): ?EstoqueDeposito
     {
-        // 1. Busca por FEFO (com validade cadastrada)
         $fefo = EstoqueDeposito::where('deposito_id', $depositoId)
             ->where('item_id', $itemId)
             ->whereNotNull('data_validade')
@@ -116,7 +120,6 @@ class EstoqueService
             return $fefo;
         }
 
-        // 2. Fallback FIFO (ordem de criação do registro)
         return EstoqueDeposito::where('deposito_id', $depositoId)
             ->where('item_id', $itemId)
             ->where('quantidade_saldo', '>=', $quantidade)

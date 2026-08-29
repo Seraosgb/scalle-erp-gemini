@@ -396,4 +396,66 @@ class PcpController extends Controller
 
         return response()->json(['data' => $op]);
     }
+    public function analiseMrp(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $empresaId = $user->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $user->tenant_id)->first()?->id;
+
+        $sugestoes = \App\Services\ProducaoPcpService::executarCalculoMrp($user->tenant_id, $empresaId, $user->id);
+
+        return response()->json(['data' => $sugestoes]);
+    }
+
+    public function gerarCotacaoMrp(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+        $empresaId = $user->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'itens' => 'required|array|min:1',
+            'itens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'itens.*.quantidade' => 'required|numeric|min:0.0001',
+        ]);
+
+        $cotacao = \DB::transaction(function () use ($validated, $tenantId, $empresaId, $user) {
+            $cot = \App\Models\CotacaoCompra::create([
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'solicitante_id' => $user->id,
+                'deposito_destino_id' => $validated['deposito_id'],
+                'titulo' => 'Cotação Automática MRP (Demanda de Produção) - ' . date('d/m/Y H:i'),
+                'status' => 'ABERTA',
+            ]);
+
+            foreach ($validated['itens'] as $i) {
+                \App\Models\CotacaoCompraItem::create([
+                    'cotacao_id' => $cot->id,
+                    'item_id' => $i['item_id'],
+                    'quantidade' => (float) $i['quantidade'],
+                ]);
+            }
+
+            return $cot;
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => 'Cotação de compras gerada pelo motor MRP com sucesso!',
+                'cotacao' => $cotacao->load('itens.item')
+            ]
+        ], 201);
+    }
+
+    public function genealogiaLote(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $rastreamento = \App\Models\PcpLoteRastreabilidade::where('tenant_id', $tenantId)
+            ->where('ordem_producao_id', $id)
+            ->with(['insumo'])
+            ->get();
+
+        return response()->json(['data' => $rastreamento]);
+    }
 }

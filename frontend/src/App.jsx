@@ -21,6 +21,7 @@ import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
 import MasterPage from './pages/master/MasterPage';
+import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="wms" element={<WmsPage />} />
             <Route path="estoque" element={<WmsPage />} />
             <Route path="pcp" element={<PcpPage />} />
+            <Route path="/app/pcp/terminal" element={<TerminalFabricaPage />} />
             <Route path="compras" element={<ComprasPage />} />
             <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
             <Route path="vendas" element={<VendasPage />} />

@@ -199,4 +199,7 @@ Route::post('/vendas/pdv/processar-cartao', [VendaController::class, 'processarC
     Route::get('/pcp/estruturas', [PcpController::class, 'estruturas']);
     Route::post('/pcp/estruturas', [PcpController::class, 'storeEstrutura']);
     Route::delete('/pcp/estruturas/{id}', [PcpController::class, 'destroyEstruturaItem']);
+    Route::get('/pcp/mrp/analise', [PcpController::class, 'analiseMrp']);
+Route::post('/pcp/mrp/gerar-cotacao', [PcpController::class, 'gerarCotacaoMrp']);
+Route::get('/pcp/ordens/{id}/genealogia', [PcpController::class, 'genealogiaLote']);
 });
