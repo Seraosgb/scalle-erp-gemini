@@ -11,18 +11,19 @@ class CheckStorageQuota
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $tenantId = app()->bound('current_tenant_id') ? app('current_tenant_id') : null;
+        $user = $request->user();
+        $tenantId = $user?->tenant_id ?? (app()->bound('current_tenant_id') ? app('current_tenant_id') : null);
 
-        if ($tenantId && $request->hasFile('file') || $request->hasFile('xml_file')) {
-            $assinatura = Assinatura::where('tenant_id', $tenantId)->with('plano')->first();
+        if ($tenantId && ($request->hasFile('file') || $request->hasFile('xml_file') || $request->hasFile('foto'))) {
+            $assinatura = Assinatura::withoutGlobalScopes()->where('tenant_id', $tenantId)->with('plano')->first();
 
-            if ($assinatura && $assinatura->plano) {
+            if ($assinatura && $assinatura->plano && !empty($assinatura->plano->cota_storage_bytes)) {
                 $tamanhoUpload = 0;
                 foreach ($request->allFiles() as $arquivo) {
                     $tamanhoUpload += is_array($arquivo) ? 0 : $arquivo->getSize();
                 }
 
-                $novoTotal = $assinatura->storage_utilizado_bytes + $tamanhoUpload;
+                $novoTotal = ($assinatura->storage_utilizado_bytes ?? 0) + $tamanhoUpload;
 
                 if ($novoTotal > $assinatura->plano->cota_storage_bytes) {
                     return response()->json([

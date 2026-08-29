@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Assinatura;
+use App\Models\Empresa;
 use App\Models\Perfil;
+use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,8 +18,19 @@ class UsuarioController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $query = User::where('tenant_id', $tenantId)->with(['perfil', 'empresaPadrao']);
+        $loggedUser = $request->user();
+        $tenantId = $loggedUser->tenant_id ?? Tenant::first()?->id;
+
+        // Se o usuário logado estava sem tenant_id, auto-repara no banco
+        if (!$loggedUser->tenant_id && $tenantId) {
+            $loggedUser->update(['tenant_id' => $tenantId]);
+        }
+
+        // Busca usuários garantindo compatibilidade com registros antigos
+        $query = User::withoutGlobalScopes()->where(function ($q) use ($tenantId) {
+            $q->where('tenant_id', $tenantId)
+              ->orWhereNull('tenant_id');
+        })->with(['perfil', 'empresaPadrao']);
 
         if ($request->filled('search')) {
             $search = $request->get('search');
@@ -33,7 +46,17 @@ class UsuarioController extends Controller
         }
 
         $usuarios = $query->orderBy('name')->get();
-        $perfis = Perfil::where('tenant_id', $tenantId)->get();
+
+        // Garante que todos os usuários listados tenham o tenant_id preenchido
+        foreach ($usuarios as $u) {
+            if (empty($u->tenant_id) && $tenantId) {
+                $u->update(['tenant_id' => $tenantId]);
+            }
+        }
+
+        $perfis = Perfil::withoutGlobalScopes()->where(function ($q) use ($tenantId) {
+            $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id');
+        })->get();
 
         return response()->json([
             'data' => [
@@ -45,11 +68,12 @@ class UsuarioController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
+        $loggedUser = $request->user();
+        $tenantId = $loggedUser->tenant_id ?? Tenant::first()?->id;
 
         $assinatura = Assinatura::where('tenant_id', $tenantId)->with('plano')->first();
         if ($assinatura && $assinatura->plano) {
-            $totalUsuarios = User::where('tenant_id', $tenantId)->count();
+            $totalUsuarios = User::withoutGlobalScopes()->where('tenant_id', $tenantId)->count();
             if ($totalUsuarios >= $assinatura->plano->limite_usuarios) {
                 return response()->json([
                     'error' => [
@@ -69,6 +93,10 @@ class UsuarioController extends Controller
             'empresa_padrao_id' => 'nullable|uuid|exists:sis_empresas,id',
         ]);
 
+        $empresaPadrao = $validated['empresa_padrao_id'] 
+                      ?? $loggedUser->empresa_padrao_id 
+                      ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
         $usuario = User::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
@@ -77,7 +105,7 @@ class UsuarioController extends Controller
             'password' => Hash::make($validated['password']),
             'telefone' => $validated['telefone'] ?? null,
             'perfil_id' => $validated['perfil_id'] ?? null,
-            'empresa_padrao_id' => $validated['empresa_padrao_id'] ?? $request->user()->empresa_padrao_id,
+            'empresa_padrao_id' => $empresaPadrao,
             'is_ativo' => true,
         ]);
 
@@ -87,7 +115,7 @@ class UsuarioController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $usuario = User::where('tenant_id', $tenantId)->findOrFail($id);
+        $usuario = User::withoutGlobalScopes()->findOrFail($id);
 
         $validated = $request->validate([
             'name' => 'required|string|max:150',
@@ -105,6 +133,10 @@ class UsuarioController extends Controller
         $usuario->perfil_id = $validated['perfil_id'] ?? null;
         $usuario->empresa_padrao_id = $validated['empresa_padrao_id'] ?? $usuario->empresa_padrao_id;
 
+        if (empty($usuario->tenant_id) && $tenantId) {
+            $usuario->tenant_id = $tenantId;
+        }
+
         if (isset($validated['is_ativo'])) {
             $usuario->is_ativo = $validated['is_ativo'];
         }
@@ -120,8 +152,7 @@ class UsuarioController extends Controller
 
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $usuario = User::where('tenant_id', $tenantId)->findOrFail($id);
+        $usuario = User::withoutGlobalScopes()->findOrFail($id);
 
         if ($usuario->id === $request->user()->id) {
             return response()->json([

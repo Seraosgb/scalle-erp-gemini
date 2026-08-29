@@ -13,17 +13,17 @@ class CheckSubscriptionStatus
     {
         $user = $request->user();
 
-        // 1. SaaS Owner Master nunca é bloqueado por Soft-Lock de tenants
-        if ($user && $user->is_master) {
+        // 1. SaaS Owner Master ou usuários sem autenticação passam direto
+        if (!$user || $user->is_master) {
             return $next($request);
         }
 
-        $tenantId = app()->bound('current_tenant_id') ? app('current_tenant_id') : null;
+        $tenantId = $user->tenant_id ?? (app()->bound('current_tenant_id') ? app('current_tenant_id') : null);
 
         if ($tenantId) {
             $assinatura = Assinatura::withoutGlobalScopes()->where('tenant_id', $tenantId)->first();
 
-            if ($assinatura) {
+            if ($assinatura && !empty($assinatura->status)) {
                 $statusBloqueio = in_array(strtoupper($assinatura->status), ['SOFT_LOCK', 'SUSPENSO', 'INADIMPLENTE', 'CANCELADO']);
                 $isMutacao = in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE']);
 
