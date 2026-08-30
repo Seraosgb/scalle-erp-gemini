@@ -368,12 +368,17 @@ export default function BoardCrm() {
                     )}
 
                     <button
-                        onClick={() => navigate('app/crm/configuracoes')}
-                        className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold px-2.5 py-1 bg-indigo-950/40 border border-indigo-800/60 rounded-lg transition cursor-pointer flex items-center gap-1"
-                        title="Tela Completa de Configurações do CRM"
-                    >
-                        <span>⚙️</span> Configurações
-                    </button>
+    type="button"
+    onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate('/app/crm/configuracoes');
+    }}
+    className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold px-2.5 py-1.5 bg-indigo-950/40 border border-indigo-800/60 rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+    title="Tela Completa de Parametrização e Configurações do CRM"
+>
+    <span>⚙️</span> Configurações
+</button>
                 </div>
 
                 <div className="flex items-center gap-2">
