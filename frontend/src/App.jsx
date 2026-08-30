@@ -24,6 +24,7 @@ import MasterPage from './pages/master/MasterPage';
 import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
 import BoardCrm from './Pages/Crm/BoardCrm';
 import ConfiguracoesCrm from './pages/Crm/ConfiguracoesCrm';
+import LandingCrm from './pages/public/LandingCrm';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -43,6 +44,7 @@ export default function App() {
           {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
+          <Route path="/crm" element={<LandingCrm />} />
 
           {/* Redirecionamento da raiz pura */}
           <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
@@ -52,7 +54,7 @@ export default function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="crm" element={<BoardCrm />} />
-            <Route path="/crm/configuracoes" element={<ConfiguracoesCrm />} />
+            <Route path="crm/configuracoes" element={<ConfiguracoesCrm />} />
             <Route path="wms" element={<WmsPage />} />
             <Route path="estoque" element={<WmsPage />} />
             <Route path="pcp" element={<PcpPage />} />
