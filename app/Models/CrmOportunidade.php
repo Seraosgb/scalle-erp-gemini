@@ -37,4 +37,4 @@ class CrmOportunidade extends Model
     public function etapa(): BelongsTo { return $this->belongsTo(CrmFunilEtapa::class, 'etapa_id'); }
     public function vendedor(): BelongsTo { return $this->belongsTo(User::class, 'vendedor_id'); }
     public function cliente(): BelongsTo { return $this->belongsTo(Pessoa::class, 'cliente_id'); }
-}
+}   

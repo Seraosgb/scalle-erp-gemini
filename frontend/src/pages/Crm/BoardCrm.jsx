@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { api } from '../../services/api';
+import { api } from '../../services/api'; // Ajuste o caminho se necessário
 
 export default function BoardCrm() {
     const [board, setBoard] = useState(null);
@@ -12,7 +12,8 @@ export default function BoardCrm() {
 
     const carregarBoard = async () => {
         try {
-            const { data } = await api.get('/api/crm/board');
+            // Removido o /api duplicado
+            const { data } = await api.get('/crm/board');
             setBoard(data.data);
         } catch (error) {
             console.error("Erro ao carregar CRM", error);
@@ -24,11 +25,9 @@ export default function BoardCrm() {
     const handleDragEnd = async (result) => {
         const { destination, source, draggableId } = result;
 
-        // Se soltou fora do board ou no mesmo lugar, ignora
         if (!destination) return;
         if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-        // 1. Atualização Otimista UI (Move o card localmente antes da API responder)
         const boardAtualizado = { ...board };
         const etapaOrigem = boardAtualizado.etapas.find(e => e.id === source.droppableId);
         const etapaDestino = boardAtualizado.etapas.find(e => e.id === destination.droppableId);
@@ -37,23 +36,25 @@ export default function BoardCrm() {
         etapaDestino.oportunidades.splice(destination.index, 0, cardMovido);
         setBoard(boardAtualizado);
 
-        // 2. Dispara pro Backend
         try {
-            await api.put(`/api/crm/oportunidades/${draggableId}/mover`, {
+            // Removido o /api duplicado
+            await api.put(`/crm/oportunidades/${draggableId}/mover`, {
                 etapa_id_destino: destination.droppableId
             });
         } catch (error) {
             console.error("Erro ao mover card", error);
-            carregarBoard(); // Reverte a tela em caso de falha
+            carregarBoard();
         }
     };
 
-    const converterEmOrcamento = async (oportunidadeId) => {
+    const converterEmOrcamento = async (oportunidadeId, e) => {
+        e.stopPropagation(); // Evita que o clique arraste o card acidentalmente
         if(!confirm("Gerar orçamento para este Lead?")) return;
         try {
-            const { data } = await api.post(`/api/crm/oportunidades/${oportunidadeId}/converter-orcamento`);
+            // Removido o /api duplicado
+            const { data } = await api.post(`/crm/oportunidades/${oportunidadeId}/converter-orcamento`);
             alert(data.data.message);
-            carregarBoard(); // Atualiza o board para sumir o card ou mudar status
+            carregarBoard(); 
         } catch(e) {
             alert("Erro ao converter.");
         }
@@ -72,7 +73,7 @@ export default function BoardCrm() {
                         <div key={etapa.id} className="bg-gray-200 rounded-lg w-80 flex-shrink-0 flex flex-col">
                             <div className="p-3 bg-gray-300 rounded-t-lg font-semibold flex justify-between">
                                 <span>{etapa.nome}</span>
-                                <span className="bg-white px-2 rounded-full text-sm">{etapa.oportunidades.length}</span>
+                                <span className="bg-white px-2 rounded-full text-sm font-bold text-gray-700">{etapa.oportunidades.length}</span>
                             </div>
                             
                             <Droppable droppableId={etapa.id}>
@@ -89,16 +90,18 @@ export default function BoardCrm() {
                                                         ref={provided.innerRef}
                                                         {...provided.draggableProps}
                                                         {...provided.dragHandleProps}
-                                                        className="bg-white p-4 mb-3 rounded shadow cursor-grab active:cursor-grabbing border-l-4"
+                                                        className="bg-white p-4 mb-3 rounded shadow cursor-grab active:cursor-grabbing border-l-4 hover:shadow-md transition-shadow"
                                                         style={{ ...provided.draggableProps.style, borderColor: etapa.cor_hex }}
                                                     >
                                                         <h3 className="font-bold text-gray-700 text-sm">{card.titulo}</h3>
-                                                        <p className="text-xs text-gray-500 mt-1">{card.nome_contato}</p>
+                                                        <p className="text-xs text-gray-500 mt-1 truncate">{card.nome_contato}</p>
                                                         <div className="mt-3 flex justify-between items-center">
-                                                            <span className="text-xs font-bold text-green-600">R$ {card.valor_estimado}</span>
+                                                            <span className="text-xs font-bold text-emerald-600">
+                                                                {Number(card.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                            </span>
                                                             <button 
-                                                                onClick={() => converterEmOrcamento(card.id)}
-                                                                className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                                                                onClick={(e) => converterEmOrcamento(card.id, e)}
+                                                                className="text-xs bg-indigo-600 text-white px-2 py-1.5 rounded hover:bg-indigo-700 font-medium transition-colors"
                                                             >
                                                                 Orçamento
                                                             </button>
