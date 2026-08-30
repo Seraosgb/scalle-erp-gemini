@@ -35,22 +35,32 @@ class CrmController extends Controller
             ]);
         }
 
-        // 2. Auto-recuperação: se o funil existir mas as etapas estiverem vazias
-        if ($funil->etapas->isEmpty()) {
-            $etapasPadrao = ['Prospecção', 'Qualificação', 'Apresentação', 'Negociação'];
-            foreach ($etapasPadrao as $i => $nome) {
+        // 2. Garante a existência de todas as etapas padrão no funil
+        $etapasPadrao = [
+            1 => 'Prospecção',
+            2 => 'Qualificação',
+            3 => 'Apresentação',
+            4 => 'Negociação'
+        ];
+
+        $etapasExistentes = $funil->etapas()->pluck('nome')->toArray();
+
+        foreach ($etapasPadrao as $ordem => $nomeEtapa) {
+            if (!in_array($nomeEtapa, $etapasExistentes)) {
                 $funil->etapas()->create([
                     'tenant_id' => $tenantId,
-                    'nome' => $nome,
-                    'ordem_exibicao' => $i + 1
+                    'nome' => $nomeEtapa,
+                    'ordem_exibicao' => $ordem
                 ]);
             }
-            
-            // Recarrega as etapas e oportunidades com fresh
-            $funil->load(['etapas.oportunidades' => function ($q) {
-                $q->where('status', 'ABERTO');
-            }]);
         }
+
+        // 3. Recarrega as etapas ordenadas com as oportunidades
+        $funil->load(['etapas' => function ($q) {
+            $q->orderBy('ordem_exibicao', 'asc');
+        }, 'etapas.oportunidades' => function ($q) {
+            $q->where('status', 'ABERTO')->orderByDesc('created_at');
+        }]);
 
         return response()->json(['data' => $funil]);
     }
