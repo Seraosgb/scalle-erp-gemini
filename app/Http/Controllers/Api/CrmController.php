@@ -20,76 +20,139 @@ use Illuminate\Support\Str;
 
 class CrmController extends Controller
 {
+    public function listarPipelines(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pipelines = CrmFunil::where('tenant_id', $tenantId)
+            ->where('is_ativo', true)
+            ->withCount('etapas')
+            ->orderByDesc('is_padrao')
+            ->orderBy('nome')
+            ->get();
+
+        return response()->json(['data' => $pipelines]);
+    }
+
+    public function storePipeline(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'descricao' => 'nullable|string|max:255',
+            'cor_hex' => 'nullable|string|max:10',
+        ]);
+
+        $pipeline = DB::transaction(function () use ($validated, $tenantId) {
+            $pipe = CrmFunil::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'nome' => $validated['nome'],
+                'descricao' => $validated['descricao'] ?? null,
+                'cor_hex' => $validated['cor_hex'] ?? '#4f46e5',
+                'token_captacao' => Str::random(40),
+                'is_padrao' => false,
+                'is_ativo' => true,
+            ]);
+
+            // Cria etapas padrão de vendas consultivas para o novo pipeline
+            $etapas = [
+                ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
+                ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
+                ['nome' => 'Proposta Comercial', 'ordem' => 3, 'prob' => 70, 'cor' => '#f59e0b'],
+                ['nome' => 'Negociação / Fechamento', 'ordem' => 4, 'prob' => 90, 'cor' => '#10b981'],
+            ];
+
+            foreach ($etapas as $e) {
+                CrmFunilEtapa::create([
+                    'id' => (string) Str::uuid(),
+                    'funil_id' => $pipe->id,
+                    'nome' => $e['nome'],
+                    'ordem_exibicao' => $e['ordem'],
+                    'probabilidade_fechamento' => $e['prob'],
+                    'cor_hex' => $e['cor'],
+                ]);
+            }
+
+            return $pipe;
+        });
+
+        return response()->json(['data' => $pipeline->load('etapas')], 201);
+    }
+
+    public function atualizarPipeline(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pipeline = CrmFunil::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'descricao' => 'nullable|string|max:255',
+            'cor_hex' => 'nullable|string|max:10',
+        ]);
+
+        $pipeline->update($validated);
+
+        return response()->json(['data' => $pipeline]);
+    }
+
     public function board(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
+        $pipelineId = $request->get('pipeline_id');
         $statusFiltro = $request->get('status', 'ABERTO');
         $vendedorId = $request->get('vendedor_id');
         $search = $request->get('search');
 
-        // 1. Recupera ou cria o funil padrão do tenant
-        $funil = CrmFunil::firstOrCreate(
-            ['tenant_id' => $tenantId],
-            [
+        // 1. Resolve o pipeline selecionado ou o padrão
+        $queryPipeline = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true);
+        if (!empty($pipelineId)) {
+            $queryPipeline->where('id', $pipelineId);
+        } else {
+            $queryPipeline->orderByDesc('is_padrao');
+        }
+
+        $pipeline = $queryPipeline->first();
+
+        // Auto-provisiona se o tenant não tiver nenhum
+        if (!$pipeline) {
+            $pipeline = CrmFunil::create([
                 'id' => (string) Str::uuid(),
-                'nome' => 'Funil Comercial Padrão',
+                'tenant_id' => $tenantId,
+                'nome' => 'Pipeline Comercial Principal',
+                'descricao' => 'Fluxo mestre de prospecção e vendas',
                 'token_captacao' => Str::random(40),
                 'is_padrao' => true,
                 'is_ativo' => true,
-            ]
-        );
+            ]);
+        }
 
-        // 2. Garante que as 4 etapas existam vinculadas a este funil
-        $etapasPadrao = [
-            1 => 'Prospecção',
-            2 => 'Qualificação',
-            3 => 'Apresentação',
-            4 => 'Negociação'
-        ];
-
-        foreach ($etapasPadrao as $ordem => $nomeEtapa) {
-            CrmFunilEtapa::firstOrCreate(
-                [
-                    'funil_id' => $funil->id,
-                    'nome' => $nomeEtapa,
-                ],
-                [
+        // 2. Garante etapas existentes no pipeline
+        $etapasExistentes = CrmFunilEtapa::where('funil_id', $pipeline->id)->count();
+        if ($etapasExistentes === 0) {
+            $etapas = [
+                ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
+                ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
+                ['nome' => 'Proposta Comercial', 'ordem' => 3, 'prob' => 70, 'cor' => '#f59e0b'],
+                ['nome' => 'Negociação / Fechamento', 'ordem' => 4, 'prob' => 90, 'cor' => '#10b981'],
+            ];
+            foreach ($etapas as $e) {
+                CrmFunilEtapa::create([
                     'id' => (string) Str::uuid(),
-                    'ordem_exibicao' => $ordem,
-                    'cor_hex' => match($ordem) {
-                        1 => '#6366f1',
-                        2 => '#3b82f6',
-                        3 => '#f59e0b',
-                        4 => '#10b981',
-                        default => '#64748b'
-                    }
-                ]
-            );
-        }
-
-        // 3. Recupera a primeira etapa para reparar eventuais leads sem etapa
-        $primeiraEtapa = CrmFunilEtapa::where('funil_id', $funil->id)->orderBy('ordem_exibicao')->first();
-
-        if ($primeiraEtapa) {
-            CrmOportunidade::where('tenant_id', $tenantId)
-                ->where(function ($q) use ($funil) {
-                    $q->whereNull('funil_id')
-                      ->orWhereNull('etapa_id')
-                      ->orWhere('funil_id', '!=', $funil->id);
-                })
-                ->update([
-                    'funil_id' => $funil->id,
-                    'etapa_id' => $primeiraEtapa->id
+                    'funil_id' => $pipeline->id,
+                    'nome' => $e['nome'],
+                    'ordem_exibicao' => $e['ordem'],
+                    'probabilidade_fechamento' => $e['prob'],
+                    'cor_hex' => $e['cor'],
                 ]);
+            }
         }
 
-        // 4. Carrega o funil com as etapas e oportunidades filtradas
-        $funilCarregado = CrmFunil::where('id', $funil->id)
+        // 3. Carrega o Pipeline com as Etapas e Oportunidades
+        $pipelineCarregado = CrmFunil::where('id', $pipeline->id)
             ->with(['etapas' => function ($queryEtapa) use ($statusFiltro, $vendedorId, $search, $tenantId) {
                 $queryEtapa->orderBy('ordem_exibicao', 'asc')
                     ->with(['oportunidades' => function ($q) use ($statusFiltro, $vendedorId, $search, $tenantId) {
                         $q->where('tenant_id', $tenantId);
-                        
                         if ($statusFiltro !== 'TODOS') {
                             $q->where('status', $statusFiltro);
                         }
@@ -109,6 +172,9 @@ class CrmController extends Controller
             }])
             ->first();
 
+        // 4. Lista todos os pipelines do tenant para permitir alternância
+        $todosPipelines = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true)->orderBy('nome')->get(['id', 'nome', 'is_padrao']);
+
         // 5. Motivos de Perda e Vendedores
         self::garantirMotivosPerdaPadrao($tenantId);
         $motivosPerda = TabelaDominio::where('tenant_id', $tenantId)
@@ -120,7 +186,8 @@ class CrmController extends Controller
 
         return response()->json([
             'data' => [
-                'funil' => $funilCarregado,
+                'pipeline' => $pipelineCarregado,
+                'pipelines_disponiveis' => $todosPipelines,
                 'motivos_perda' => $motivosPerda,
                 'vendedores' => $vendedores,
             ]
@@ -137,12 +204,7 @@ class CrmController extends Controller
         $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
         $oportunidade->update(['etapa_id' => $validated['etapa_id_destino']]);
 
-        return response()->json([
-            'data' => [
-                'message' => 'Oportunidade movida com sucesso!', 
-                'oportunidade' => $oportunidade
-            ]
-        ]);
+        return response()->json(['data' => ['message' => 'Oportunidade movida com sucesso!', 'oportunidade' => $oportunidade]]);
     }
 
     public function storeOportunidade(Request $request): JsonResponse
@@ -158,10 +220,7 @@ class CrmController extends Controller
         ]);
 
         $tenantId = $request->user()->tenant_id;
-
-        $etapa = CrmFunilEtapa::whereHas('funil', function ($q) use ($tenantId) {
-            $q->where('tenant_id', $tenantId);
-        })->findOrFail($validated['etapa_id']);
+        $etapa = CrmFunilEtapa::whereHas('funil', fn($q) => $q->where('tenant_id', $tenantId))->findOrFail($validated['etapa_id']);
 
         $oportunidade = CrmOportunidade::create([
             'id' => (string) Str::uuid(),
@@ -229,10 +288,7 @@ class CrmController extends Controller
     public function toggleAtividade(Request $request, string $id, string $atividadeId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $atividade = CrmOportunidadeAtividade::where('tenant_id', $tenantId)
-            ->where('oportunidade_id', $id)
-            ->findOrFail($atividadeId);
-
+        $atividade = CrmOportunidadeAtividade::where('tenant_id', $tenantId)->where('oportunidade_id', $id)->findOrFail($atividadeId);
         $atividade->update(['is_concluida' => !$atividade->is_concluida]);
 
         return response()->json(['data' => $atividade]);
@@ -249,7 +305,6 @@ class CrmController extends Controller
 
                 if (!$clienteId) {
                     $cpfAleatorio = 'CRM' . strtoupper(substr(str_replace('-', '', (string) Str::uuid()), 0, 8));
-
                     $pessoa = Pessoa::create([
                         'id' => (string) Str::uuid(),
                         'tenant_id' => $tenantId,
@@ -294,7 +349,7 @@ class CrmController extends Controller
                     'percentual_desconto' => 0.00,
                     'valor_desconto' => 0.00,
                     'valor_total_liquido' => $valorEstimado,
-                    'observacoes' => "Orçamento gerado a partir da Oportunidade CRM: {$oportunidade->titulo}",
+                    'observacoes' => "Orçamento gerado a partir do Pipeline CRM: {$oportunidade->titulo}",
                 ]);
 
                 $oportunidade->update([

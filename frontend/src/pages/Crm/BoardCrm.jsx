@@ -3,7 +3,9 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { api } from '../../services/api';
 
 export default function BoardCrm() {
-    const [funil, setFunil] = useState(null);
+    const [pipeline, setPipeline] = useState(null);
+    const [pipelinesDisponiveis, setPipelinesDisponiveis] = useState([]);
+    const [pipelineSelecionadoId, setPipelineSelecionadoId] = useState('');
     const [motivosPerda, setMotivosPerda] = useState([]);
     const [vendedores, setVendedores] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -13,14 +15,19 @@ export default function BoardCrm() {
     const [vendedorFiltro, setVendedorFiltro] = useState('');
     const [busca, setBusca] = useState('');
 
+    // Edição inline de Pipeline
+    const [editandoNome, setEditandoNome] = useState(false);
+    const [novoNomePipeline, setNovoNomePipeline] = useState('');
+
     // Modais & Drawer
     const [modalNovoAberto, setModalNovoAberto] = useState(false);
+    const [modalNovoPipelineAberto, setModalNovoPipelineAberto] = useState(false);
     const [modalPerdaAberto, setModalPerdaAberto] = useState(false);
     const [cardSelecionado, setCardSelecionado] = useState(null);
     const [drawerAberto, setDrawerAberto] = useState(false);
     const [salvando, setSalvando] = useState(false);
 
-    // Formulários
+    // Forms
     const [formNovo, setFormNovo] = useState({
         titulo: '',
         nome_contato: '',
@@ -28,6 +35,12 @@ export default function BoardCrm() {
         telefone_contato: '',
         valor_estimado: '',
         vendedor_id: ''
+    });
+
+    const [formNovoPipe, setFormNovoPipe] = useState({
+        nome: '',
+        descricao: '',
+        cor_hex: '#4f46e5'
     });
 
     const [formPerda, setFormPerda] = useState({
@@ -43,33 +56,35 @@ export default function BoardCrm() {
 
     useEffect(() => {
         carregarBoard();
-    }, [statusFiltro, vendedorFiltro, busca]);
+    }, [pipelineSelecionadoId, statusFiltro, vendedorFiltro, busca]);
 
     const carregarBoard = async () => {
         try {
             setLoading(true);
             const params = {
+                pipeline_id: pipelineSelecionadoId || undefined,
                 status: statusFiltro,
                 vendedor_id: vendedorFiltro || undefined,
                 search: busca || undefined
             };
             const response = await api.get('/crm/board', { params });
-            
-            // Blindagem para extrair o funil independentemente da camada de retorno
             const payload = response.data?.data || response.data;
-            const funilRecebido = payload?.funil || payload;
+            const pipe = payload?.pipeline;
 
-            if (funilRecebido && Array.isArray(funilRecebido.etapas)) {
-                setFunil(funilRecebido);
-            } else if (funilRecebido) {
-                setFunil({ ...funilRecebido, etapas: [] });
+            if (pipe && Array.isArray(pipe.etapas)) {
+                setPipeline(pipe);
+                setNovoNomePipeline(pipe.nome);
+                if (!pipelineSelecionadoId) {
+                    setPipelineSelecionadoId(pipe.id);
+                }
             }
 
+            setPipelinesDisponiveis(payload?.pipelines_disponiveis || []);
             setMotivosPerda(payload?.motivos_perda || []);
             setVendedores(payload?.vendedores || []);
 
-            if (cardSelecionado && funilRecebido?.etapas) {
-                for (const et of funilRecebido.etapas) {
+            if (cardSelecionado && pipe?.etapas) {
+                for (const et of pipe.etapas) {
                     const c = et.oportunidades?.find(o => o.id === cardSelecionado.id);
                     if (c) {
                         setCardSelecionado(c);
@@ -78,19 +93,18 @@ export default function BoardCrm() {
                 }
             }
         } catch (error) {
-            console.error("Erro ao carregar CRM:", error);
+            console.error("Erro ao carregar Pipeline", error);
         } finally {
             setLoading(false);
         }
     };
 
-    // KPIs Calculados Reativamente
     const kpis = useMemo(() => {
-        if (!funil?.etapas) return { totalPipeline: 0, totalCards: 0, ticketMedio: 0 };
+        if (!pipeline?.etapas) return { totalPipeline: 0, totalCards: 0, ticketMedio: 0 };
         let totalPipeline = 0;
         let totalCards = 0;
 
-        funil.etapas.forEach(et => {
+        pipeline.etapas.forEach(et => {
             (et.oportunidades || []).forEach(op => {
                 totalPipeline += Number(op.valor_estimado || 0);
                 totalCards += 1;
@@ -99,22 +113,22 @@ export default function BoardCrm() {
 
         const ticketMedio = totalCards > 0 ? totalPipeline / totalCards : 0;
         return { totalPipeline, totalCards, ticketMedio };
-    }, [funil]);
+    }, [pipeline]);
 
     const handleDragEnd = async (result) => {
         const { destination, source, draggableId } = result;
         if (!destination) return;
         if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-        const funilAtualizado = { ...funil };
-        const etapaOrigem = funilAtualizado.etapas.find(e => e.id === source.droppableId);
-        const etapaDestino = funilAtualizado.etapas.find(e => e.id === destination.droppableId);
+        const pipeAtualizado = { ...pipeline };
+        const etapaOrigem = pipeAtualizado.etapas.find(e => e.id === source.droppableId);
+        const etapaDestino = pipeAtualizado.etapas.find(e => e.id === destination.droppableId);
 
         if (!etapaOrigem || !etapaDestino) return;
 
         const [cardMovido] = etapaOrigem.oportunidades.splice(source.index, 1);
         etapaDestino.oportunidades.splice(destination.index, 0, cardMovido);
-        setFunil(funilAtualizado);
+        setPipeline(pipeAtualizado);
 
         try {
             await api.put(`/crm/oportunidades/${draggableId}/mover`, {
@@ -126,15 +140,44 @@ export default function BoardCrm() {
         }
     };
 
+    const salvarNovoNomePipeline = async () => {
+        if (!novoNomePipeline.trim() || novoNomePipeline === pipeline.nome) {
+            setEditandoNome(false);
+            return;
+        }
+        try {
+            await api.put(`/crm/pipelines/${pipeline.id}`, { nome: novoNomePipeline });
+            setPipeline({ ...pipeline, nome: novoNomePipeline });
+            setEditandoNome(false);
+        } catch (err) {
+            alert("Erro ao renomear pipeline.");
+        }
+    };
+
+    const criarNovoPipeline = async (e) => {
+        e.preventDefault();
+        setSalvando(true);
+        try {
+            const { data } = await api.post('/crm/pipelines', formNovoPipe);
+            setModalNovoPipelineAberto(false);
+            setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+            setPipelineSelecionadoId(data.data.id);
+        } catch (err) {
+            alert("Erro ao criar novo pipeline.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
     const criarOportunidade = async (e) => {
         e.preventDefault();
-        if (!funil?.etapas?.length) return;
+        if (!pipeline?.etapas?.length) return;
 
         setSalvando(true);
         try {
             await api.post('/crm/oportunidades', {
                 ...formNovo,
-                etapa_id: funil.etapas[0].id,
+                etapa_id: pipeline.etapas[0].id,
                 valor_estimado: parseFloat(formNovo.valor_estimado) || 0
             });
             setModalNovoAberto(false);
@@ -229,34 +272,70 @@ export default function BoardCrm() {
         window.open(`https://wa.me/${foneFormatado}?text=${msg}`, '_blank');
     };
 
-    if (loading) return <div className="p-8 text-center text-slate-400">Carregando CRM Enterprise...</div>;
-    if (!funil) return <div className="p-8 text-center text-slate-400">Nenhum funil ativo.</div>;
+    if (loading && !pipeline) return <div className="p-8 text-center text-slate-400">Carregando Pipelines Comerciais...</div>;
+    if (!pipeline) return <div className="p-8 text-center text-slate-400">Nenhum pipeline ativo.</div>;
 
-    const etapas = Array.isArray(funil.etapas) ? funil.etapas : [];
+    const etapas = Array.isArray(pipeline.etapas) ? pipeline.etapas : [];
 
     return (
         <div className="p-4 sm:p-6 min-h-full flex flex-col space-y-4">
-            {/* Header & Ações */}
+            {/* Header com Seletor e Edição do Pipeline */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-100 flex items-center gap-2">
-                        <span>📊</span> {funil.nome}
-                    </h1>
-                    <p className="text-xs text-slate-400">Pipeline de oportunidades com follow-up e conversão contínua</p>
+                <div className="flex items-center gap-3">
+                    <select
+                        value={pipelineSelecionadoId}
+                        onChange={(e) => setPipelineSelecionadoId(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 text-slate-100 font-bold text-lg rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500"
+                    >
+                        {pipelinesDisponiveis.map(p => (
+                            <option key={p.id} value={p.id}>🎯 {p.nome} {p.is_padrao ? '(Padrão)' : ''}</option>
+                        ))}
+                    </select>
+
+                    {editandoNome ? (
+                        <div className="flex items-center gap-1.5">
+                            <input
+                                type="text"
+                                value={novoNomePipeline}
+                                onChange={(e) => setNovoNomePipeline(e.target.value)}
+                                className="bg-slate-950 border border-indigo-500 rounded px-2 py-1 text-xs text-white"
+                                autoFocus
+                            />
+                            <button onClick={salvarNovoNomePipeline} className="bg-emerald-600 text-white px-2 py-1 rounded text-xs">✓</button>
+                            <button onClick={() => setEditandoNome(false)} className="bg-slate-700 text-white px-2 py-1 rounded text-xs">✕</button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setEditandoNome(true)}
+                            className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition"
+                            title="Renomear este Pipeline"
+                        >
+                            ✏️ Renomear
+                        </button>
+                    )}
                 </div>
-                <button
-                    onClick={() => setModalNovoAberto(true)}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer"
-                >
-                    <span>+</span> Nova Oportunidade
-                </button>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setModalNovoPipelineAberto(true)}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold transition"
+                    >
+                        + Novo Pipeline
+                    </button>
+                    <button
+                        onClick={() => setModalNovoAberto(true)}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+                    >
+                        <span>+</span> Nova Oportunidade
+                    </button>
+                </div>
             </div>
 
             {/* Pipeline Summary (KPIs) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-medium text-slate-400">Pipeline Total Ativo</p>
+                        <p className="text-xs font-medium text-slate-400">Volume Total do Pipeline</p>
                         <p className="text-lg font-bold text-emerald-400 mt-0.5">
                             {kpis.totalPipeline.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </p>
@@ -265,14 +344,14 @@ export default function BoardCrm() {
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-medium text-slate-400">Total de Oportunidades</p>
-                        <p className="text-lg font-bold text-indigo-400 mt-0.5">{kpis.totalCards} Leads</p>
+                        <p className="text-xs font-medium text-slate-400">Deals no Pipeline</p>
+                        <p className="text-lg font-bold text-indigo-400 mt-0.5">{kpis.totalCards} Oportunidades</p>
                     </div>
                     <span className="text-2xl">🎯</span>
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-medium text-slate-400">Ticket Médio Estimado</p>
+                        <p className="text-xs font-medium text-slate-400">Tíquete Médio Ponderado</p>
                         <p className="text-lg font-bold text-sky-400 mt-0.5">
                             {kpis.ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </p>
@@ -286,7 +365,7 @@ export default function BoardCrm() {
                 <div className="flex flex-wrap items-center gap-2">
                     <input
                         type="text"
-                        placeholder="Buscar lead, contato ou telefone..."
+                        placeholder="Buscar deal, contato ou telefone..."
                         value={busca}
                         onChange={(e) => setBusca(e.target.value)}
                         className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-56 sm:w-64"
@@ -320,7 +399,7 @@ export default function BoardCrm() {
                 </div>
             </div>
 
-            {/* Quadro Kanban */}
+            {/* Quadro Kanban do Pipeline */}
             <DragDropContext onDragEnd={handleDragEnd}>
                 <div className="flex flex-1 gap-4 overflow-x-auto pb-4 items-start">
                     {etapas.map(etapa => {
@@ -331,7 +410,10 @@ export default function BoardCrm() {
                             <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl w-80 shrink-0 flex flex-col max-h-[calc(100vh-16rem)]">
                                 <div className="p-3.5 border-b border-slate-800 flex justify-between items-center text-slate-200">
                                     <div>
-                                        <span className="text-xs font-bold uppercase tracking-wider">{etapa.nome}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#6366f1' }}></span>
+                                            <span className="text-xs font-bold uppercase tracking-wider">{etapa.nome}</span>
+                                        </div>
                                         <p className="text-[11px] text-emerald-400 font-semibold mt-0.5">
                                             {totalEtapa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                         </p>
@@ -429,15 +511,10 @@ export default function BoardCrm() {
                                 <h2 className="text-lg font-bold text-slate-100">{cardSelecionado.titulo}</h2>
                                 <p className="text-xs text-slate-400 mt-0.5">{cardSelecionado.nome_contato}</p>
                             </div>
-                            <button
-                                onClick={() => setDrawerAberto(false)}
-                                className="text-slate-400 hover:text-white text-lg font-bold p-1"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={() => setDrawerAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold p-1">✕</button>
                         </div>
 
-                        {/* Dados Principais do Card */}
+                        {/* Dados Principais do Deal */}
                         <div className="py-4 space-y-3 text-xs border-b border-slate-800">
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -447,7 +524,7 @@ export default function BoardCrm() {
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-slate-500">Vendedor / Responsável</span>
+                                    <span className="text-slate-500">Vendedor / Owner</span>
                                     <p className="text-slate-200 font-medium mt-0.5">{cardSelecionado.vendedor?.name || 'Não atribuído'}</p>
                                 </div>
                                 <div>
@@ -495,7 +572,6 @@ export default function BoardCrm() {
                         <div className="flex-1 py-4 flex flex-col space-y-4">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Histórico de Atividades & Follow-ups</h3>
 
-                            {/* Novo Follow-up */}
                             <form onSubmit={salvarAtividade} className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
                                 <div className="flex gap-2">
                                     <select
@@ -521,20 +597,16 @@ export default function BoardCrm() {
                                     rows="2"
                                     value={novaAtividade.descricao}
                                     onChange={(e) => setNovaAtividade({ ...novaAtividade, descricao: e.target.value })}
-                                    placeholder="Descreva o que foi falado ou o próximo passo..."
+                                    placeholder="Descreva o que foi tratado ou defina o próximo passo..."
                                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                                 ></textarea>
                                 <div className="flex justify-end">
-                                    <button
-                                        type="submit"
-                                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-semibold"
-                                    >
+                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-semibold">
                                         Adicionar Registro
                                     </button>
                                 </div>
                             </form>
 
-                            {/* Lista de Atividades */}
                             <div className="space-y-2.5 flex-1 overflow-y-auto">
                                 {(cardSelecionado.atividades || []).map((atv) => (
                                     <div key={atv.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1">
@@ -565,7 +637,55 @@ export default function BoardCrm() {
                 </div>
             )}
 
-            {/* Modal de Nova Oportunidade */}
+            {/* Modal Novo Pipeline */}
+            {modalNovoPipelineAberto && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl text-slate-100">
+                        <h2 className="text-base font-bold mb-4">Criar Novo Pipeline de Vendas</h2>
+                        <form onSubmit={criarNovoPipeline} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Pipeline *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formNovoPipe.nome}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, nome: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Contratos de Manutenção PMOC"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Descrição</label>
+                                <input
+                                    type="text"
+                                    value={formNovoPipe.descricao}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, descricao: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Venda consultiva recorrente"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setModalNovoPipelineAberto(false)}
+                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                                >
+                                    {salvando ? 'Criando...' : 'Criar Pipeline'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Nova Oportunidade */}
             {modalNovoAberto && (
                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl text-slate-100">

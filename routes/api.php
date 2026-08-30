@@ -234,4 +234,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/crm/oportunidades/{id}/atividades', [App\Http\Controllers\Api\CrmController::class, 'adicionarAtividade']);
 Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [App\Http\Controllers\Api\CrmController::class, 'toggleAtividade']);
 Route::post('/crm/oportunidades/{id}/marcar-perdido', [App\Http\Controllers\Api\CrmController::class, 'marcarPerdido']);
+Route::get('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'listarPipelines']);
+Route::post('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'storePipeline']);
+Route::put('/crm/pipelines/{id}', [App\Http\Controllers\Api\CrmController::class, 'atualizarPipeline']);
 });
