@@ -47,19 +47,29 @@ export default function BoardCrm() {
 
     const carregarBoard = async () => {
         try {
+            setLoading(true);
             const params = {
                 status: statusFiltro,
                 vendedor_id: vendedorFiltro || undefined,
                 search: busca || undefined
             };
-            const { data } = await api.get('/crm/board', { params });
-            setFunil(data.data.funil);
-            setMotivosPerda(data.data.motivos_perda || []);
-            setVendedores(data.data.vendedores || []);
+            const response = await api.get('/crm/board', { params });
+            
+            // Blindagem para extrair o funil independentemente da camada de retorno
+            const payload = response.data?.data || response.data;
+            const funilRecebido = payload?.funil || payload;
 
-            // Se o drawer estiver aberto com um card selecionado, atualiza o card aberto
-            if (cardSelecionado && data.data.funil?.etapas) {
-                for (const et of data.data.funil.etapas) {
+            if (funilRecebido && Array.isArray(funilRecebido.etapas)) {
+                setFunil(funilRecebido);
+            } else if (funilRecebido) {
+                setFunil({ ...funilRecebido, etapas: [] });
+            }
+
+            setMotivosPerda(payload?.motivos_perda || []);
+            setVendedores(payload?.vendedores || []);
+
+            if (cardSelecionado && funilRecebido?.etapas) {
+                for (const et of funilRecebido.etapas) {
                     const c = et.oportunidades?.find(o => o.id === cardSelecionado.id);
                     if (c) {
                         setCardSelecionado(c);
@@ -68,7 +78,7 @@ export default function BoardCrm() {
                 }
             }
         } catch (error) {
-            console.error("Erro ao carregar CRM", error);
+            console.error("Erro ao carregar CRM:", error);
         } finally {
             setLoading(false);
         }
