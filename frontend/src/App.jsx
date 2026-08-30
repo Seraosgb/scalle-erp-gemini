@@ -49,6 +49,7 @@ export default function App() {
           <Route path="/app" element={<AppLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="crm" element={<BoardCrm />} />
             <Route path="wms" element={<WmsPage />} />
             <Route path="estoque" element={<WmsPage />} />
             <Route path="pcp" element={<PcpPage />} />
