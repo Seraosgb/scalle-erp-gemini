@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\CrmFunil;
 use App\Models\CrmOportunidade;
+use App\Models\Pessoa;
+use App\Models\Venda;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class CrmController extends Controller
@@ -16,13 +19,15 @@ class CrmController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
         
+        // Buscamos o funil e as etapas sem forçar o eager loading de 'vendedor' e 'cliente' 
+        // para evitar quebras por colunas não mapeadas
         $funil = CrmFunil::where('tenant_id', $tenantId)
             ->with(['etapas.oportunidades' => function ($q) {
-                $q->where('status', 'ABERTO')->with(['vendedor:id,name', 'cliente:id,nome_razao_social']);
+                $q->where('status', 'ABERTO')->orderByDesc('created_at');
             }])
             ->first();
 
-        // Auto-provisionamento de Funil Padrão se o cliente não tiver
+        // Auto-provisionamento de Funil Padrão se o cliente não tiver nenhum
         if (!$funil) {
             $funil = CrmFunil::create([
                 'tenant_id' => $tenantId,
@@ -35,7 +40,11 @@ class CrmController extends Controller
             foreach ($etapas as $i => $nome) {
                 $funil->etapas()->create(['nome' => $nome, 'ordem_exibicao' => $i + 1]);
             }
-            $funil->load('etapas.oportunidades');
+            
+            // Recarrega os dados fresquinhos recém-criados
+            $funil->load(['etapas.oportunidades' => function ($q) {
+                $q->where('status', 'ABERTO');
+            }]);
         }
 
         return response()->json(['data' => $funil]);
@@ -53,24 +62,32 @@ class CrmController extends Controller
 
         $oportunidade->update(['etapa_id' => $validated['etapa_id_destino']]);
 
-        return response()->json(['data' => ['message' => 'Oportunidade movida com sucesso!', 'oportunidade' => $oportunidade]]);
+        return response()->json([
+            'data' => [
+                'message' => 'Oportunidade movida com sucesso!', 
+                'oportunidade' => $oportunidade
+            ]
+        ]);
     }
+
+    // Converte o Lead em um Orçamento e um Cliente Oficial
     public function converterParaOrcamento(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $oportunidade = \App\Models\CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
 
-        \Illuminate\Support\Facades\DB::beginTransaction();
+        DB::beginTransaction();
         try {
             // 1. Cria ou recupera o Cliente (Pessoa)
             $clienteId = $oportunidade->cliente_id;
             
             if (!$clienteId) {
-                $pessoa = \App\Models\Pessoa::create([
+                // Usando as colunas exatas blindadas no seu model Pessoa
+                $pessoa = Pessoa::create([
                     'tenant_id' => $tenantId,
-                    'tipo' => 'FISICA', // Define padrão, pode ser ajustado
+                    'tipo_pessoa' => 'FISICA', 
                     'nome_razao_social' => $oportunidade->nome_contato,
-                    'email' => $oportunidade->email_contato,
+                    'email_principal' => $oportunidade->email_contato, 
                     'telefone_principal' => $oportunidade->telefone_contato,
                     'is_cliente' => true,
                     'is_ativo' => true,
@@ -82,7 +99,7 @@ class CrmController extends Controller
             }
 
             // 2. Cria o Orçamento na tabela de Vendas
-            $orcamento = \App\Models\Venda::create([
+            $orcamento = Venda::create([
                 'tenant_id' => $tenantId,
                 'pessoa_id' => $clienteId,
                 'vendedor_id' => $request->user()->id,
@@ -91,10 +108,10 @@ class CrmController extends Controller
                 'observacoes' => "Orçamento gerado a partir do Lead CRM: {$oportunidade->titulo}",
             ]);
 
-            // 3. Atualiza o status do Lead (Opcional: pode ser 'GANHO' ou mover de etapa)
+            // 3. Atualiza o status do Lead para fechar o ciclo
             $oportunidade->update(['status' => 'GANHO']);
 
-            \Illuminate\Support\Facades\DB::commit();
+            DB::commit();
 
             return response()->json([
                 'data' => [
@@ -103,7 +120,7 @@ class CrmController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\DB::rollBack();
+            DB::rollBack();
             return response()->json(['error' => 'Erro ao converter lead: ' . $e->getMessage()], 500);
         }
     }
