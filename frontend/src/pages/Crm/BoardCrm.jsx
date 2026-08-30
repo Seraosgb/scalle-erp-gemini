@@ -10,28 +10,21 @@ export default function BoardCrm() {
     const [pipelineSelecionadoId, setPipelineSelecionadoId] = useState('');
     const [motivosPerda, setMotivosPerda] = useState([]);
     const [vendedores, setVendedores] = useState([]);
+    const [produtos, setProdutos] = useState([]);
     const [permissoes, setPermissoes] = useState({ pode_gerenciar_pipeline: true });
     const [loading, setLoading] = useState(true);
 
-    // Filtros
     const [statusFiltro, setStatusFiltro] = useState('ABERTO');
     const [vendedorFiltro, setVendedorFiltro] = useState('');
     const [busca, setBusca] = useState('');
 
-    // Edição inline de Pipeline
-    const [editandoNome, setEditandoNome] = useState(false);
-    const [novoNomePipeline, setNovoNomePipeline] = useState('');
-
-    // Modais & Drawer
     const [modalNovoAberto, setModalNovoAberto] = useState(false);
-    const [modalNovoPipelineAberto, setModalNovoPipelineAberto] = useState(false);
-    const [modalEtapasAberto, setModalEtapasAberto] = useState(false);
     const [modalPerdaAberto, setModalPerdaAberto] = useState(false);
     const [cardSelecionado, setCardSelecionado] = useState(null);
     const [drawerAberto, setDrawerAberto] = useState(false);
     const [salvando, setSalvando] = useState(false);
 
-    // Formulários
+    // Form Nova Oportunidade
     const [formNovo, setFormNovo] = useState({
         titulo: '',
         nome_contato: '',
@@ -41,16 +34,12 @@ export default function BoardCrm() {
         vendedor_id: ''
     });
 
-    const [formNovoPipe, setFormNovoPipe] = useState({
-        nome: '',
+    // Form Novo Item no Drawer
+    const [formNovoItem, setFormNovoItem] = useState({
+        produto_id: '',
         descricao: '',
-        cor_hex: '#4f46e5'
-    });
-
-    const [formNovaEtapa, setFormNovaEtapa] = useState({
-        nome: '',
-        probabilidade_fechamento: 50,
-        cor_hex: '#6366f1'
+        quantidade: 1,
+        valor_unitario: 0
     });
 
     const [formPerda, setFormPerda] = useState({
@@ -66,7 +55,6 @@ export default function BoardCrm() {
 
     useEffect(() => {
         carregarBoard();
-
         const handleAtualizacao = () => carregarBoard();
         window.addEventListener('crm_pipeline_atualizado', handleAtualizacao);
         return () => window.removeEventListener('crm_pipeline_atualizado', handleAtualizacao);
@@ -87,19 +75,14 @@ export default function BoardCrm() {
 
             if (pipe && Array.isArray(pipe.etapas)) {
                 setPipeline(pipe);
-                setNovoNomePipeline(pipe.nome);
-                if (!pipelineSelecionadoId) {
-                    setPipelineSelecionadoId(pipe.id);
-                }
+                if (!pipelineSelecionadoId) setPipelineSelecionadoId(pipe.id);
             }
 
             setPipelinesDisponiveis(payload?.pipelines_disponiveis || []);
             setMotivosPerda(payload?.motivos_perda || []);
             setVendedores(payload?.vendedores || []);
-            
-            if (payload?.permissoes) {
-                setPermissoes(payload.permissoes);
-            }
+            setProdutos(payload?.produtos || []);
+            if (payload?.permissoes) setPermissoes(payload.permissoes);
 
             if (cardSelecionado && pipe?.etapas) {
                 for (const et of pipe.etapas) {
@@ -117,7 +100,6 @@ export default function BoardCrm() {
         }
     };
 
-    // KPIs Calculados com Forecast Ponderado
     const kpis = useMemo(() => {
         if (!pipeline?.etapas) return { totalPipeline: 0, totalCards: 0, ticketMedio: 0, forecastPonderado: 0 };
         let totalPipeline = 0;
@@ -146,7 +128,6 @@ export default function BoardCrm() {
         const pipeAtualizado = { ...pipeline };
         const etapaOrigem = pipeAtualizado.etapas.find(e => e.id === source.droppableId);
         const etapaDestino = pipeAtualizado.etapas.find(e => e.id === destination.droppableId);
-
         if (!etapaOrigem || !etapaDestino) return;
 
         const [cardMovido] = etapaOrigem.oportunidades.splice(source.index, 1);
@@ -154,79 +135,15 @@ export default function BoardCrm() {
         setPipeline(pipeAtualizado);
 
         try {
-            await api.put(`/crm/oportunidades/${draggableId}/mover`, {
-                etapa_id_destino: destination.droppableId
-            });
+            await api.put(`/crm/oportunidades/${draggableId}/mover`, { etapa_id_destino: destination.droppableId });
         } catch (error) {
-            console.error("Erro ao mover card", error);
             carregarBoard();
-        }
-    };
-
-    const salvarNovoNomePipeline = async () => {
-        if (!novoNomePipeline.trim() || novoNomePipeline === pipeline.nome) {
-            setEditandoNome(false);
-            return;
-        }
-        try {
-            await api.put(`/crm/pipelines/${pipeline.id}`, { 
-                nome: novoNomePipeline,
-                cor_hex: pipeline.cor_hex || '#4f46e5'
-            });
-            setPipeline({ ...pipeline, nome: novoNomePipeline });
-            setEditandoNome(false);
-            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
-        } catch (err) {
-            alert("Erro ao renomear pipeline.");
-        }
-    };
-
-    const criarNovoPipeline = async (e) => {
-        e.preventDefault();
-        setSalvando(true);
-        try {
-            const { data } = await api.post('/crm/pipelines', formNovoPipe);
-            setModalNovoPipelineAberto(false);
-            setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
-            setPipelineSelecionadoId(data.data.id);
-            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
-        } catch (err) {
-            alert("Erro ao criar novo pipeline.");
-        } finally {
-            setSalvando(false);
-        }
-    };
-
-    const adicionarEtapa = async (e) => {
-        e.preventDefault();
-        setSalvando(true);
-        try {
-            await api.post(`/crm/pipelines/${pipeline.id}/etapas`, formNovaEtapa);
-            setFormNovaEtapa({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
-            carregarBoard();
-            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
-        } catch (err) {
-            alert("Erro ao criar etapa.");
-        } finally {
-            setSalvando(false);
-        }
-    };
-
-    const excluirEtapa = async (etapaId) => {
-        if (!confirm("Confirmar exclusão desta etapa?")) return;
-        try {
-            await api.delete(`/crm/etapas/${etapaId}`);
-            carregarBoard();
-            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
-        } catch (err) {
-            alert(err.response?.data?.error || "Erro ao excluir etapa.");
         }
     };
 
     const criarOportunidade = async (e) => {
         e.preventDefault();
         if (!pipeline?.etapas?.length) return;
-
         setSalvando(true);
         try {
             await api.post('/crm/oportunidades', {
@@ -235,14 +152,7 @@ export default function BoardCrm() {
                 valor_estimado: parseFloat(formNovo.valor_estimado) || 0
             });
             setModalNovoAberto(false);
-            setFormNovo({
-                titulo: '',
-                nome_contato: '',
-                email_contato: '',
-                telefone_contato: '',
-                valor_estimado: '',
-                vendedor_id: ''
-            });
+            setFormNovo({ titulo: '', nome_contato: '', email_contato: '', telefone_contato: '', valor_estimado: '', vendedor_id: '' });
             carregarBoard();
         } catch (error) {
             alert("Erro ao cadastrar oportunidade.");
@@ -251,9 +161,34 @@ export default function BoardCrm() {
         }
     };
 
+    const adicionarItemAoCard = async (e) => {
+        e.preventDefault();
+        if (!cardSelecionado || !formNovoItem.descricao) return;
+        setSalvando(true);
+        try {
+            await api.post(`/crm/oportunidades/${cardSelecionado.id}/itens`, formNovoItem);
+            setFormNovoItem({ produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0 });
+            await carregarBoard();
+        } catch (err) {
+            alert("Erro ao adicionar produto.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const removerItemDoCard = async (itemId) => {
+        if (!confirm("Remover este item da oportunidade?")) return;
+        try {
+            await api.delete(`/crm/oportunidades/${cardSelecionado.id}/itens/${itemId}`);
+            await carregarBoard();
+        } catch (err) {
+            alert("Erro ao remover item.");
+        }
+    };
+
     const converterEmOrcamento = async (oportunidadeId, e) => {
         if (e) e.stopPropagation();
-        if (!confirm("Confirmar conversão da oportunidade em Orçamento Comercial?")) return;
+        if (!confirm("Confirmar conversão da oportunidade com todos os seus produtos em Orçamento Comercial?")) return;
         try {
             const { data } = await api.post(`/crm/oportunidades/${oportunidadeId}/converter-orcamento`);
             alert(data.data.message);
@@ -267,10 +202,7 @@ export default function BoardCrm() {
     const abrirModalPerda = (card, e) => {
         if (e) e.stopPropagation();
         setCardSelecionado(card);
-        setFormPerda({
-            motivo_perda_id: motivosPerda[0]?.id || '',
-            justificativa_perda: ''
-        });
+        setFormPerda({ motivo_perda_id: motivosPerda[0]?.id || '', justificativa_perda: '' });
         setModalPerdaAberto(true);
     };
 
@@ -292,6 +224,7 @@ export default function BoardCrm() {
 
     const abrirDrawer = (card) => {
         setCardSelecionado(card);
+        setFormNovoItem({ produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0 });
         setNovaAtividade({ tipo: 'NOTA', descricao: '', data_agendamento: '' });
         setDrawerAberto(true);
     };
@@ -313,7 +246,7 @@ export default function BoardCrm() {
             await api.patch(`/crm/oportunidades/${cardSelecionado.id}/atividades/${atividadeId}/toggle`);
             carregarBoard();
         } catch (err) {
-            console.error("Erro ao alterar status da tarefa", err);
+            console.error("Erro ao alterar tarefa", err);
         }
     };
 
@@ -333,7 +266,7 @@ export default function BoardCrm() {
 
     return (
         <div className="p-4 sm:p-6 min-h-full flex flex-col space-y-4">
-            {/* Header com Seletor, RBAC, Atalho de Configurações e Ações */}
+            {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex flex-wrap items-center gap-2.5">
                     <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 shadow-sm">
@@ -351,38 +284,6 @@ export default function BoardCrm() {
                         </select>
                     </div>
 
-                    {permissoes.pode_gerenciar_pipeline && (
-                        <>
-                            {editandoNome ? (
-                                <div className="flex items-center gap-1.5">
-                                    <input
-                                        type="text"
-                                        value={novoNomePipeline}
-                                        onChange={(e) => setNovoNomePipeline(e.target.value)}
-                                        className="bg-slate-950 border border-indigo-500 rounded px-2 py-1 text-xs text-white"
-                                        autoFocus
-                                    />
-                                    <button onClick={salvarNovoNomePipeline} className="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold cursor-pointer">✓</button>
-                                    <button onClick={() => setEditandoNome(false)} className="bg-slate-700 text-white px-2 py-1 rounded text-xs font-bold cursor-pointer">✕</button>
-                                </div>
-                            ) : (
-                                <button
-                                    onClick={() => setEditandoNome(true)}
-                                    className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer"
-                                    title="Renomear este Pipeline"
-                                >
-                                    ✏️ Renomear
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setModalEtapasAberto(true)}
-                                className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer"
-                            >
-                                📑 Etapas
-                            </button>
-                        </>
-                    )}
-
                     <button
                         type="button"
                         onClick={(e) => {
@@ -391,33 +292,21 @@ export default function BoardCrm() {
                             navigate('/app/crm/configuracoes');
                         }}
                         className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold px-2.5 py-1.5 bg-indigo-950/40 border border-indigo-800/60 rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-                        title="Tela Completa de Parametrização e Configurações do CRM"
                     >
-                        <span>⚙️</span> Configurações
+                        <span>⚙️</span> Parametrização & Relatórios
                     </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {permissoes.pode_gerenciar_pipeline && (
-                        <button
-                            type="button"
-                            onClick={() => setModalNovoPipelineAberto(true)}
-                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
-                        >
-                            + Novo Pipeline
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={() => setModalNovoAberto(true)}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-                    >
-                        <span>+</span> Nova Oportunidade
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    onClick={() => setModalNovoAberto(true)}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                    <span>+</span> Nova Oportunidade
+                </button>
             </div>
 
-            {/* Pipeline Summary (4 KPIs com Forecast Ponderado) */}
+            {/* KPIs */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
                     <div>
@@ -446,7 +335,7 @@ export default function BoardCrm() {
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-medium text-slate-400">Tíquete Médio Ponderado</p>
+                        <p className="text-xs font-medium text-slate-400">Tíquete Médio</p>
                         <p className="text-lg font-bold text-sky-400 mt-0.5">
                             {kpis.ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </p>
@@ -455,7 +344,7 @@ export default function BoardCrm() {
                 </div>
             </div>
 
-            {/* Barra de Filtros e Busca */}
+            {/* Filtros */}
             <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl flex flex-wrap gap-3 items-center justify-between">
                 <div className="flex flex-wrap items-center gap-2">
                     <input
@@ -483,9 +372,7 @@ export default function BoardCrm() {
                             type="button"
                             onClick={() => setStatusFiltro(st)}
                             className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                                statusFiltro === st
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-slate-400 hover:text-slate-200'
+                                statusFiltro === st ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                             }`}
                         >
                             {st === 'ABERTO' ? 'Em Aberto' : st === 'GANHO' ? 'Ganhos' : st === 'PERDIDO' ? 'Perdidos' : 'Todos'}
@@ -502,7 +389,11 @@ export default function BoardCrm() {
                         const totalEtapa = oportunidades.reduce((acc, curr) => acc + Number(curr.valor_estimado || 0), 0);
 
                         return (
-                            <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl w-80 shrink-0 flex flex-col max-h-[calc(100vh-16rem)] shadow-sm">
+                            <div
+                                key={etapa.id}
+                                className="bg-slate-900 border border-slate-800 rounded-xl w-80 shrink-0 flex flex-col max-h-[calc(100vh-16rem)] shadow-sm"
+                                style={{ borderTop: `3px solid ${etapa.cor_hex || '#6366f1'}` }}
+                            >
                                 <div className="p-3.5 border-b border-slate-800 flex justify-between items-center text-slate-200">
                                     <div>
                                         <div className="flex items-center gap-2">
@@ -523,11 +414,7 @@ export default function BoardCrm() {
 
                                 <Droppable droppableId={String(etapa.id)}>
                                     {(provided) => (
-                                        <div
-                                            {...provided.droppableProps}
-                                            ref={provided.innerRef}
-                                            className="flex-1 p-3 overflow-y-auto min-h-[160px] space-y-3"
-                                        >
+                                        <div {...provided.droppableProps} ref={provided.innerRef} className="flex-1 p-3 overflow-y-auto min-h-[160px] space-y-3">
                                             {oportunidades.map((card, index) => (
                                                 <Draggable key={card.id} draggableId={String(card.id)} index={index}>
                                                     {(provided) => (
@@ -536,16 +423,12 @@ export default function BoardCrm() {
                                                             {...provided.draggableProps}
                                                             {...provided.dragHandleProps}
                                                             onClick={() => abrirDrawer(card)}
-                                                            className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-100 shadow-sm cursor-pointer hover:border-slate-600 transition space-y-2.5 group"
+                                                            className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-100 shadow-sm cursor-pointer hover:border-slate-600 transition space-y-2.5"
                                                         >
                                                             <div className="flex justify-between items-start gap-2">
                                                                 <h3 className="font-semibold text-xs text-slate-100 line-clamp-2">{card.titulo}</h3>
-                                                                {card.status === 'GANHO' && (
-                                                                    <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-bold">GANHO</span>
-                                                                )}
-                                                                {card.status === 'PERDIDO' && (
-                                                                    <span className="bg-rose-950 text-rose-400 border border-rose-800 px-1.5 py-0.5 rounded text-[10px] font-bold">PERDIDO</span>
-                                                                )}
+                                                                {card.status === 'GANHO' && <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-bold">GANHO</span>}
+                                                                {card.status === 'PERDIDO' && <span className="bg-rose-950 text-rose-400 border border-rose-800 px-1.5 py-0.5 rounded text-[10px] font-bold">PERDIDO</span>}
                                                             </div>
 
                                                             <div className="flex items-center justify-between text-xs text-slate-400">
@@ -555,18 +438,23 @@ export default function BoardCrm() {
                                                                         type="button"
                                                                         onClick={(e) => abrirWhatsApp(card.telefone_contato, card.nome_contato, e)}
                                                                         className="text-emerald-400 hover:text-emerald-300 font-bold text-xs cursor-pointer"
-                                                                        title="Falar no WhatsApp"
                                                                     >
                                                                         💬 WA
                                                                     </button>
                                                                 )}
                                                             </div>
 
+                                                            {card.itens && card.itens.length > 0 && (
+                                                                <div className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded">
+                                                                    📦 {card.itens.length} {card.itens.length === 1 ? 'item vinculado' : 'itens vinculados'}
+                                                                </div>
+                                                            )}
+
                                                             <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
                                                                 <span className="text-xs font-bold text-emerald-400">
                                                                     {Number(card.valor_estimado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                                 </span>
-                                                                
+
                                                                 {card.status === 'ABERTO' && (
                                                                     <div className="flex items-center gap-1.5">
                                                                         <button
@@ -600,86 +488,10 @@ export default function BoardCrm() {
                 </div>
             </DragDropContext>
 
-            {/* Modal de Gestão de Etapas (RBAC) */}
-            {modalEtapasAberto && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-lg shadow-xl text-slate-100">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-base font-bold">Configurar Etapas do Pipeline</h2>
-                            <button onClick={() => setModalEtapasAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer">✕</button>
-                        </div>
-
-                        <div className="space-y-2 mb-4 max-h-56 overflow-y-auto">
-                            {etapas.map((et, idx) => (
-                                <div key={et.id} className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: et.cor_hex || '#6366f1' }}></span>
-                                        <span className="font-semibold">{idx + 1}. {et.nome}</span>
-                                        <span className="text-slate-500">({et.probabilidade_fechamento ?? 50}%)</span>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => excluirEtapa(et.id)}
-                                        className="text-rose-400 hover:text-rose-300 font-bold px-2 py-1 rounded bg-rose-950/40 cursor-pointer"
-                                    >
-                                        Excluir
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-
-                        <form onSubmit={adicionarEtapa} className="pt-3 border-t border-slate-800 space-y-3">
-                            <p className="text-xs font-bold text-slate-400">Adicionar Nova Coluna / Etapa</p>
-                            <div className="grid grid-cols-12 gap-2">
-                                <div className="col-span-6">
-                                    <input
-                                        type="text"
-                                        required
-                                        placeholder="Nome da Etapa"
-                                        value={formNovaEtapa.nome}
-                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, nome: e.target.value })}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
-                                <div className="col-span-3">
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        required
-                                        placeholder="Prob. %"
-                                        value={formNovaEtapa.probabilidade_fechamento}
-                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, probabilidade_fechamento: parseInt(e.target.value) || 0 })}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
-                                <div className="col-span-3">
-                                    <input
-                                        type="color"
-                                        value={formNovaEtapa.cor_hex}
-                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, cor_hex: e.target.value })}
-                                        className="w-full h-8 bg-slate-950 border border-slate-700 rounded cursor-pointer"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="submit"
-                                    disabled={salvando}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs font-semibold cursor-pointer"
-                                >
-                                    + Adicionar Etapa
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Drawer Lateral de Detalhes & Follow-up */}
+            {/* Drawer Lateral com Aba de Produtos e Follow-ups */}
             {drawerAberto && cardSelecionado && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex justify-end">
-                    <div className="bg-slate-900 w-full max-w-lg h-full border-l border-slate-800 flex flex-col p-6 shadow-2xl overflow-y-auto">
+                    <div className="bg-slate-900 w-full max-w-xl h-full border-l border-slate-800 flex flex-col p-6 shadow-2xl overflow-y-auto">
                         <div className="flex justify-between items-start pb-4 border-b border-slate-800">
                             <div>
                                 <h2 className="text-lg font-bold text-slate-100">{cardSelecionado.titulo}</h2>
@@ -688,37 +500,18 @@ export default function BoardCrm() {
                             <button onClick={() => setDrawerAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer">✕</button>
                         </div>
 
-                        {/* Dados Principais do Deal */}
+                        {/* Dados Principais */}
                         <div className="py-4 space-y-3 text-xs border-b border-slate-800">
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <span className="text-slate-500">Valor Estimado</span>
-                                    <p className="font-bold text-emerald-400 text-sm mt-0.5">
+                                    <span className="text-slate-500">Valor Total Oportunidade</span>
+                                    <p className="font-bold text-emerald-400 text-base mt-0.5">
                                         {Number(cardSelecionado.valor_estimado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                     </p>
                                 </div>
                                 <div>
                                     <span className="text-slate-500">Vendedor / Owner</span>
                                     <p className="text-slate-200 font-medium mt-0.5">{cardSelecionado.vendedor?.name || 'Não atribuído'}</p>
-                                </div>
-                                <div>
-                                    <span className="text-slate-500">Telefone / WhatsApp</span>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <p className="text-slate-200">{cardSelecionado.telefone_contato || '—'}</p>
-                                        {cardSelecionado.telefone_contato && (
-                                            <button
-                                                type="button"
-                                                onClick={() => abrirWhatsApp(cardSelecionado.telefone_contato, cardSelecionado.nome_contato)}
-                                                className="text-emerald-400 font-bold hover:underline cursor-pointer"
-                                            >
-                                                Abrir WA
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <span className="text-slate-500">E-mail</span>
-                                    <p className="text-slate-200 mt-0.5">{cardSelecionado.email_contato || '—'}</p>
                                 </div>
                             </div>
 
@@ -729,7 +522,7 @@ export default function BoardCrm() {
                                         onClick={() => converterEmOrcamento(cardSelecionado.id)}
                                         className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-semibold transition cursor-pointer"
                                     >
-                                        Converter em Orçamento
+                                        Converter em Orçamento ERP
                                     </button>
                                     <button
                                         type="button"
@@ -742,7 +535,113 @@ export default function BoardCrm() {
                             )}
                         </div>
 
-                        {/* Linha do Tempo de Atividades e Notas */}
+                        {/* Grade de Produtos da Oportunidade */}
+                        <div className="py-4 border-b border-slate-800 space-y-3">
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                <span>📦</span> Grade de Produtos / Serviços da Proposta
+                            </h3>
+
+                            {/* Tabela de Itens */}
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                {(cardSelecionado.itens || []).map((it) => (
+                                    <div key={it.id} className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800 text-xs">
+                                        <div>
+                                            <p className="font-bold text-slate-200">{it.descricao}</p>
+                                            <p className="text-[10px] text-slate-500">
+                                                {Number(it.quantidade)} un x {Number(it.valor_unitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold text-emerald-400">
+                                                {Number(it.valor_total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            </span>
+                                            {cardSelecionado.status === 'ABERTO' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removerItemDoCard(it.id)}
+                                                    className="text-rose-400 hover:text-rose-300 px-1 text-xs"
+                                                >
+                                                    ✕
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Formulário Rápido de Adição de Item */}
+                            {cardSelecionado.status === 'ABERTO' && (
+                                <form onSubmit={adicionarItemAoCard} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-2">
+                                    <div className="grid grid-cols-12 gap-2">
+                                        <div className="col-span-6">
+                                            <select
+                                                value={formNovoItem.produto_id}
+                                                onChange={(e) => {
+                                                    const prod = produtos.find(p => p.id === e.target.value);
+                                                    setFormNovoItem({
+                                                        ...formNovoItem,
+                                                        produto_id: e.target.value,
+                                                        descricao: prod ? prod.nome_produto : formNovoItem.descricao,
+                                                        valor_unitario: prod ? prod.preco_venda_padrao : formNovoItem.valor_unitario
+                                                    });
+                                                }}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                            >
+                                                <option value="">Item Avulso / Catálogo</option>
+                                                {produtos.map(p => (
+                                                    <option key={p.id} value={p.id}>{p.nome_produto}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-6">
+                                            <input
+                                                type="text"
+                                                required
+                                                placeholder="Descrição do item"
+                                                value={formNovoItem.descricao}
+                                                onChange={(e) => setFormNovoItem({ ...formNovoItem, descricao: e.target.value })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                            />
+                                        </div>
+                                        <div className="col-span-4">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0.01"
+                                                required
+                                                placeholder="Qtd"
+                                                value={formNovoItem.quantidade}
+                                                onChange={(e) => setFormNovoItem({ ...formNovoItem, quantidade: parseFloat(e.target.value) || 1 })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                            />
+                                        </div>
+                                        <div className="col-span-5">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                required
+                                                placeholder="Valor Unit (R$)"
+                                                value={formNovoItem.valor_unitario}
+                                                onChange={(e) => setFormNovoItem({ ...formNovoItem, valor_unitario: parseFloat(e.target.value) || 0 })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                            />
+                                        </div>
+                                        <div className="col-span-3 flex justify-end">
+                                            <button
+                                                type="submit"
+                                                disabled={salvando}
+                                                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-bold"
+                                            >
+                                                + Item
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            )}
+                        </div>
+
+                        {/* Linha do Tempo de Atividades & Notas */}
                         <div className="flex-1 py-4 flex flex-col space-y-4">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Histórico de Atividades & Follow-ups</h3>
 
@@ -751,7 +650,7 @@ export default function BoardCrm() {
                                     <select
                                         value={novaAtividade.tipo}
                                         onChange={(e) => setNovaAtividade({ ...novaAtividade, tipo: e.target.value })}
-                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none"
                                     >
                                         <option value="NOTA">📝 Nota</option>
                                         <option value="LIGACAO">📞 Ligação</option>
@@ -763,7 +662,7 @@ export default function BoardCrm() {
                                         type="datetime-local"
                                         value={novaAtividade.data_agendamento}
                                         onChange={(e) => setNovaAtividade({ ...novaAtividade, data_agendamento: e.target.value })}
-                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 flex-1 focus:outline-none focus:border-indigo-500"
+                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 flex-1"
                                     />
                                 </div>
                                 <textarea
@@ -771,11 +670,11 @@ export default function BoardCrm() {
                                     rows="2"
                                     value={novaAtividade.descricao}
                                     onChange={(e) => setNovaAtividade({ ...novaAtividade, descricao: e.target.value })}
-                                    placeholder="Descreva o que foi tratado ou defina o próximo passo..."
-                                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                    placeholder="Descreva o que foi tratado ou agende o retorno..."
+                                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-100 placeholder-slate-500"
                                 ></textarea>
                                 <div className="flex justify-end">
-                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-semibold cursor-pointer">
+                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-semibold">
                                         Adicionar Registro
                                     </button>
                                 </div>
@@ -811,66 +710,6 @@ export default function BoardCrm() {
                 </div>
             )}
 
-            {/* Modal Novo Pipeline */}
-            {modalNovoPipelineAberto && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl text-slate-100">
-                        <h2 className="text-base font-bold mb-4">Criar Novo Pipeline de Vendas</h2>
-                        <form onSubmit={criarNovoPipeline} className="space-y-3.5">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Pipeline *</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={formNovoPipe.nome}
-                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, nome: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                                    placeholder="Ex: Contratos de Manutenção PMOC"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Descrição</label>
-                                <input
-                                    type="text"
-                                    value={formNovoPipe.descricao}
-                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, descricao: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                                    placeholder="Ex: Venda consultiva recorrente"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Cor de Destaque</label>
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        type="color"
-                                        value={formNovoPipe.cor_hex}
-                                        onChange={(e) => setFormNovoPipe({ ...formNovoPipe, cor_hex: e.target.value })}
-                                        className="w-10 h-8 bg-slate-950 border border-slate-700 rounded-lg cursor-pointer p-0.5"
-                                    />
-                                    <span className="text-xs font-mono text-slate-300 uppercase">{formNovoPipe.cor_hex}</span>
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setModalNovoPipelineAberto(false)}
-                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={salvando}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
-                                >
-                                    {salvando ? 'Criando...' : 'Criar Pipeline'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
             {/* Modal Nova Oportunidade */}
             {modalNovoAberto && (
                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -878,7 +717,7 @@ export default function BoardCrm() {
                         <h2 className="text-base font-bold mb-4">Nova Oportunidade Comercial</h2>
                         <form onSubmit={criarOportunidade} className="space-y-3.5">
                             <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Título / Assunto *</label>
+                                <label className="block text-xs text-slate-300 mb-1">Título / Assunto *</label>
                                 <input
                                     type="text"
                                     required
@@ -889,7 +728,7 @@ export default function BoardCrm() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Contato / Empresa *</label>
+                                <label className="block text-xs text-slate-300 mb-1">Nome do Contato / Empresa *</label>
                                 <input
                                     type="text"
                                     required
@@ -901,7 +740,7 @@ export default function BoardCrm() {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-300 mb-1">E-mail</label>
+                                    <label className="block text-xs text-slate-300 mb-1">E-mail</label>
                                     <input
                                         type="email"
                                         value={formNovo.email_contato}
@@ -910,7 +749,7 @@ export default function BoardCrm() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-300 mb-1">Telefone / WhatsApp</label>
+                                    <label className="block text-xs text-slate-300 mb-1">Telefone / WhatsApp</label>
                                     <input
                                         type="text"
                                         value={formNovo.telefone_contato}
@@ -922,7 +761,7 @@ export default function BoardCrm() {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-300 mb-1">Valor Estimado (R$)</label>
+                                    <label className="block text-xs text-slate-300 mb-1">Valor Estimado (R$)</label>
                                     <input
                                         type="number"
                                         step="0.01"
@@ -933,7 +772,7 @@ export default function BoardCrm() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-300 mb-1">Vendedor</label>
+                                    <label className="block text-xs text-slate-300 mb-1">Vendedor</label>
                                     <select
                                         value={formNovo.vendedor_id}
                                         onChange={(e) => setFormNovo({ ...formNovo, vendedor_id: e.target.value })}
@@ -948,19 +787,9 @@ export default function BoardCrm() {
                             </div>
 
                             <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setModalNovoAberto(false)}
-                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={salvando}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
-                                >
-                                    {salvando ? 'Salvando...' : 'Salvar Oportunidade'}
+                                <button type="button" onClick={() => setModalNovoAberto(false)} className="px-4 py-2 text-xs text-slate-400">Cancelar</button>
+                                <button type="submit" disabled={salvando} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold">
+                                    Salvar Oportunidade
                                 </button>
                             </div>
                         </form>
@@ -968,14 +797,14 @@ export default function BoardCrm() {
                 </div>
             )}
 
-            {/* Modal Marcar como Perdido */}
+            {/* Modal Motivo de Perda */}
             {modalPerdaAberto && (
                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl text-slate-100">
                         <h2 className="text-base font-bold mb-4 text-rose-400">Marcar Oportunidade como Perdida</h2>
                         <form onSubmit={confirmarPerda} className="space-y-3.5">
                             <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Motivo da Perda *</label>
+                                <label className="block text-xs text-slate-300 mb-1">Motivo da Perda *</label>
                                 <select
                                     required
                                     value={formPerda.motivo_perda_id}
@@ -988,30 +817,19 @@ export default function BoardCrm() {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Justificativa / Observação</label>
+                                <label className="block text-xs text-slate-300 mb-1">Justificativa / Observação</label>
                                 <textarea
                                     rows="3"
                                     value={formPerda.justificativa_perda}
                                     onChange={(e) => setFormPerda({ ...formPerda, justificativa_perda: e.target.value })}
                                     className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                                    placeholder="Ex: Concorrente ofertou desconto de 15%."
+                                    placeholder="Ex: Cliente optou por concorrente com prazo menor."
                                 ></textarea>
                             </div>
-
                             <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setModalPerdaAberto(false)}
-                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={salvando}
-                                    className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
-                                >
-                                    {salvando ? 'Salvando...' : 'Confirmar Perda'}
+                                <button type="button" onClick={() => setModalPerdaAberto(false)} className="px-4 py-2 text-xs text-slate-400">Cancelar</button>
+                                <button type="submit" disabled={salvando} className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-semibold">
+                                    Confirmar Perda
                                 </button>
                             </div>
                         </form>
