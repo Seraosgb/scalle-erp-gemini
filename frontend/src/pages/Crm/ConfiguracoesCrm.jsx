@@ -11,14 +11,17 @@ export default function ConfiguracoesCrm() {
     const [loading, setLoading] = useState(true);
     const [salvando, setSalvando] = useState(false);
 
+    // Modal / Form Novo Funil
+    const [modalNovoFunil, setModalNovoFunil] = useState(false);
+    const [formNovoPipe, setFormNovoPipe] = useState({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+
+    // Edição do Funil Ativo
     const [editandoPipeline, setEditandoPipeline] = useState(false);
     const [formPipeline, setFormPipeline] = useState({ nome: '', descricao: '', cor_hex: '#4f46e5' });
 
+    // Etapas
     const [formEtapa, setFormEtapa] = useState({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
     const [etapaEmEdicao, setEtapaEmEdicao] = useState(null);
-
-    // Form Motivo de Perda
-    const [formMotivo, setFormMotivo] = useState({ nome: '', codigo: '', cor_hex: '#ef4444' });
 
     useEffect(() => {
         carregarDados();
@@ -28,48 +31,60 @@ export default function ConfiguracoesCrm() {
         window.dispatchEvent(new Event('crm_pipeline_atualizado'));
     };
 
-    const carregarDados = async () => {
+    const carregarDados = async (selecionarId = null) => {
         try {
             setLoading(true);
-            let pipes = [];
-            try {
-                const resPipes = await api.get('/crm/pipelines');
-                pipes = resPipes.data?.data || resPipes.data || [];
-                setPipelines(pipes);
-            } catch (e) {
-                console.warn("Aviso ao carregar /crm/pipelines:", e);
+            const resPipes = await api.get('/crm/pipelines');
+            const pipes = resPipes.data?.data || resPipes.data || [];
+            setPipelines(pipes);
+
+            let alvoId = selecionarId;
+            if (!alvoId && pipes.length > 0) {
+                alvoId = pipelineSelecionado?.id || pipes[0].id;
             }
 
-            try {
-                const resBoard = await api.get('/crm/board');
+            if (alvoId) {
+                const resBoard = await api.get('/crm/board', { params: { pipeline_id: alvoId } });
                 const dataBoard = resBoard.data?.data || resBoard.data;
-                const pipeAtivo = dataBoard?.pipeline || pipes[0] || null;
+                const pipeAtivo = dataBoard?.pipeline || pipes.find(p => p.id === alvoId) || pipes[0];
                 setPipelineSelecionado(pipeAtivo);
                 setMotivosPerda(dataBoard?.motivos_perda || []);
-            } catch (e) {
-                if (pipes.length > 0) setPipelineSelecionado(pipes[0]);
             }
         } catch (err) {
-            console.error("Erro geral no carregamento:", err);
+            console.error("Erro ao carregar dados do CRM:", err);
         } finally {
             setLoading(false);
         }
     };
 
-    const salvarPipeline = async (e) => {
+    const criarNovoFunil = async (e) => {
         e.preventDefault();
         setSalvando(true);
         try {
-            if (pipelineSelecionado && editandoPipeline) {
-                await api.put(`/crm/pipelines/${pipelineSelecionado.id}`, formPipeline);
-            } else {
-                await api.post('/crm/pipelines', formPipeline);
-            }
+            const { data } = await api.post('/crm/pipelines', formNovoPipe);
+            const novoId = data?.data?.id;
+            setModalNovoFunil(false);
+            setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+            avisarAtualizacao();
+            await carregarDados(novoId);
+        } catch (err) {
+            alert(err.response?.data?.message || "Erro ao criar novo funil.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const salvarEdicaoPipeline = async (e) => {
+        e.preventDefault();
+        if (!pipelineSelecionado) return;
+        setSalvando(true);
+        try {
+            await api.put(`/crm/pipelines/${pipelineSelecionado.id}`, formPipeline);
             setEditandoPipeline(false);
             avisarAtualizacao();
-            await carregarDados();
+            await carregarDados(pipelineSelecionado.id);
         } catch (err) {
-            alert(err.response?.data?.message || "Erro ao salvar pipeline.");
+            alert(err.response?.data?.message || "Erro ao salvar alterações do pipeline.");
         } finally {
             setSalvando(false);
         }
@@ -135,7 +150,7 @@ export default function ConfiguracoesCrm() {
         }
     };
 
-    if (loading) {
+    if (loading && !pipelineSelecionado) {
         return (
             <div className="p-8 text-center text-slate-400">
                 <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
@@ -146,6 +161,7 @@ export default function ConfiguracoesCrm() {
 
     return (
         <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
+            {/* Topbar */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
                 <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-100 flex items-center gap-2">
@@ -164,6 +180,7 @@ export default function ConfiguracoesCrm() {
                 </button>
             </div>
 
+            {/* Abas */}
             <div className="flex gap-2 border-b border-slate-800 pb-2">
                 <button
                     type="button"
@@ -185,20 +202,22 @@ export default function ConfiguracoesCrm() {
                 </button>
             </div>
 
+            {/* Conteúdo Pipelines */}
             {tabAtiva === 'pipelines' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Lista de Funis */}
                     <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
                         <div className="flex justify-between items-center">
-                            <h2 className="text-sm font-bold text-slate-200">Pipelines Ativos</h2>
+                            <h2 className="text-sm font-bold text-slate-200">Seus Funis</h2>
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setEditandoPipeline(false);
-                                    setFormPipeline({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+                                    setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+                                    setModalNovoFunil(true);
                                 }}
-                                className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded font-bold transition cursor-pointer"
+                                className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 shadow-sm"
                             >
-                                + Novo
+                                + Novo Funil
                             </button>
                         </div>
 
@@ -210,6 +229,7 @@ export default function ConfiguracoesCrm() {
                                         try {
                                             const res = await api.get('/crm/board', { params: { pipeline_id: p.id } });
                                             setPipelineSelecionado(res.data?.data?.pipeline || res.data?.pipeline || p);
+                                            setEditandoPipeline(false);
                                         } catch (e) {
                                             setPipelineSelecionado(p);
                                         }
@@ -220,9 +240,12 @@ export default function ConfiguracoesCrm() {
                                             : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
                                     }`}
                                 >
-                                    <div>
-                                        <p>{p.nome}</p>
-                                        <p className="text-[10px] text-slate-500 font-normal">{p.descricao || 'Sem descrição'}</p>
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.cor_hex || '#4f46e5' }}></span>
+                                        <div>
+                                            <p className="line-clamp-1">{p.nome}</p>
+                                            <p className="text-[10px] text-slate-500 font-normal">{p.descricao || 'Sem descrição'}</p>
+                                        </div>
                                     </div>
                                     {p.is_padrao && (
                                         <span className="bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded text-[10px]">Padrão</span>
@@ -232,6 +255,7 @@ export default function ConfiguracoesCrm() {
                         </div>
                     </div>
 
+                    {/* Detalhes do Funil Selecionado */}
                     {pipelineSelecionado && (
                         <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-6">
                             <div className="flex justify-between items-center border-b border-slate-800 pb-4">
@@ -247,25 +271,26 @@ export default function ConfiguracoesCrm() {
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setEditandoPipeline(true);
                                         setFormPipeline({
                                             nome: pipelineSelecionado.nome,
                                             descricao: pipelineSelecionado.descricao || '',
                                             cor_hex: pipelineSelecionado.cor_hex || '#4f46e5'
                                         });
+                                        setEditandoPipeline(!editandoPipeline);
                                     }}
                                     className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
                                 >
-                                    ✏️ Renomear Pipeline
+                                    ✏️ {editandoPipeline ? 'Fechar Edição' : 'Editar Nome / Cor'}
                                 </button>
                             </div>
 
+                            {/* Form Inline Edição do Funil */}
                             {editandoPipeline && (
-                                <form onSubmit={salvarPipeline} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                                    <h4 className="text-xs font-bold text-slate-200">Editar Propriedades do Pipeline</h4>
+                                <form onSubmit={salvarEdicaoPipeline} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                                    <h4 className="text-xs font-bold text-slate-200">Editar Propriedades do Funil</h4>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         <div className="sm:col-span-2">
-                                            <label className="block text-[11px] text-slate-400 mb-1">Nome do Pipeline *</label>
+                                            <label className="block text-[11px] text-slate-400 mb-1">Nome do Funil *</label>
                                             <input
                                                 type="text"
                                                 required
@@ -275,13 +300,16 @@ export default function ConfiguracoesCrm() {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[11px] text-slate-400 mb-1">Cor</label>
-                                            <input
-                                                type="color"
-                                                value={formPipeline.cor_hex}
-                                                onChange={(e) => setFormPipeline({ ...formPipeline, cor_hex: e.target.value })}
-                                                className="w-full h-8 bg-slate-900 border border-slate-700 rounded cursor-pointer"
-                                            />
+                                            <label className="block text-[11px] text-slate-400 mb-1">Cor de Destaque</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="color"
+                                                    value={formPipeline.cor_hex}
+                                                    onChange={(e) => setFormPipeline({ ...formPipeline, cor_hex: e.target.value })}
+                                                    className="w-10 h-8 bg-slate-900 border border-slate-700 rounded cursor-pointer p-0.5"
+                                                />
+                                                <span className="text-xs font-mono text-slate-300 uppercase">{formPipeline.cor_hex}</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex justify-end gap-2">
@@ -303,6 +331,7 @@ export default function ConfiguracoesCrm() {
                                 </form>
                             )}
 
+                            {/* Gerenciamento de Etapas */}
                             <div className="space-y-4">
                                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Colunas / Etapas do Funil</h4>
                                 <div className="space-y-2">
@@ -314,7 +343,7 @@ export default function ConfiguracoesCrm() {
                                                         type="button"
                                                         disabled={idx === 0}
                                                         onClick={() => moverEtapaOrdem(idx, -1)}
-                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer"
+                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer text-[10px]"
                                                         title="Mover para cima"
                                                     >
                                                         ▲
@@ -323,7 +352,7 @@ export default function ConfiguracoesCrm() {
                                                         type="button"
                                                         disabled={idx === pipelineSelecionado.etapas.length - 1}
                                                         onClick={() => moverEtapaOrdem(idx, 1)}
-                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer"
+                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer text-[10px]"
                                                         title="Mover para baixo"
                                                     >
                                                         ▼
@@ -428,26 +457,75 @@ export default function ConfiguracoesCrm() {
                 </div>
             )}
 
-            {tabAtiva === 'motivos_perda' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
-                    <div>
-                        <h2 className="text-sm font-bold text-slate-200">Motivos de Descarte / Perda de Oportunidades</h2>
-                        <p className="text-xs text-slate-400 mt-0.5">Parametrize as justificativas padronizadas que a equipe comercial seleciona ao marcar um deal como perdido.</p>
-                    </div>
+            {/* Modal Novo Funil */}
+            {modalNovoFunil && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl text-slate-100 space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <h3 className="text-base font-bold text-white">Criar Novo Funil de Vendas</h3>
+                            <button
+                                type="button"
+                                onClick={() => setModalNovoFunil(false)}
+                                className="text-slate-400 hover:text-white font-bold text-base cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
-                        {motivosPerda.map(m => (
-                            <div key={m.id} className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
-                                <div className="flex items-center gap-2.5">
-                                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: m.cor_hex || '#ef4444' }}></span>
-                                    <div>
-                                        <p className="text-xs font-bold text-slate-200">{m.nome}</p>
-                                        <p className="text-[10px] text-slate-500 font-mono">{m.codigo}</p>
-                                    </div>
-                                </div>
-                                <span className="text-emerald-400 text-[10px] font-bold bg-emerald-950 px-2 py-0.5 rounded border border-emerald-900">Ativo</span>
+                        <form onSubmit={criarNovoFunil} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Funil *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formNovoPipe.nome}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, nome: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Contratos Recorrentes PMOC"
+                                />
                             </div>
-                        ))}
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Descrição</label>
+                                <input
+                                    type="text"
+                                    value={formNovoPipe.descricao}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, descricao: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Venda consultiva corporativa"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Cor de Destaque</label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="color"
+                                        value={formNovoPipe.cor_hex}
+                                        onChange={(e) => setFormNovoPipe({ ...formNovoPipe, cor_hex: e.target.value })}
+                                        className="w-10 h-8 bg-slate-950 border border-slate-700 rounded-lg cursor-pointer p-0.5"
+                                    />
+                                    <span className="text-xs font-mono text-slate-300 uppercase">{formNovoPipe.cor_hex}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setModalNovoFunil(false)}
+                                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition disabled:opacity-50 cursor-pointer shadow-lg shadow-indigo-600/30"
+                                >
+                                    {salvando ? 'Criando...' : 'Criar Funil'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
