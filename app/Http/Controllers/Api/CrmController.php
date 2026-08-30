@@ -152,7 +152,7 @@ class CrmController extends Controller
 
         $tenantId = $request->user()->tenant_id;
 
-        // Recupera a etapa garantindo que o Funil pai pertença ao tenant autenticado
+        // Recupera a etapa garantindo isolamento de tenant via relacionamento do Funil
         $etapa = \App\Models\CrmFunilEtapa::whereHas('funil', function ($q) use ($tenantId) {
             $q->where('tenant_id', $tenantId);
         })->findOrFail($validated['etapa_id']);
@@ -161,14 +161,14 @@ class CrmController extends Controller
             'tenant_id' => $tenantId,
             'funil_id' => $etapa->funil_id,
             'etapa_id' => $etapa->id,
-            'usuario_responsavel_id' => $request->user()->id,
+            'vendedor_id' => $request->user()->id,
             'titulo' => $validated['titulo'],
             'nome_contato' => $validated['nome_contato'],
             'email_contato' => $validated['email_contato'] ?? null,
             'telefone_contato' => $validated['telefone_contato'] ?? null,
             'valor_estimado' => $validated['valor_estimado'] ?? 0,
             'status' => 'ABERTO',
-            'origem' => 'MANUAL',
+            'origem_lead' => 'MANUAL',
         ]);
 
         return response()->json(['data' => $oportunidade], 201);
