@@ -22,7 +22,7 @@ import FiscalPage from './pages/fiscal/FiscalPage';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
 import MasterPage from './pages/master/MasterPage';
 import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
-import BoardCrm from './Pages/Crm/BoardCrm';
+import BoardCrm from './pages/Crm/BoardCrm';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
