@@ -29,6 +29,7 @@ trait Auditable
         try {
             $user = Auth::user();
             $tenantId = $model->tenant_id ?? $user?->tenant_id ?? (app()->bound('current_tenant_id') ? app('current_tenant_id') : null);
+            $nomeTabela = $model->getTable();
 
             AuditoriaLog::create([
                 'id' => (string) Str::uuid(),
@@ -36,7 +37,8 @@ trait Auditable
                 'usuario_id' => $user?->id,
                 'modulo' => 'CRM',
                 'acao' => $acao,
-                'tabela_entidade' => $model->getTable(),
+                'entidade' => $nomeTabela, // Suporte para coluna legada
+                'tabela_entidade' => $nomeTabela, // Suporte para coluna atual
                 'registro_id' => (string) $model->getKey(),
                 'valores_anteriores' => $antigos,
                 'valores_novos' => $novos,
@@ -45,8 +47,7 @@ trait Auditable
                 'created_at' => now(),
             ]);
         } catch (\Throwable $e) {
-            // Log silencioso para evitar que a auditoria derrube transações de negócio críticas
-            \Illuminate\Support\Facades\Log::warning("[Auditoria] Falha silenciosa ao registrar log: " . $e->getMessage());
+            \Illuminate\Support\Facades\Log::warning("[Auditoria] Falha silenciosa: " . $e->getMessage());
         }
     }
 }
