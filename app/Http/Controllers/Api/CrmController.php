@@ -10,10 +10,9 @@ use App\Models\CrmOportunidadeAtividade;
 use App\Models\CrmOportunidadeItem;
 use App\Models\Deposito;
 use App\Models\Empresa;
+use App\Models\Item;
 use App\Models\PedidoVenda;
-use App\Models\PedidoVendaItem;
 use App\Models\Pessoa;
-use App\Models\Produto;
 use App\Models\TabelaDominio;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -306,7 +305,6 @@ class CrmController extends Controller
                         }
                         if (!empty($search)) {
                             $q->where(function ($sub) use ($search) {
-                                // LIKE padrão compatível com MySQL e MariaDB
                                 $sub->where('titulo', 'LIKE', "%{$search}%")
                                     ->orWhere('nome_contato', 'LIKE', "%{$search}%")
                                     ->orWhere('telefone_contato', 'LIKE', "%{$search}%");
@@ -315,7 +313,7 @@ class CrmController extends Controller
 
                         $relations = ['vendedor:id,name', 'atividades'];
                         if ($temTabelaItens) {
-                            $relations[] = 'itens';
+                            $relations[] = 'itens.item:id,nome,codigo_sku,preco_venda';
                         }
 
                         $q->with($relations)->orderByDesc('created_at');
@@ -339,15 +337,11 @@ class CrmController extends Controller
             ->where('is_ativo', true)
             ->get(['id', 'name']);
 
-        $produtos = [];
-        if (Schema::hasTable('cad_produtos')) {
-            try {
-                $produtos = Produto::where('tenant_id', $tenantId)->where('is_ativo', true)->get();
-            } catch (\Throwable $th) {
-                $produtos = [];
-            }
-        }
-        
+        $produtos = Item::where('tenant_id', $tenantId)
+            ->where('is_ativo', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'codigo_sku', 'preco_venda']);
+
         $usuarioLogado = $request->user();
         $perfilNome = is_object($usuarioLogado->perfil) 
             ? ($usuarioLogado->perfil->nome ?? $usuarioLogado->perfil->codigo ?? '') 

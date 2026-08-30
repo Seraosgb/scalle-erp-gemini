@@ -57,6 +57,11 @@ class CrmOportunidade extends Model
         return $this->hasMany(CrmOportunidadeAtividade::class, 'oportunidade_id')->orderByDesc('created_at');
     }
 
+    public function itens(): HasMany
+    {
+        return $this->hasMany(CrmOportunidadeItem::class, 'oportunidade_id');
+    }
+
     public function motivoPerda(): BelongsTo
     {
         return $this->belongsTo(TabelaDominio::class, 'motivo_perda_id');
