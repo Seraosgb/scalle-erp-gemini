@@ -19,7 +19,7 @@ class CrmOportunidadeItem extends Model
         'id',
         'tenant_id',
         'oportunidade_id',
-        'produto_id', // CORREÇÃO: Alinhado com o banco de dados
+        'produto_id',
         'descricao',
         'quantidade',
         'valor_unitario',
@@ -40,11 +40,12 @@ class CrmOportunidadeItem extends Model
 
     public function oportunidade(): BelongsTo
     {
-        return $this->belongsTo(CrmOportunidade::class, 'oportunidade_id');
+        // Força explicitamente a FK 'oportunidade_id' para a tabela crm_oportunidades
+        return $this->belongsTo(CrmOportunidade::class, 'oportunidade_id', 'id');
     }
 
-    public function produto(): BelongsTo // CORREÇÃO: Relacionamento correto
+    public function produto(): BelongsTo
     {
-        return $this->belongsTo(Item::class, 'produto_id');
+        return $this->belongsTo(Item::class, 'produto_id', 'id');
     }
 }
