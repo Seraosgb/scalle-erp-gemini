@@ -123,65 +123,75 @@ class CrmController extends Controller
         $tenantId = $request->user()->tenant_id;
         $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
 
-        DB::beginTransaction();
         try {
-            $clienteId = $oportunidade->cliente_id;
-            
-            if (!$clienteId) {
-                $pessoa = Pessoa::create([
+            return DB::transaction(function () use ($oportunidade, $tenantId, $request) {
+                $clienteId = $oportunidade->cliente_id;
+
+                // 1. Cria ou reutiliza Cliente com identificador único
+                if (!$clienteId) {
+                    $cpfAleatorio = 'CRM' . strtoupper(substr(str_replace('-', '', (string) Str::uuid()), 0, 8));
+
+                    $pessoa = Pessoa::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => $tenantId,
+                        'tipo_pessoa' => 'PF',
+                        'nome_razao_social' => $oportunidade->nome_contato,
+                        'cpf_cnpj' => $cpfAleatorio,
+                        'email_principal' => $oportunidade->email_contato,
+                        'telefone_principal' => $oportunidade->telefone_contato,
+                        'is_cliente' => true,
+                        'is_ativo' => true,
+                    ]);
+                    $clienteId = $pessoa->id;
+
+                    $oportunidade->update(['cliente_id' => $clienteId]);
+                }
+
+                // 2. Resolve Empresa e Depósito Padrão
+                $empresaId = $request->user()->empresa_padrao_id 
+                          ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                          ?? Empresa::first()?->id;
+
+                $depositoId = Deposito::where('tenant_id', $tenantId)->where('is_padrao', true)->first()?->id
+                           ?? Deposito::where('tenant_id', $tenantId)->first()?->id
+                           ?? Deposito::first()?->id;
+
+                $ultimoNumero = PedidoVenda::withoutGlobalScopes()->where('tenant_id', $tenantId)->max('numero_pedido') ?? 1000;
+                $valorEstimado = (float) ($oportunidade->valor_estimado ?? 0);
+
+                // 3. Cria o Orçamento com todas as colunas numéricas preenchidas
+                $orcamento = PedidoVenda::create([
                     'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
-                    'tipo_pessoa' => 'PF',
-                    'nome_razao_social' => $oportunidade->nome_contato,
-                    'cpf_cnpj' => '00000000000',
-                    'email_principal' => $oportunidade->email_contato, 
-                    'telefone_principal' => $oportunidade->telefone_contato,
-                    'is_cliente' => true,
-                    'is_ativo' => true,
+                    'empresa_id' => $empresaId,
+                    'cliente_id' => $clienteId,
+                    'vendedor_id' => $request->user()->id,
+                    'deposito_saida_id' => $depositoId,
+                    'tipo_documento' => 'ORCAMENTO',
+                    'numero_pedido' => (int) ($ultimoNumero + 1),
+                    'status' => 'ORCAMENTO',
+                    'data_emissao' => now(),
+                    'valor_subtotal_itens' => $valorEstimado,
+                    'valor_frete' => 0.00,
+                    'valor_seguro' => 0.00,
+                    'valor_outras_despesas' => 0.00,
+                    'percentual_desconto' => 0.00,
+                    'valor_desconto' => 0.00,
+                    'valor_total_liquido' => $valorEstimado,
+                    'observacoes' => "Orçamento gerado a partir da Oportunidade CRM: {$oportunidade->titulo}",
                 ]);
-                $clienteId = $pessoa->id;
-                
-                $oportunidade->update(['cliente_id' => $clienteId]);
-            }
 
-            $empresaId = $request->user()->empresa_padrao_id 
-                      ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
-                      ?? Empresa::first()?->id;
+                // 4. Conclui a oportunidade no CRM
+                $oportunidade->update(['status' => 'GANHO']);
 
-            $depositoId = Deposito::where('tenant_id', $tenantId)->where('is_padrao', true)->first()?->id
-                       ?? Deposito::where('tenant_id', $tenantId)->first()?->id
-                       ?? Deposito::first()?->id;
-
-            $ultimoNumero = PedidoVenda::withoutGlobalScopes()->where('tenant_id', $tenantId)->max('numero_pedido') ?? 1000;
-
-            $orcamento = PedidoVenda::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'empresa_id' => $empresaId,
-                'cliente_id' => $clienteId,
-                'vendedor_id' => $request->user()->id,
-                'deposito_saida_id' => $depositoId,
-                'tipo_documento' => 'ORCAMENTO',
-                'numero_pedido' => (string) ($ultimoNumero + 1),
-                'status' => 'ORCAMENTO', 
-                'data_emissao' => now(),
-                'valor_subtotal_itens' => (float) ($oportunidade->valor_estimado ?? 0),
-                'valor_total_liquido' => (float) ($oportunidade->valor_estimado ?? 0),
-                'observacoes' => "Orçamento gerado a partir da Oportunidade CRM: {$oportunidade->titulo}",
-            ]);
-
-            $oportunidade->update(['status' => 'GANHO']);
-
-            DB::commit();
-
-            return response()->json([
-                'data' => [
-                    'message' => "Orçamento #{$orcamento->numero_pedido} gerado com sucesso!",
-                    'orcamento_id' => $orcamento->id
-                ]
-            ]);
+                return response()->json([
+                    'data' => [
+                        'message' => "Orçamento #{$orcamento->numero_pedido} gerado com sucesso!",
+                        'orcamento_id' => $orcamento->id
+                    ]
+                ]);
+            });
         } catch (\Exception $e) {
-            DB::rollBack();
             return response()->json(['error' => 'Erro ao converter lead: ' . $e->getMessage()], 500);
         }
     }
