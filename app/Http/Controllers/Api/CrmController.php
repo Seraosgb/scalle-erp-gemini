@@ -21,13 +21,52 @@ use Illuminate\Support\Str;
 class CrmController extends Controller
 {
     /**
-     * RBAC Helper: valida se o usuário tem perfil de gestão
+     * RBAC Helper: valida se o usuário tem perfil de gestão no sistema
      */
     private function autorizarGestao(Request $request): void
     {
         $usuario = $request->user();
-        $isGestor = ($usuario->is_admin ?? false) || in_array(strtoupper($usuario->role ?? $usuario->perfil ?? ''), ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE']);
-        if (!$isGestor) {
+
+        if (!$usuario) {
+            abort(401, 'Usuário não autenticado.');
+        }
+
+        // 1. Verificação de flags diretas (Master SaaS ou Admin)
+        if (($usuario->is_master ?? false) || ($usuario->is_admin ?? false)) {
+            return;
+        }
+
+        // 2. Extração segura do nome/código do perfil
+        $perfilNome = '';
+        if (is_object($usuario->perfil)) {
+            $perfilNome = $usuario->perfil->nome ?? $usuario->perfil->codigo ?? $usuario->perfil->slug ?? '';
+        } elseif (is_string($usuario->perfil)) {
+            $perfilNome = $usuario->perfil;
+        }
+
+        $role = is_string($usuario->role ?? null) ? $usuario->role : '';
+
+        $cargosPermitidos = [
+            'ADMIN',
+            'ADMINISTRADOR',
+            'GESTOR_COMERCIAL',
+            'GERENTE',
+            'GERENTE_COMERCIAL',
+            'DIRETOR',
+            'MASTER',
+            'SAAS_OWNER'
+        ];
+
+        $perfilUpper = strtoupper(trim((string)$perfilNome));
+        $roleUpper = strtoupper(trim((string)$role));
+
+        $autorizado = in_array($perfilUpper, $cargosPermitidos, true) 
+                   || in_array($roleUpper, $cargosPermitidos, true)
+                   || str_contains($perfilUpper, 'ADMIN')
+                   || str_contains($perfilUpper, 'GESTOR')
+                   || str_contains($perfilUpper, 'GERENTE');
+
+        if (!$autorizado) {
             abort(403, 'Ação restrita a Administradores e Gestores Comerciais.');
         }
     }
@@ -173,6 +212,29 @@ class CrmController extends Controller
         return response()->json(['data' => ['message' => 'Etapa removida com sucesso.']]);
     }
 
+    public function reordenarEtapas(Request $request, string $pipelineId): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+        $pipeline = CrmFunil::where('tenant_id', $tenantId)->findOrFail($pipelineId);
+
+        $validated = $request->validate([
+            'etapas' => 'required|array',
+            'etapas.*.id' => 'required|uuid|exists:crm_funil_etapas,id',
+            'etapas.*.ordem_exibicao' => 'required|integer|min:1',
+        ]);
+
+        DB::transaction(function () use ($validated, $pipeline) {
+            foreach ($validated['etapas'] as $item) {
+                CrmFunilEtapa::where('id', $item['id'])
+                    ->where('funil_id', $pipeline->id)
+                    ->update(['ordem_exibicao' => $item['ordem_exibicao']]);
+            }
+        });
+
+        return response()->json(['data' => ['message' => 'Ordem das etapas atualizada com sucesso.']]);
+    }
+
     // --- BOARD KANBAN COM FORECAST PONDERADO ---
 
     public function board(Request $request): JsonResponse
@@ -259,7 +321,21 @@ class CrmController extends Controller
         $vendedores = User::where('tenant_id', $tenantId)->where('is_ativo', true)->get(['id', 'name']);
         
         $usuarioLogado = $request->user();
-        $isGestor = ($usuarioLogado->is_admin ?? false) || in_array(strtoupper($usuarioLogado->role ?? $usuarioLogado->perfil ?? ''), ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE']);
+        
+        $perfilNome = is_object($usuarioLogado->perfil) 
+            ? ($usuarioLogado->perfil->nome ?? $usuarioLogado->perfil->codigo ?? '') 
+            : ($usuarioLogado->perfil ?? '');
+            
+        $perfilUpper = strtoupper(trim((string)$perfilNome));
+        $roleUpper = strtoupper(trim((string)($usuarioLogado->role ?? '')));
+
+        $isGestor = ($usuarioLogado->is_master ?? false) 
+                 || ($usuarioLogado->is_admin ?? false)
+                 || in_array($perfilUpper, ['ADMIN', 'ADMINISTRADOR', 'GESTOR_COMERCIAL', 'GERENTE', 'GERENTE_COMERCIAL', 'DIRETOR', 'MASTER', 'SAAS_OWNER'], true)
+                 || in_array($roleUpper, ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE'], true)
+                 || str_contains($perfilUpper, 'ADMIN')
+                 || str_contains($perfilUpper, 'GESTOR')
+                 || str_contains($perfilUpper, 'GERENTE');
 
         return response()->json([
             'data' => [
