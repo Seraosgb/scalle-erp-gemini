@@ -242,134 +242,151 @@ class CrmController extends Controller
 
     public function board(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $pipelineId = $request->get('pipeline_id');
-        $statusFiltro = $request->get('status', 'ABERTO');
-        $vendedorId = $request->get('vendedor_id');
-        $search = $request->get('search');
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $pipelineId = $request->get('pipeline_id');
+            $statusFiltro = $request->get('status', 'ABERTO');
+            $vendedorId = $request->get('vendedor_id');
+            $search = $request->get('search');
 
-        $queryPipeline = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true);
-        if (!empty($pipelineId)) {
-            $queryPipeline->where('id', $pipelineId);
-        } else {
-            $queryPipeline->orderByDesc('is_padrao');
-        }
+            $queryPipeline = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true);
+            if (!empty($pipelineId)) {
+                $queryPipeline->where('id', $pipelineId);
+            } else {
+                $queryPipeline->orderByDesc('is_padrao');
+            }
 
-        $pipeline = $queryPipeline->first();
+            $pipeline = $queryPipeline->first();
 
-        if (!$pipeline) {
-            $pipeline = CrmFunil::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'nome' => 'Pipeline Principal',
-                'descricao' => 'Fluxo mestre de prospecção e vendas',
-                'cor_hex' => '#4f46e5',
-                'token_captacao' => Str::random(40),
-                'is_padrao' => true,
-                'is_ativo' => true,
-            ]);
-        }
-
-        $etapasExistentes = CrmFunilEtapa::where('funil_id', $pipeline->id)->count();
-        if ($etapasExistentes === 0) {
-            $etapas = [
-                ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
-                ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
-                ['nome' => 'Proposta Comercial', 'ordem' => 3, 'prob' => 70, 'cor' => '#f59e0b'],
-                ['nome' => 'Negociação / Fechamento', 'ordem' => 4, 'prob' => 90, 'cor' => '#10b981'],
-            ];
-            foreach ($etapas as $e) {
-                CrmFunilEtapa::create([
+            if (!$pipeline) {
+                $pipeline = CrmFunil::create([
                     'id' => (string) Str::uuid(),
-                    'funil_id' => $pipeline->id,
-                    'nome' => $e['nome'],
-                    'ordem_exibicao' => $e['ordem'],
-                    'probabilidade_fechamento' => $e['prob'],
-                    'cor_hex' => $e['cor'],
+                    'tenant_id' => $tenantId,
+                    'nome' => 'Pipeline Principal',
+                    'descricao' => 'Fluxo mestre de prospecção e vendas',
+                    'cor_hex' => '#4f46e5',
+                    'token_captacao' => Str::random(40),
+                    'is_padrao' => true,
+                    'is_ativo' => true,
                 ]);
             }
-        }
 
-        $temTabelaItens = Schema::hasTable('crm_oportunidade_itens');
+            $etapasExistentes = CrmFunilEtapa::where('funil_id', $pipeline->id)->count();
+            if ($etapasExistentes === 0) {
+                $etapas = [
+                    ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
+                    ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
+                    ['nome' => 'Proposta Comercial', 'ordem' => 3, 'prob' => 70, 'cor' => '#f59e0b'],
+                    ['nome' => 'Negociação / Fechamento', 'ordem' => 4, 'prob' => 90, 'cor' => '#10b981'],
+                ];
+                foreach ($etapas as $e) {
+                    CrmFunilEtapa::create([
+                        'id' => (string) Str::uuid(),
+                        'funil_id' => $pipeline->id,
+                        'nome' => $e['nome'],
+                        'ordem_exibicao' => $e['ordem'],
+                        'probabilidade_fechamento' => $e['prob'],
+                        'cor_hex' => $e['cor'],
+                    ]);
+                }
+            }
 
-        $pipelineCarregado = CrmFunil::where('id', $pipeline->id)
-            ->with(['etapas' => function ($queryEtapa) use ($statusFiltro, $vendedorId, $search, $tenantId, $temTabelaItens) {
-                $queryEtapa->orderBy('ordem_exibicao', 'asc')
-                    ->with(['oportunidades' => function ($q) use ($statusFiltro, $vendedorId, $search, $tenantId, $temTabelaItens) {
-                        $q->where('tenant_id', $tenantId);
-                        if ($statusFiltro !== 'TODOS') {
-                            $q->where('status', $statusFiltro);
-                        }
-                        if (!empty($vendedorId)) {
-                            $q->where('vendedor_id', $vendedorId);
-                        }
-                        if (!empty($search)) {
-                            $q->where(function ($sub) use ($search) {
-                                $sub->where('titulo', 'LIKE', "%{$search}%")
-                                    ->orWhere('nome_contato', 'LIKE', "%{$search}%")
-                                    ->orWhere('telefone_contato', 'LIKE', "%{$search}%");
-                            });
-                        }
+            $temTabelaItens = Schema::hasTable('crm_oportunidade_itens');
 
-                        $relations = ['vendedor:id,name', 'atividades'];
-                        if ($temTabelaItens) {
-                            $relations[] = 'itens.item:id,nome,codigo_sku,preco_venda';
-                        }
+            $pipelineCarregado = CrmFunil::where('id', $pipeline->id)
+                ->with(['etapas' => function ($queryEtapa) use ($statusFiltro, $vendedorId, $search, $tenantId, $temTabelaItens) {
+                    $queryEtapa->orderBy('ordem_exibicao', 'asc')
+                        ->with(['oportunidades' => function ($q) use ($statusFiltro, $vendedorId, $search, $tenantId, $temTabelaItens) {
+                            $q->where('tenant_id', $tenantId);
+                            if ($statusFiltro !== 'TODOS') {
+                                $q->where('status', $statusFiltro);
+                            }
+                            if (!empty($vendedorId)) {
+                                $q->where('vendedor_id', $vendedorId);
+                            }
+                            if (!empty($search)) {
+                                $q->where(function ($sub) use ($search) {
+                                    $sub->where('titulo', 'LIKE', "%{$search}%")
+                                        ->orWhere('nome_contato', 'LIKE', "%{$search}%")
+                                        ->orWhere('telefone_contato', 'LIKE', "%{$search}%");
+                                });
+                            }
 
-                        $q->with($relations)->orderByDesc('created_at');
-                    }]);
-            }])
-            ->first();
+                            $relations = ['vendedor:id,name', 'atividades'];
+                            if ($temTabelaItens) {
+                                $relations[] = 'itens.item';
+                            }
 
-        $todosPipelines = CrmFunil::where('tenant_id', $tenantId)
-            ->where('is_ativo', true)
-            ->orderBy('nome')
-            ->get(['id', 'nome', 'cor_hex', 'is_padrao', 'token_captacao']);
+                            $q->with($relations)->orderByDesc('created_at');
+                        }]);
+                }])
+                ->first();
 
-        self::garantirMotivosPerdaPadrao($tenantId);
-        $motivosPerda = TabelaDominio::where('tenant_id', $tenantId)
-            ->where('tipo_lista', 'CRM_MOTIVO_PERDA')
-            ->where('is_ativo', true)
-            ->orderBy('ordem_exibicao')
-            ->get();
+            $todosPipelines = CrmFunil::where('tenant_id', $tenantId)
+                ->where('is_ativo', true)
+                ->orderBy('nome')
+                ->get(['id', 'nome', 'cor_hex', 'is_padrao', 'token_captacao']);
 
-        $vendedores = User::where('tenant_id', $tenantId)
-            ->where('is_ativo', true)
-            ->get(['id', 'name']);
+            self::garantirMotivosPerdaPadrao($tenantId);
+            $motivosPerda = TabelaDominio::where('tenant_id', $tenantId)
+                ->where('tipo_lista', 'CRM_MOTIVO_PERDA')
+                ->where('is_ativo', true)
+                ->orderBy('ordem_exibicao')
+                ->get();
 
-        $produtos = Item::where('tenant_id', $tenantId)
-            ->where('is_ativo', true)
-            ->orderBy('nome')
-            ->get(['id', 'nome', 'codigo_sku', 'preco_venda']);
+            $vendedores = User::where('tenant_id', $tenantId)
+                ->where('is_ativo', true)
+                ->get(['id', 'name']);
 
-        $usuarioLogado = $request->user();
-        $perfilNome = is_object($usuarioLogado->perfil) 
-            ? ($usuarioLogado->perfil->nome ?? $usuarioLogado->perfil->codigo ?? '') 
-            : ($usuarioLogado->perfil ?? '');
-            
-        $perfilUpper = strtoupper(trim((string)$perfilNome));
-        $roleUpper = strtoupper(trim((string)($usuarioLogado->role ?? '')));
+            $produtos = [];
+            if (Schema::hasTable('pro_itens')) {
+                try {
+                    $produtos = Item::where('tenant_id', $tenantId)
+                        ->where('is_ativo', true)
+                        ->orderBy('nome')
+                        ->get(['id', 'nome', 'codigo_sku', 'preco_venda']);
+                } catch (\Throwable $th) {
+                    $produtos = [];
+                }
+            }
 
-        $isGestor = ($usuarioLogado->is_master ?? false) 
-                 || ($usuarioLogado->is_admin ?? false)
-                 || in_array($perfilUpper, ['ADMIN', 'ADMINISTRADOR', 'GESTOR_COMERCIAL', 'GERENTE', 'GERENTE_COMERCIAL', 'DIRETOR', 'MASTER', 'SAAS_OWNER'], true)
-                 || in_array($roleUpper, ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE'], true)
-                 || str_contains($perfilUpper, 'ADMIN')
-                 || str_contains($perfilUpper, 'GESTOR')
-                 || str_contains($perfilUpper, 'GERENTE');
+            $usuarioLogado = $request->user();
+            $perfilNome = is_object($usuarioLogado->perfil) 
+                ? ($usuarioLogado->perfil->nome ?? $usuarioLogado->perfil->codigo ?? '') 
+                : ($usuarioLogado->perfil ?? '');
+                
+            $perfilUpper = strtoupper(trim((string)$perfilNome));
+            $roleUpper = strtoupper(trim((string)($usuarioLogado->role ?? '')));
 
-        return response()->json([
-            'data' => [
-                'pipeline' => $pipelineCarregado,
-                'pipelines_disponiveis' => $todosPipelines,
-                'motivos_perda' => $motivosPerda,
-                'vendedores' => $vendedores,
-                'produtos' => $produtos,
-                'permissoes' => [
-                    'pode_gerenciar_pipeline' => $isGestor,
+            $isGestor = ($usuarioLogado->is_master ?? false) 
+                     || ($usuarioLogado->is_admin ?? false)
+                     || in_array($perfilUpper, ['ADMIN', 'ADMINISTRADOR', 'GESTOR_COMERCIAL', 'GERENTE', 'GERENTE_COMERCIAL', 'DIRETOR', 'MASTER', 'SAAS_OWNER'], true)
+                     || in_array($roleUpper, ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE'], true)
+                     || str_contains($perfilUpper, 'ADMIN')
+                     || str_contains($perfilUpper, 'GESTOR')
+                     || str_contains($perfilUpper, 'GERENTE');
+
+            return response()->json([
+                'data' => [
+                    'pipeline' => $pipelineCarregado,
+                    'pipelines_disponiveis' => $todosPipelines,
+                    'motivos_perda' => $motivosPerda,
+                    'vendedores' => $vendedores,
+                    'produtos' => $produtos,
+                    'permissoes' => [
+                        'pode_gerenciar_pipeline' => $isGestor,
+                    ]
                 ]
-            ]
-        ]);
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ]
+            ], 500);
+        }
     }
 
     public function moverCard(Request $request, string $id): JsonResponse

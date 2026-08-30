@@ -42,13 +42,4 @@ class CrmOportunidadeAtividade extends Model
     {
         return $this->belongsTo(User::class, 'usuario_id');
     }
-    public function atividades(): \Illuminate\Database\Eloquent\Relations\HasMany
-    {
-        return $this->hasMany(CrmOportunidadeAtividade::class, 'oportunidade_id')->orderByDesc('created_at');
-    }
-
-    public function motivoPerda(): BelongsTo
-    {
-        return $this->belongsTo(TabelaDominio::class, 'motivo_perda_id');
-    }
 }
