@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench, 
   DollarSign, FileText, Users, LogOut, Menu, X, 
   Building2, ShieldAlert, Factory, FileSpreadsheet,
-  Truck, UserCheck, ShieldCheck, Monitor, Kanban
+  Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings
 } from 'lucide-react';
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
@@ -76,7 +76,8 @@ export default function AppLayout() {
   const menu = [
     ...(usuario?.is_master ? [{ name: 'Painel Master SaaS', path: 'master', icon: ShieldAlert, isMaster: true }] : []),
     { name: 'Dashboard', path: 'dashboard', icon: LayoutDashboard },
-    { name: 'CRM & Funil', path: 'crm', icon: Kanban },
+    { name: 'CRM & Funil', path: 'crm', icon: Kanban, end: true },
+    { name: 'Parametrização CRM', path: 'crm/configuracoes', icon: Settings },
     { name: 'WMS & Estoque', path: 'wms', icon: Boxes },
     { name: 'Indústria & PCP', path: 'pcp', icon: Factory },
     { name: 'Terminal Chão de Fábrica', path: 'pcp/terminal', icon: Monitor },
@@ -136,6 +137,7 @@ export default function AppLayout() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                end={item.end}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) => `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition ${
                   isActive 
