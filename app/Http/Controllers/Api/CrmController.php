@@ -11,6 +11,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Models\PedidoVenda;
+use App\Models\Empresa;
+use App\Models\Deposito;
 
 class CrmController extends Controller
 {
@@ -97,11 +100,11 @@ class CrmController extends Controller
             $clienteId = $oportunidade->cliente_id;
             
             if (!$clienteId) {
-                // Usando as colunas exatas blindadas no seu model Pessoa
                 $pessoa = Pessoa::create([
                     'tenant_id' => $tenantId,
-                    'tipo_pessoa' => 'FISICA', 
+                    'tipo_pessoa' => 'PF', // Padrão PF (2 caracteres)
                     'nome_razao_social' => $oportunidade->nome_contato,
+                    'cpf_cnpj' => '00000000000', // CPF Padrão Provisório
                     'email_principal' => $oportunidade->email_contato, 
                     'telefone_principal' => $oportunidade->telefone_contato,
                     'is_cliente' => true,
@@ -109,28 +112,42 @@ class CrmController extends Controller
                 ]);
                 $clienteId = $pessoa->id;
                 
-                // Atualiza a oportunidade com o novo cliente amarrado
                 $oportunidade->update(['cliente_id' => $clienteId]);
             }
 
-            // 2. Cria o Orçamento na tabela de Vendas
-            $orcamento = Venda::create([
+            // 2. Resolve Empresa e Depósito Padrão para o Pedido/Orçamento
+            $empresaId = $request->user()->empresa_padrao_id 
+                      ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+            $depositoId = Deposito::where('tenant_id', $tenantId)->where('is_padrao', true)->first()?->id
+                       ?? Deposito::where('tenant_id', $tenantId)->first()?->id;
+
+            $ultimoNumero = PedidoVenda::where('tenant_id', $tenantId)->max('numero_pedido') ?? 1000;
+
+            // 3. Cria o Orçamento na tabela correta (ven_pedidos)
+            $orcamento = PedidoVenda::create([
                 'tenant_id' => $tenantId,
-                'pessoa_id' => $clienteId,
+                'empresa_id' => $empresaId,
+                'cliente_id' => $clienteId,
                 'vendedor_id' => $request->user()->id,
+                'deposito_saida_id' => $depositoId,
+                'tipo_documento' => 'ORCAMENTO',
+                'numero_pedido' => $ultimoNumero + 1,
                 'status' => 'ORCAMENTO', 
-                'valor_total' => $oportunidade->valor_estimado,
-                'observacoes' => "Orçamento gerado a partir do Lead CRM: {$oportunidade->titulo}",
+                'data_emissao' => now(),
+                'valor_subtotal_itens' => (float) $oportunidade->valor_estimado,
+                'valor_total_liquido' => (float) $oportunidade->valor_estimado,
+                'observacoes' => "Orçamento gerado a partir da Oportunidade CRM: {$oportunidade->titulo}",
             ]);
 
-            // 3. Atualiza o status do Lead para fechar o ciclo
+            // 4. Marca a Oportunidade como GANHO
             $oportunidade->update(['status' => 'GANHO']);
 
             DB::commit();
 
             return response()->json([
                 'data' => [
-                    'message' => 'Orçamento gerado com sucesso!',
+                    'message' => "Orçamento #{$orcamento->numero_pedido} gerado com sucesso!",
                     'orcamento_id' => $orcamento->id
                 ]
             ]);
