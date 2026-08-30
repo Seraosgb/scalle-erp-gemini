@@ -152,9 +152,13 @@ class CrmController extends Controller
 
         $tenantId = $request->user()->tenant_id;
 
+        // Recupera a etapa para obter o funil_id obrigatório
+        $etapa = \App\Models\CrmFunilEtapa::where('tenant_id', $tenantId)->findOrFail($validated['etapa_id']);
+
         $oportunidade = CrmOportunidade::create([
             'tenant_id' => $tenantId,
-            'etapa_id' => $validated['etapa_id'],
+            'funil_id' => $etapa->funil_id,
+            'etapa_id' => $etapa->id,
             'usuario_responsavel_id' => $request->user()->id,
             'titulo' => $validated['titulo'],
             'nome_contato' => $validated['nome_contato'],
@@ -162,6 +166,7 @@ class CrmController extends Controller
             'telefone_contato' => $validated['telefone_contato'] ?? null,
             'valor_estimado' => $validated['valor_estimado'] ?? 0,
             'status' => 'ABERTO',
+            'origem' => 'MANUAL',
         ]);
 
         return response()->json(['data' => $oportunidade], 201);
