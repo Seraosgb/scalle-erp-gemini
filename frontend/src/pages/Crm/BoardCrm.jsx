@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import api from '@/services/api'; // Ajuste para o seu client axios
+import { api } from '../../services/api';
 
 export default function BoardCrm() {
     const [board, setBoard] = useState(null);
