@@ -1,4 +1,5 @@
 # ESPECIFICAÇÃO FUNCIONAL E TÉCNICA MESTRE — SCALLE ERP
+
 ## Do requisito à implementação, homologação e operação comercial
 
 **Versão:** 1.0  
@@ -71,6 +72,7 @@ Cada módulo deverá ser descrito por:
 - critérios de aceite;
 - dependências;
 - critérios de conclusão.
+- Diretriz de que toda taxonomia, nomenclatura de fluxos, listas suspensas e etapas de processos devem ser dinâmicas e parametrizáveis por tenant, evitando termos estáticos chumbados no código (_hardcoded_)
 
 ---
 
@@ -103,27 +105,35 @@ Criar a base sobre a qual todos os módulos funcionarão.
 ## 3.3 Requisitos
 
 ### CORE-001 — Tenant
+
 Todo dado operacional deverá pertencer a um tenant quando o domínio exigir isolamento.
 
 ### CORE-002 — Isolamento
+
 Toda consulta deverá respeitar o tenant autenticado.
 
 ### CORE-003 — Isolamento cruzado
+
 Usuário de um tenant não poderá consultar, alterar, excluir ou inferir dados de outro tenant.
 
 ### CORE-004 — Grupo empresarial
+
 Um grupo poderá conter múltiplas empresas/tenants conforme o modelo definido.
 
 ### CORE-005 — Filiais
+
 Uma empresa poderá possuir múltiplas filiais/estabelecimentos.
 
 ### CORE-006 — Feature flags
+
 Recursos poderão ser ativados/desativados por tenant e plano.
 
 ### CORE-007 — Auditoria
+
 Operações críticas deverão registrar usuário, tenant, data/hora, operação, entidade e contexto.
 
 ### CORE-008 — Idempotência
+
 Operações financeiras, fiscais e integrações críticas deverão possuir mecanismo idempotente quando aplicável.
 
 ## 3.4 Critério de aceite
@@ -436,9 +446,11 @@ Saldo e histórico deverão permanecer consistentes após operações normais, e
 ## 10.3 Fluxos
 
 ### A pagar
+
 Lançamento → Aprovação → Vencimento → Pagamento → Baixa → Conciliação.
 
 ### A receber
+
 Venda/lançamento → Parcela → Cobrança → Recebimento → Baixa → Conciliação.
 
 ## 10.4 Regras
@@ -952,31 +964,31 @@ O Scalle será 100% comercialmente pronto somente quando:
 
 # 33. MATRIZ MESTRE DE EXECUÇÃO
 
-| Domínio | Especificação | Desenvolvimento | Testes | Homologação | Produção | Comercial |
-|---|---|---|---|---|---|---|
-| Core | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Identidade | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Cadastros | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Comercial | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Compras | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Estoque/WMS | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Financeiro | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Fiscal | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Serviços/OS | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| PCP/MRP | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Frotas | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Ativos | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| RH/DP | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Projetos | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| GED | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Portal | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| BI | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| API/Integrações | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| SaaS/Billing | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Segurança/LGPD | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| DevOps | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| QA | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Implantação/Suporte | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Domínio             | Especificação | Desenvolvimento | Testes | Homologação | Produção | Comercial |
+| ------------------- | ------------- | --------------- | ------ | ----------- | -------- | --------- |
+| Core                | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Identidade          | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Cadastros           | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Comercial           | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Compras             | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Estoque/WMS         | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Financeiro          | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Fiscal              | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Serviços/OS         | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| PCP/MRP             | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Frotas              | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Ativos              | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| RH/DP               | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Projetos            | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| GED                 | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Portal              | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| BI                  | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| API/Integrações     | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| SaaS/Billing        | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Segurança/LGPD      | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| DevOps              | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| QA                  | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
+| Implantação/Suporte | ⚪             | ⚪               | ⚪      | ⚪           | ⚪        | ⚪         |
 
 ---
 
@@ -990,12 +1002,12 @@ O objetivo é eliminar a necessidade de “adivinhar” como o ERP deve funciona
 
 **SCALLE ERP — 0% → 100% COMERCIALMENTE PRONTO**
 
-
 ---
 
 # ANEXO — DOCUMENTO MESTRE ORIGINAL
 
 # DOCUMENTO MESTRE DO PROJETO — SCALLE ERP
+
 ## Master Project Document
 
 **Versão:** 1.0  
@@ -1039,13 +1051,13 @@ A plataforma deverá ser modular, multitenant, extensível e capaz de oferecer d
 
 # 3. DEFINIÇÃO DE 0% → 100%
 
-| Nível | Status | Critério |
-|---|---|---|
-| 0 | ⚪ Não iniciado | Requisito definido, ainda não executado |
-| 1 | 🔵 Arquitetado | Arquitetura, contratos e fluxos definidos |
-| 2 | 🟡 Em desenvolvimento | Implementação em andamento |
-| 3 | 🟢 Homologado | Validado nos cenários necessários |
-| 4 | 🟣 Comercialmente pronto | Seguro, documentado, operacional e preparado para clientes |
+| Nível | Status                   | Critério                                                   |
+| ----- | ------------------------ | ---------------------------------------------------------- |
+| 0     | ⚪ Não iniciado           | Requisito definido, ainda não executado                    |
+| 1     | 🔵 Arquitetado           | Arquitetura, contratos e fluxos definidos                  |
+| 2     | 🟡 Em desenvolvimento    | Implementação em andamento                                 |
+| 3     | 🟢 Homologado            | Validado nos cenários necessários                          |
+| 4     | 🟣 Comercialmente pronto | Seguro, documentado, operacional e preparado para clientes |
 
 **Regra:** código existente não equivale automaticamente a conclusão.
 
@@ -1760,23 +1772,23 @@ Deverá contemplar:
 
 ## Matriz de referência
 
-| Recurso | MEI | Pro | Enterprise |
-|---|---|---|---|
-| OS/CMMS | ✅ | ✅ | ✅ |
-| Financeiro/DRE | ✅ | ✅ | ✅ |
-| Vendas/Orçamentos | ✅ | ✅ | ✅ |
-| PIX | ✅ | ✅ | ✅ |
-| Storage | 3 GB | 20 GB | 100 GB+ |
-| Evidências/Assinatura | — | ✅ | ✅ |
-| Portal do Cliente | ✅ | ✅ | ✅ |
-| Mensageria | — | ✅ | ✅ |
-| Fiscal | — | ✅ | ✅ |
-| Frotas/Ativos | — | ✅ | ✅ |
-| DP/Ponto | — | ✅ | ✅ |
-| RH Estratégico | — | ✅ | ✅ |
-| Exportação Contábil | — | ✅ | ✅ |
-| MFA | — | Opcional | ✅ |
-| Multi-filial/Múltiplos CNPJs | — | — | ✅ |
+| Recurso                      | MEI  | Pro      | Enterprise |
+| ---------------------------- | ---- | -------- | ---------- |
+| OS/CMMS                      | ✅    | ✅        | ✅          |
+| Financeiro/DRE               | ✅    | ✅        | ✅          |
+| Vendas/Orçamentos            | ✅    | ✅        | ✅          |
+| PIX                          | ✅    | ✅        | ✅          |
+| Storage                      | 3 GB | 20 GB    | 100 GB+    |
+| Evidências/Assinatura        | —    | ✅        | ✅          |
+| Portal do Cliente            | ✅    | ✅        | ✅          |
+| Mensageria                   | —    | ✅        | ✅          |
+| Fiscal                       | —    | ✅        | ✅          |
+| Frotas/Ativos                | —    | ✅        | ✅          |
+| DP/Ponto                     | —    | ✅        | ✅          |
+| RH Estratégico               | —    | ✅        | ✅          |
+| Exportação Contábil          | —    | ✅        | ✅          |
+| MFA                          | —    | Opcional | ✅          |
+| Multi-filial/Múltiplos CNPJs | —    | —        | ✅          |
 
 Os planos deverão ser configuráveis por feature flags.
 
@@ -1991,21 +2003,27 @@ Somente então poderá ser considerado comercialmente completo.
 # 43. ROADMAP MACRO
 
 ## Fase 0 — Fundação
+
 Arquitetura, Core, multitenant, usuários, permissões, segurança, auditoria, cadastros e infraestrutura.
 
 ## Fase 1 — ERP Operacional
+
 CRM, vendas, compras, estoque, financeiro, serviços e fiscal.
 
 ## Fase 2 — ERP Corporativo
+
 PCP, WMS, frotas, ativos, projetos, RH, DP, BI e GED.
 
 ## Fase 3 — Plataforma SaaS
+
 Billing, planos, feature flags, Portal, mensageria, onboarding, suporte e gestão de tenants.
 
 ## Fase 4 — Enterprise
+
 Multi-filial, múltiplos CNPJs, workflows, MFA obrigatório, integrações avançadas e governança.
 
 ## Fase 5 — Inovação
+
 PWA, offline, tempo real, Passkeys, IA, busca semântica e automações.
 
 ---
@@ -2069,7 +2087,6 @@ Cada domínio deverá posteriormente ser transformado em uma especificação fun
 O conteúdo integral do `revisar.md` original é mantido ao final deste arquivo como referência documental, sem alterar sua redação.
 
 ---
-
 
 A avaliação do auditor (**Manus**) é cirúrgica e traz o fechamento definitivo do ciclo de planejamento. Ele validou que o mapa atual atingiu **9,5/10** de precisão em relação ao código real (`consolidado.txt`), apontando apenas 4 ajustes documentais de precisão para atingir **10/10**:
 
@@ -2400,5 +2417,3 @@ Com o `revisar.md` 100% blindado e auditado, a primeira entrega da **Release v6.
    
 
 Podemos dar o tiro de partida nessa implementação?
-
-

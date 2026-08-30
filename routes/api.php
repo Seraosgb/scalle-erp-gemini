@@ -38,6 +38,7 @@ Route::prefix('auth')->group(function () {
 
 // Webhook de Captação de Leads (Landing Pages / RD Station)
 Route::post('/crm/webhook/lead/{token}', [CrmInboundController::class, 'receberLead']);
+Route::post('/crm/webhook/{token}', [CrmController::class, 'webhookCapturaLead']);
 
 // Webhooks de Gateways (Asaas, etc)
 Route::post('/billing/webhook/asaas', [BillingWebhookController::class, 'handleAsaas']);
@@ -226,15 +227,24 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // Auditoria (Administradores)
     Route::get('/auditoria', [AuditoriaController::class, 'index']);
 
-    // CRM & Funil de Vendas
-    Route::get('/crm/board', [CrmController::class, 'board']);
-    Route::put('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
-    Route::post('/crm/oportunidades/{id}/converter-orcamento', [CrmController::class, 'converterParaOrcamento']);
-    Route::post('/crm/oportunidades', [CrmController::class, 'storeOportunidade']);
+    // Pipelines
+    Route::get('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'listarPipelines']);
+    Route::post('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'storePipeline']);
+    Route::put('/crm/pipelines/{id}', [App\Http\Controllers\Api\CrmController::class, 'atualizarPipeline']);
+    
+    // Gestão Dinâmica de Etapas (RBAC Admin/Gestor)
+    Route::post('/crm/pipelines/{pipelineId}/etapas', [App\Http\Controllers\Api\CrmController::class, 'storeEtapa']);
+    Route::put('/crm/etapas/{id}', [App\Http\Controllers\Api\CrmController::class, 'updateEtapa']);
+    Route::delete('/crm/etapas/{id}', [App\Http\Controllers\Api\CrmController::class, 'destroyEtapa']);
+
+    // Operação do Kanban
+    Route::get('/crm/board', [App\Http\Controllers\Api\CrmController::class, 'board']);
+    Route::post('/crm/oportunidades', [App\Http\Controllers\Api\CrmController::class, 'storeOportunidade']);
+    Route::put('/crm/oportunidades/{id}/mover', [App\Http\Controllers\Api\CrmController::class, 'moverCard']);
+    Route::post('/crm/oportunidades/{id}/marcar-perdido', [App\Http\Controllers\Api\CrmController::class, 'marcarPerdido']);
+    Route::post('/crm/oportunidades/{id}/converter-orcamento', [App\Http\Controllers\Api\CrmController::class, 'converterParaOrcamento']);
+    
+    // Follow-ups e Atividades
     Route::post('/crm/oportunidades/{id}/atividades', [App\Http\Controllers\Api\CrmController::class, 'adicionarAtividade']);
-Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [App\Http\Controllers\Api\CrmController::class, 'toggleAtividade']);
-Route::post('/crm/oportunidades/{id}/marcar-perdido', [App\Http\Controllers\Api\CrmController::class, 'marcarPerdido']);
-Route::get('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'listarPipelines']);
-Route::post('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'storePipeline']);
-Route::put('/crm/pipelines/{id}', [App\Http\Controllers\Api\CrmController::class, 'atualizarPipeline']);
+    Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [App\Http\Controllers\Api\CrmController::class, 'toggleAtividade']);
 });

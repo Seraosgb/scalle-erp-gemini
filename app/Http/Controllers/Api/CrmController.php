@@ -20,6 +20,18 @@ use Illuminate\Support\Str;
 
 class CrmController extends Controller
 {
+    /**
+     * RBAC Helper: valida se o usuário tem perfil de gestão
+     */
+    private function autorizarGestao(Request $request): void
+    {
+        $usuario = $request->user();
+        $isGestor = ($usuario->is_admin ?? false) || in_array(strtoupper($usuario->role ?? $usuario->perfil ?? ''), ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE']);
+        if (!$isGestor) {
+            abort(403, 'Ação restrita a Administradores e Gestores Comerciais.');
+        }
+    }
+
     public function listarPipelines(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -35,7 +47,9 @@ class CrmController extends Controller
 
     public function storePipeline(Request $request): JsonResponse
     {
+        $this->autorizarGestao($request);
         $tenantId = $request->user()->tenant_id;
+
         $validated = $request->validate([
             'nome' => 'required|string|max:150',
             'descricao' => 'nullable|string|max:255',
@@ -54,7 +68,6 @@ class CrmController extends Controller
                 'is_ativo' => true,
             ]);
 
-            // Cria etapas padrão de vendas consultivas para o novo pipeline
             $etapas = [
                 ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
                 ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
@@ -81,6 +94,7 @@ class CrmController extends Controller
 
     public function atualizarPipeline(Request $request, string $id): JsonResponse
     {
+        $this->autorizarGestao($request);
         $tenantId = $request->user()->tenant_id;
         $pipeline = CrmFunil::where('tenant_id', $tenantId)->findOrFail($id);
 
@@ -95,6 +109,72 @@ class CrmController extends Controller
         return response()->json(['data' => $pipeline]);
     }
 
+    // --- GESTÃO DINÂMICA DE ETAPAS (RBAC) ---
+
+    public function storeEtapa(Request $request, string $pipelineId): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+        $pipeline = CrmFunil::where('tenant_id', $tenantId)->findOrFail($pipelineId);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'probabilidade_fechamento' => 'required|integer|min:0|max:100',
+            'cor_hex' => 'nullable|string|max:10',
+        ]);
+
+        $maxOrdem = CrmFunilEtapa::where('funil_id', $pipeline->id)->max('ordem_exibicao') ?? 0;
+
+        $etapa = CrmFunilEtapa::create([
+            'id' => (string) Str::uuid(),
+            'funil_id' => $pipeline->id,
+            'nome' => $validated['nome'],
+            'ordem_exibicao' => $maxOrdem + 1,
+            'probabilidade_fechamento' => $validated['probabilidade_fechamento'],
+            'cor_hex' => $validated['cor_hex'] ?? '#6366f1',
+        ]);
+
+        return response()->json(['data' => $etapa], 201);
+    }
+
+    public function updateEtapa(Request $request, string $id): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+
+        $etapa = CrmFunilEtapa::whereHas('funil', fn($q) => $q->where('tenant_id', $tenantId))->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'probabilidade_fechamento' => 'required|integer|min:0|max:100',
+            'cor_hex' => 'nullable|string|max:10',
+            'ordem_exibicao' => 'nullable|integer',
+        ]);
+
+        $etapa->update($validated);
+
+        return response()->json(['data' => $etapa]);
+    }
+
+    public function destroyEtapa(Request $request, string $id): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+
+        $etapa = CrmFunilEtapa::whereHas('funil', fn($q) => $q->where('tenant_id', $tenantId))->findOrFail($id);
+
+        $temCards = CrmOportunidade::where('etapa_id', $etapa->id)->exists();
+        if ($temCards) {
+            return response()->json(['error' => 'Não é possível remover etapa com oportunidades vinculadas.'], 422);
+        }
+
+        $etapa->delete();
+
+        return response()->json(['data' => ['message' => 'Etapa removida com sucesso.']]);
+    }
+
+    // --- BOARD KANBAN COM FORECAST PONDERADO ---
+
     public function board(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -103,7 +183,6 @@ class CrmController extends Controller
         $vendedorId = $request->get('vendedor_id');
         $search = $request->get('search');
 
-        // 1. Resolve o pipeline selecionado ou o padrão
         $queryPipeline = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true);
         if (!empty($pipelineId)) {
             $queryPipeline->where('id', $pipelineId);
@@ -113,7 +192,6 @@ class CrmController extends Controller
 
         $pipeline = $queryPipeline->first();
 
-        // Auto-provisiona se o tenant não tiver nenhum
         if (!$pipeline) {
             $pipeline = CrmFunil::create([
                 'id' => (string) Str::uuid(),
@@ -126,7 +204,6 @@ class CrmController extends Controller
             ]);
         }
 
-        // 2. Garante etapas existentes no pipeline
         $etapasExistentes = CrmFunilEtapa::where('funil_id', $pipeline->id)->count();
         if ($etapasExistentes === 0) {
             $etapas = [
@@ -147,7 +224,6 @@ class CrmController extends Controller
             }
         }
 
-        // 3. Carrega o Pipeline com as Etapas e Oportunidades
         $pipelineCarregado = CrmFunil::where('id', $pipeline->id)
             ->with(['etapas' => function ($queryEtapa) use ($statusFiltro, $vendedorId, $search, $tenantId) {
                 $queryEtapa->orderBy('ordem_exibicao', 'asc')
@@ -172,10 +248,8 @@ class CrmController extends Controller
             }])
             ->first();
 
-        // 4. Lista todos os pipelines do tenant para permitir alternância
-        $todosPipelines = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true)->orderBy('nome')->get(['id', 'nome', 'is_padrao']);
+        $todosPipelines = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true)->orderBy('nome')->get(['id', 'nome', 'is_padrao', 'token_captacao']);
 
-        // 5. Motivos de Perda e Vendedores
         self::garantirMotivosPerdaPadrao($tenantId);
         $motivosPerda = TabelaDominio::where('tenant_id', $tenantId)
             ->where('tipo_lista', 'CRM_MOTIVO_PERDA')
@@ -183,6 +257,9 @@ class CrmController extends Controller
             ->get();
 
         $vendedores = User::where('tenant_id', $tenantId)->where('is_ativo', true)->get(['id', 'name']);
+        
+        $usuarioLogado = $request->user();
+        $isGestor = ($usuarioLogado->is_admin ?? false) || in_array(strtoupper($usuarioLogado->role ?? $usuarioLogado->perfil ?? ''), ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE']);
 
         return response()->json([
             'data' => [
@@ -190,6 +267,9 @@ class CrmController extends Controller
                 'pipelines_disponiveis' => $todosPipelines,
                 'motivos_perda' => $motivosPerda,
                 'vendedores' => $vendedores,
+                'permissoes' => [
+                    'pode_gerenciar_pipeline' => $isGestor,
+                ]
             ]
         ]);
     }
@@ -258,40 +338,6 @@ class CrmController extends Controller
         ]);
 
         return response()->json(['data' => ['message' => 'Oportunidade marcada como perdida.', 'oportunidade' => $oportunidade]]);
-    }
-
-    public function adicionarAtividade(Request $request, string $id): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
-
-        $validated = $request->validate([
-            'tipo' => 'required|string|in:NOTA,LIGACAO,REUNIAO,WHATSAPP,TAREFA',
-            'descricao' => 'required|string',
-            'data_agendamento' => 'nullable|date',
-        ]);
-
-        $atividade = CrmOportunidadeAtividade::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
-            'oportunidade_id' => $oportunidade->id,
-            'usuario_id' => $request->user()->id,
-            'tipo' => $validated['tipo'],
-            'descricao' => $validated['descricao'],
-            'data_agendamento' => $validated['data_agendamento'] ?? null,
-            'is_concluida' => empty($validated['data_agendamento']),
-        ]);
-
-        return response()->json(['data' => $atividade->load('usuario:id,name')], 201);
-    }
-
-    public function toggleAtividade(Request $request, string $id, string $atividadeId): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $atividade = CrmOportunidadeAtividade::where('tenant_id', $tenantId)->where('oportunidade_id', $id)->findOrFail($atividadeId);
-        $atividade->update(['is_concluida' => !$atividade->is_concluida]);
-
-        return response()->json(['data' => $atividade]);
     }
 
     public function converterParaOrcamento(Request $request, string $id): JsonResponse
@@ -367,6 +413,98 @@ class CrmController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Erro ao converter lead: ' . $e->getMessage()], 500);
         }
+    }
+
+    public function adicionarAtividade(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'tipo' => 'required|string|in:NOTA,LIGACAO,REUNIAO,WHATSAPP,TAREFA',
+            'descricao' => 'required|string',
+            'data_agendamento' => 'nullable|date',
+        ]);
+
+        $atividade = CrmOportunidadeAtividade::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'oportunidade_id' => $oportunidade->id,
+            'usuario_id' => $request->user()->id,
+            'tipo' => $validated['tipo'],
+            'descricao' => $validated['descricao'],
+            'data_agendamento' => $validated['data_agendamento'] ?? null,
+            'is_concluida' => empty($validated['data_agendamento']),
+        ]);
+
+        return response()->json(['data' => $atividade->load('usuario:id,name')], 201);
+    }
+
+    public function toggleAtividade(Request $request, string $id, string $atividadeId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $atividade = CrmOportunidadeAtividade::where('tenant_id', $tenantId)->where('oportunidade_id', $id)->findOrFail($atividadeId);
+        $atividade->update(['is_concluida' => !$atividade->is_concluida]);
+
+        return response()->json(['data' => $atividade]);
+    }
+
+    // --- WEBHOOK PÚBLICO DE INBOUND LEADS (LANDING PAGE / APIS) ---
+
+    public function webhookCapturaLead(Request $request, string $token): JsonResponse
+    {
+        $pipeline = CrmFunil::withoutGlobalScopes()->where('token_captacao', $token)->where('is_ativo', true)->first();
+
+        if (!$pipeline) {
+            return response()->json(['error' => 'Token de captação inválido ou inativo.'], 404);
+        }
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'telefone' => 'required|string|max:30',
+            'mensagem' => 'nullable|string',
+            'valor_estimado' => 'nullable|numeric',
+        ]);
+
+        $primeiraEtapa = CrmFunilEtapa::where('funil_id', $pipeline->id)->orderBy('ordem_exibicao')->first();
+
+        if (!$primeiraEtapa) {
+            return response()->json(['error' => 'Pipeline sem etapas configuradas.'], 500);
+        }
+
+        $oportunidade = CrmOportunidade::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $pipeline->tenant_id,
+            'funil_id' => $pipeline->id,
+            'etapa_id' => $primeiraEtapa->id,
+            'titulo' => 'Inbound: ' . ($validated['nome'] ?? 'Novo Lead'),
+            'nome_contato' => $validated['nome'],
+            'email_contato' => $validated['email'] ?? null,
+            'telefone_contato' => $validated['telefone'],
+            'valor_estimado' => (float) ($validated['valor_estimado'] ?? 0),
+            'status' => 'ABERTO',
+            'origem_lead' => 'LANDING_PAGE',
+            'observacoes' => $validated['mensagem'] ?? 'Lead recebido via Landing Page Comercial',
+        ]);
+
+        if (!empty($validated['mensagem'])) {
+            CrmOportunidadeAtividade::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $pipeline->tenant_id,
+                'oportunidade_id' => $oportunidade->id,
+                'tipo' => 'NOTA',
+                'descricao' => 'Mensagem do Formulário: ' . $validated['mensagem'],
+                'is_concluida' => true,
+            ]);
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => 'Lead capturado com sucesso!',
+                'oportunidade_id' => $oportunidade->id
+            ]
+        ], 201);
     }
 
     private static function garantirMotivosPerdaPadrao(string $tenantId): void

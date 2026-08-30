@@ -8,6 +8,7 @@ export default function BoardCrm() {
     const [pipelineSelecionadoId, setPipelineSelecionadoId] = useState('');
     const [motivosPerda, setMotivosPerda] = useState([]);
     const [vendedores, setVendedores] = useState([]);
+    const [permissoes, setPermissoes] = useState({ pode_gerenciar_pipeline: false });
     const [loading, setLoading] = useState(true);
 
     // Filtros
@@ -22,6 +23,7 @@ export default function BoardCrm() {
     // Modais & Drawer
     const [modalNovoAberto, setModalNovoAberto] = useState(false);
     const [modalNovoPipelineAberto, setModalNovoPipelineAberto] = useState(false);
+    const [modalEtapasAberto, setModalEtapasAberto] = useState(false);
     const [modalPerdaAberto, setModalPerdaAberto] = useState(false);
     const [cardSelecionado, setCardSelecionado] = useState(null);
     const [drawerAberto, setDrawerAberto] = useState(false);
@@ -41,6 +43,12 @@ export default function BoardCrm() {
         nome: '',
         descricao: '',
         cor_hex: '#4f46e5'
+    });
+
+    const [formNovaEtapa, setFormNovaEtapa] = useState({
+        nome: '',
+        probabilidade_fechamento: 50,
+        cor_hex: '#6366f1'
     });
 
     const [formPerda, setFormPerda] = useState({
@@ -82,6 +90,7 @@ export default function BoardCrm() {
             setPipelinesDisponiveis(payload?.pipelines_disponiveis || []);
             setMotivosPerda(payload?.motivos_perda || []);
             setVendedores(payload?.vendedores || []);
+            setPermissoes(payload?.permissoes || { pode_gerenciar_pipeline: false });
 
             if (cardSelecionado && pipe?.etapas) {
                 for (const et of pipe.etapas) {
@@ -99,20 +108,25 @@ export default function BoardCrm() {
         }
     };
 
+    // KPIs Calculados com Forecast Ponderado
     const kpis = useMemo(() => {
-        if (!pipeline?.etapas) return { totalPipeline: 0, totalCards: 0, ticketMedio: 0 };
+        if (!pipeline?.etapas) return { totalPipeline: 0, totalCards: 0, ticketMedio: 0, forecastPonderado: 0 };
         let totalPipeline = 0;
         let totalCards = 0;
+        let forecastPonderado = 0;
 
         pipeline.etapas.forEach(et => {
+            const prob = Number(et.probabilidade_fechamento ?? 50) / 100;
             (et.oportunidades || []).forEach(op => {
-                totalPipeline += Number(op.valor_estimado || 0);
+                const val = Number(op.valor_estimado || 0);
+                totalPipeline += val;
+                forecastPonderado += val * prob;
                 totalCards += 1;
             });
         });
 
         const ticketMedio = totalCards > 0 ? totalPipeline / totalCards : 0;
-        return { totalPipeline, totalCards, ticketMedio };
+        return { totalPipeline, totalCards, ticketMedio, forecastPonderado };
     }, [pipeline]);
 
     const handleDragEnd = async (result) => {
@@ -166,6 +180,30 @@ export default function BoardCrm() {
             alert("Erro ao criar novo pipeline.");
         } finally {
             setSalvando(false);
+        }
+    };
+
+    const adicionarEtapa = async (e) => {
+        e.preventDefault();
+        setSalvando(true);
+        try {
+            await api.post(`/crm/pipelines/${pipeline.id}/etapas`, formNovaEtapa);
+            setFormNovaEtapa({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
+            carregarBoard();
+        } catch (err) {
+            alert("Erro ao criar etapa.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const excluirEtapa = async (etapaId) => {
+        if (!confirm("Confirmar exclusão desta etapa?")) return;
+        try {
+            await api.delete(`/crm/etapas/${etapaId}`);
+            carregarBoard();
+        } catch (err) {
+            alert(err.response?.data?.error || "Erro ao excluir etapa.");
         }
     };
 
@@ -279,9 +317,9 @@ export default function BoardCrm() {
 
     return (
         <div className="p-4 sm:p-6 min-h-full flex flex-col space-y-4">
-            {/* Header com Seletor e Edição do Pipeline */}
+            {/* Header com Seletor, RBAC e Edição do Pipeline */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <select
                         value={pipelineSelecionadoId}
                         onChange={(e) => setPipelineSelecionadoId(e.target.value)}
@@ -292,55 +330,76 @@ export default function BoardCrm() {
                         ))}
                     </select>
 
-                    {editandoNome ? (
-                        <div className="flex items-center gap-1.5">
-                            <input
-                                type="text"
-                                value={novoNomePipeline}
-                                onChange={(e) => setNovoNomePipeline(e.target.value)}
-                                className="bg-slate-950 border border-indigo-500 rounded px-2 py-1 text-xs text-white"
-                                autoFocus
-                            />
-                            <button onClick={salvarNovoNomePipeline} className="bg-emerald-600 text-white px-2 py-1 rounded text-xs">✓</button>
-                            <button onClick={() => setEditandoNome(false)} className="bg-slate-700 text-white px-2 py-1 rounded text-xs">✕</button>
-                        </div>
-                    ) : (
-                        <button
-                            onClick={() => setEditandoNome(true)}
-                            className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition"
-                            title="Renomear este Pipeline"
-                        >
-                            ✏️ Renomear
-                        </button>
+                    {permissoes.pode_gerenciar_pipeline && (
+                        <>
+                            {editandoNome ? (
+                                <div className="flex items-center gap-1.5">
+                                    <input
+                                        type="text"
+                                        value={novoNomePipeline}
+                                        onChange={(e) => setNovoNomePipeline(e.target.value)}
+                                        className="bg-slate-950 border border-indigo-500 rounded px-2 py-1 text-xs text-white"
+                                        autoFocus
+                                    />
+                                    <button onClick={salvarNovoNomePipeline} className="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold">✓</button>
+                                    <button onClick={() => setEditandoNome(false)} className="bg-slate-700 text-white px-2 py-1 rounded text-xs font-bold">✕</button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setEditandoNome(true)}
+                                    className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer"
+                                    title="Renomear este Pipeline"
+                                >
+                                    ✏️ Renomear
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setModalEtapasAberto(true)}
+                                className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer"
+                            >
+                                ⚙️ Gerenciar Etapas
+                            </button>
+                        </>
                     )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setModalNovoPipelineAberto(true)}
-                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold transition"
-                    >
-                        + Novo Pipeline
-                    </button>
+                    {permissoes.pode_gerenciar_pipeline && (
+                        <button
+                            onClick={() => setModalNovoPipelineAberto(true)}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                            + Novo Pipeline
+                        </button>
+                    )}
                     <button
                         onClick={() => setModalNovoAberto(true)}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
                         <span>+</span> Nova Oportunidade
                     </button>
                 </div>
             </div>
 
-            {/* Pipeline Summary (KPIs) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Pipeline Summary (4 KPIs com Forecast Ponderado) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-medium text-slate-400">Volume Total do Pipeline</p>
+                        <p className="text-xs font-medium text-slate-400">Pipeline Total Ativo</p>
                         <p className="text-lg font-bold text-emerald-400 mt-0.5">
                             {kpis.totalPipeline.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </p>
                     </div>
                     <span className="text-2xl">💰</span>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-medium text-slate-400">Previsão (Forecast Ponderado)</p>
+                        <p className="text-lg font-bold text-purple-400 mt-0.5">
+                            {kpis.forecastPonderado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </p>
+                    </div>
+                    <span className="text-2xl">🔮</span>
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
                     <div>
@@ -399,7 +458,7 @@ export default function BoardCrm() {
                 </div>
             </div>
 
-            {/* Quadro Kanban do Pipeline */}
+            {/* Quadro Kanban */}
             <DragDropContext onDragEnd={handleDragEnd}>
                 <div className="flex flex-1 gap-4 overflow-x-auto pb-4 items-start">
                     {etapas.map(etapa => {
@@ -411,8 +470,11 @@ export default function BoardCrm() {
                                 <div className="p-3.5 border-b border-slate-800 flex justify-between items-center text-slate-200">
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#6366f1' }}></span>
+                                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#6366f1' }}></span>
                                             <span className="text-xs font-bold uppercase tracking-wider">{etapa.nome}</span>
+                                            <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">
+                                                {etapa.probabilidade_fechamento ?? 50}%
+                                            </span>
                                         </div>
                                         <p className="text-[11px] text-emerald-400 font-semibold mt-0.5">
                                             {totalEtapa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -501,6 +563,84 @@ export default function BoardCrm() {
                     })}
                 </div>
             </DragDropContext>
+
+            {/* Modal de Gestão de Etapas (RBAC) */}
+            {modalEtapasAberto && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-lg shadow-xl text-slate-100">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-base font-bold">Configurar Etapas do Pipeline</h2>
+                            <button onClick={() => setModalEtapasAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+                        </div>
+
+                        {/* Lista de Etapas Atuais */}
+                        <div className="space-y-2 mb-4 max-h-56 overflow-y-auto">
+                            {etapas.map((et, idx) => (
+                                <div key={et.id} className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: et.cor_hex || '#6366f1' }}></span>
+                                        <span className="font-semibold">{idx + 1}. {et.nome}</span>
+                                        <span className="text-slate-500">({et.probabilidade_fechamento ?? 50}%)</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => excluirEtapa(et.id)}
+                                        className="text-rose-400 hover:text-rose-300 font-bold px-2 py-1 rounded bg-rose-950/40"
+                                    >
+                                        Excluir
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Formulário Nova Etapa */}
+                        <form onSubmit={adicionarEtapa} className="pt-3 border-t border-slate-800 space-y-3">
+                            <p className="text-xs font-bold text-slate-400">Adicionar Nova Coluna / Etapa</p>
+                            <div className="grid grid-cols-12 gap-2">
+                                <div className="col-span-6">
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="Nome da Etapa"
+                                        value={formNovaEtapa.nome}
+                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, nome: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                                    />
+                                </div>
+                                <div className="col-span-3">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        required
+                                        placeholder="Prob. %"
+                                        value={formNovaEtapa.probabilidade_fechamento}
+                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, probabilidade_fechamento: parseInt(e.target.value) || 0 })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                                    />
+                                </div>
+                                <div className="col-span-3">
+                                    <input
+                                        type="color"
+                                        value={formNovaEtapa.cor_hex}
+                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, cor_hex: e.target.value })}
+                                        className="w-full h-8 bg-slate-950 border border-slate-700 rounded cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs font-semibold"
+                                >
+                                    + Adicionar Etapa
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Drawer Lateral de Detalhes & Follow-up */}
             {drawerAberto && cardSelecionado && (
