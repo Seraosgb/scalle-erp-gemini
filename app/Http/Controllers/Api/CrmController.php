@@ -19,15 +19,13 @@ class CrmController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
         
-        // Buscamos o funil e as etapas sem forçar o eager loading de 'vendedor' e 'cliente' 
-        // para evitar quebras por colunas não mapeadas
         $funil = CrmFunil::where('tenant_id', $tenantId)
             ->with(['etapas.oportunidades' => function ($q) {
                 $q->where('status', 'ABERTO')->orderByDesc('created_at');
             }])
             ->first();
 
-        // Auto-provisionamento de Funil Padrão se o cliente não tiver nenhum
+        // 1. Cria o funil se não existir
         if (!$funil) {
             $funil = CrmFunil::create([
                 'tenant_id' => $tenantId,
@@ -35,13 +33,20 @@ class CrmController extends Controller
                 'token_captacao' => Str::random(40),
                 'is_padrao' => true,
             ]);
+        }
 
-            $etapas = ['Prospecção', 'Qualificação', 'Apresentação', 'Negociação'];
-            foreach ($etapas as $i => $nome) {
-                $funil->etapas()->create(['nome' => $nome, 'ordem_exibicao' => $i + 1]);
+        // 2. Auto-recuperação: se o funil existir mas as etapas estiverem vazias
+        if ($funil->etapas->isEmpty()) {
+            $etapasPadrao = ['Prospecção', 'Qualificação', 'Apresentação', 'Negociação'];
+            foreach ($etapasPadrao as $i => $nome) {
+                $funil->etapas()->create([
+                    'tenant_id' => $tenantId,
+                    'nome' => $nome,
+                    'ordem_exibicao' => $i + 1
+                ]);
             }
             
-            // Recarrega os dados fresquinhos recém-criados
+            // Recarrega as etapas e oportunidades com fresh
             $funil->load(['etapas.oportunidades' => function ($q) {
                 $q->where('status', 'ABERTO');
             }]);
