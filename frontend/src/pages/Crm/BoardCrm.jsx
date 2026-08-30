@@ -66,6 +66,11 @@ export default function BoardCrm() {
 
     useEffect(() => {
         carregarBoard();
+
+        // Escuta atualizações vindas da tela de configurações
+        const handleAtualizacao = () => carregarBoard();
+        window.addEventListener('crm_pipeline_atualizado', handleAtualizacao);
+        return () => window.removeEventListener('crm_pipeline_atualizado', handleAtualizacao);
     }, [pipelineSelecionadoId, statusFiltro, vendedorFiltro, busca]);
 
     const carregarBoard = async () => {

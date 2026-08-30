@@ -9,6 +9,7 @@ export default function ConfiguracoesCrm() {
     const [pipelineSelecionado, setPipelineSelecionado] = useState(null);
     const [motivosPerda, setMotivosPerda] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [salvando, setSalvando] = useState(false);
 
     const [editandoPipeline, setEditandoPipeline] = useState(false);
     const [formPipeline, setFormPipeline] = useState({ nome: '', descricao: '', cor_hex: '#4f46e5' });
@@ -16,15 +17,20 @@ export default function ConfiguracoesCrm() {
     const [formEtapa, setFormEtapa] = useState({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
     const [etapaEmEdicao, setEtapaEmEdicao] = useState(null);
 
+    // Form Motivo de Perda
+    const [formMotivo, setFormMotivo] = useState({ nome: '', codigo: '', cor_hex: '#ef4444' });
+
     useEffect(() => {
         carregarDados();
     }, []);
 
+    const avisarAtualizacao = () => {
+        window.dispatchEvent(new Event('crm_pipeline_atualizado'));
+    };
+
     const carregarDados = async () => {
         try {
             setLoading(true);
-            
-            // Carrega Pipelines
             let pipes = [];
             try {
                 const resPipes = await api.get('/crm/pipelines');
@@ -34,7 +40,6 @@ export default function ConfiguracoesCrm() {
                 console.warn("Aviso ao carregar /crm/pipelines:", e);
             }
 
-            // Carrega Board / Pipeline Selecionado
             try {
                 const resBoard = await api.get('/crm/board');
                 const dataBoard = resBoard.data?.data || resBoard.data;
@@ -42,13 +47,10 @@ export default function ConfiguracoesCrm() {
                 setPipelineSelecionado(pipeAtivo);
                 setMotivosPerda(dataBoard?.motivos_perda || []);
             } catch (e) {
-                console.warn("Aviso ao carregar /crm/board:", e);
-                if (pipes.length > 0) {
-                    setPipelineSelecionado(pipes[0]);
-                }
+                if (pipes.length > 0) setPipelineSelecionado(pipes[0]);
             }
         } catch (err) {
-            console.error("Erro geral no carregamento de configurações do CRM:", err);
+            console.error("Erro geral no carregamento:", err);
         } finally {
             setLoading(false);
         }
@@ -56,6 +58,7 @@ export default function ConfiguracoesCrm() {
 
     const salvarPipeline = async (e) => {
         e.preventDefault();
+        setSalvando(true);
         try {
             if (pipelineSelecionado && editandoPipeline) {
                 await api.put(`/crm/pipelines/${pipelineSelecionado.id}`, formPipeline);
@@ -63,15 +66,19 @@ export default function ConfiguracoesCrm() {
                 await api.post('/crm/pipelines', formPipeline);
             }
             setEditandoPipeline(false);
-            carregarDados();
+            avisarAtualizacao();
+            await carregarDados();
         } catch (err) {
-            alert("Erro ao salvar pipeline. Verifique as permissões de acesso.");
+            alert(err.response?.data?.message || "Erro ao salvar pipeline.");
+        } finally {
+            setSalvando(false);
         }
     };
 
     const salvarEtapa = async (e) => {
         e.preventDefault();
         if (!pipelineSelecionado) return;
+        setSalvando(true);
         try {
             if (etapaEmEdicao) {
                 await api.put(`/crm/etapas/${etapaEmEdicao.id}`, formEtapa);
@@ -83,8 +90,11 @@ export default function ConfiguracoesCrm() {
             
             const res = await api.get('/crm/board', { params: { pipeline_id: pipelineSelecionado.id } });
             setPipelineSelecionado(res.data?.data?.pipeline || res.data?.pipeline);
+            avisarAtualizacao();
         } catch (err) {
-            alert("Erro ao salvar etapa.");
+            alert(err.response?.data?.message || "Erro ao salvar etapa.");
+        } finally {
+            setSalvando(false);
         }
     };
 
@@ -94,8 +104,34 @@ export default function ConfiguracoesCrm() {
             await api.delete(`/crm/etapas/${id}`);
             const res = await api.get('/crm/board', { params: { pipeline_id: pipelineSelecionado.id } });
             setPipelineSelecionado(res.data?.data?.pipeline || res.data?.pipeline);
+            avisarAtualizacao();
         } catch (err) {
             alert(err.response?.data?.error || "Erro ao excluir etapa.");
+        }
+    };
+
+    const moverEtapaOrdem = async (index, direcao) => {
+        if (!pipelineSelecionado?.etapas) return;
+        const etapas = [...pipelineSelecionado.etapas];
+        const novoIndex = index + direcao;
+
+        if (novoIndex < 0 || novoIndex >= etapas.length) return;
+
+        const [removido] = etapas.splice(index, 1);
+        etapas.splice(novoIndex, 0, removido);
+
+        const payload = etapas.map((e, idx) => ({
+            id: e.id,
+            ordem_exibicao: idx + 1
+        }));
+
+        try {
+            await api.put(`/crm/pipelines/${pipelineSelecionado.id}/reordenar-etapas`, { etapas: payload });
+            const res = await api.get('/crm/board', { params: { pipeline_id: pipelineSelecionado.id } });
+            setPipelineSelecionado(res.data?.data?.pipeline || res.data?.pipeline);
+            avisarAtualizacao();
+        } catch (err) {
+            alert("Erro ao reordenar etapas.");
         }
     };
 
@@ -110,26 +146,24 @@ export default function ConfiguracoesCrm() {
 
     return (
         <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
-            {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
                 <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-100 flex items-center gap-2">
                         <span>⚙️</span> Parametrização e Taxonomia do CRM
                     </h1>
                     <p className="text-xs text-slate-400 mt-0.5">
-                        Gerencie pipelines, colunas customizadas, probabilidades de forecast e motivos de perda por tenant
+                        Altere nomes de funis, adicione colunas customizadas, probabilidades e motivos de perda por tenant.
                     </p>
                 </div>
                 <button
                     type="button"
                     onClick={() => navigate('/app/crm')}
-                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30"
                 >
                     <span>←</span> Voltar ao Board Kanban
                 </button>
             </div>
 
-            {/* Abas */}
             <div className="flex gap-2 border-b border-slate-800 pb-2">
                 <button
                     type="button"
@@ -151,13 +185,11 @@ export default function ConfiguracoesCrm() {
                 </button>
             </div>
 
-            {/* Aba Pipelines */}
             {tabAtiva === 'pipelines' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Lista Lateral de Pipelines */}
                     <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
                         <div className="flex justify-between items-center">
-                            <h2 className="text-sm font-bold text-slate-200">Seus Pipelines</h2>
+                            <h2 className="text-sm font-bold text-slate-200">Pipelines Ativos</h2>
                             <button
                                 type="button"
                                 onClick={() => {
@@ -200,17 +232,16 @@ export default function ConfiguracoesCrm() {
                         </div>
                     </div>
 
-                    {/* Detalhes do Pipeline e Etapas */}
                     {pipelineSelecionado && (
                         <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-6">
                             <div className="flex justify-between items-center border-b border-slate-800 pb-4">
                                 <div>
                                     <h3 className="text-base font-bold text-white flex items-center gap-2">
-                                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: pipelineSelecionado.cor_hex || '#4f46e5' }}></span>
+                                        <span className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: pipelineSelecionado.cor_hex || '#4f46e5' }}></span>
                                         {pipelineSelecionado.nome}
                                     </h3>
                                     <p className="text-xs text-slate-400 mt-0.5">
-                                        Token Inbound: <code className="bg-slate-950 px-2 py-0.5 rounded text-indigo-400 font-mono text-[11px]">{pipelineSelecionado.token_captacao || 'Sem token gerado'}</code>
+                                        Token Webhook: <code className="bg-slate-950 px-2 py-0.5 rounded text-indigo-400 font-mono text-[11px]">{pipelineSelecionado.token_captacao || 'Sem token gerado'}</code>
                                     </p>
                                 </div>
                                 <button
@@ -225,13 +256,13 @@ export default function ConfiguracoesCrm() {
                                     }}
                                     className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
                                 >
-                                    ✏️ Editar Nome / Cor
+                                    ✏️ Renomear Pipeline
                                 </button>
                             </div>
 
                             {editandoPipeline && (
                                 <form onSubmit={salvarPipeline} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                                    <h4 className="text-xs font-bold text-slate-200">Editar Dados do Pipeline</h4>
+                                    <h4 className="text-xs font-bold text-slate-200">Editar Propriedades do Pipeline</h4>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         <div className="sm:col-span-2">
                                             <label className="block text-[11px] text-slate-400 mb-1">Nome do Pipeline *</label>
@@ -244,7 +275,7 @@ export default function ConfiguracoesCrm() {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[11px] text-slate-400 mb-1">Cor de Destaque</label>
+                                            <label className="block text-[11px] text-slate-400 mb-1">Cor</label>
                                             <input
                                                 type="color"
                                                 value={formPipeline.cor_hex}
@@ -263,22 +294,41 @@ export default function ConfiguracoesCrm() {
                                         </button>
                                         <button
                                             type="submit"
+                                            disabled={salvando}
                                             className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-bold cursor-pointer"
                                         >
-                                            Salvar Alterações
+                                            {salvando ? 'Salvando...' : 'Salvar Alterações'}
                                         </button>
                                     </div>
                                 </form>
                             )}
 
-                            {/* Gerenciamento de Etapas */}
                             <div className="space-y-4">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Etapas / Colunas Deste Pipeline</h4>
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Colunas / Etapas do Funil</h4>
                                 <div className="space-y-2">
                                     {(pipelineSelecionado.etapas || []).map((et, idx) => (
                                         <div key={et.id} className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
                                             <div className="flex items-center gap-3">
-                                                <span className="font-mono text-slate-500 text-xs">#{idx + 1}</span>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        disabled={idx === 0}
+                                                        onClick={() => moverEtapaOrdem(idx, -1)}
+                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer"
+                                                        title="Mover para cima"
+                                                    >
+                                                        ▲
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={idx === pipelineSelecionado.etapas.length - 1}
+                                                        onClick={() => moverEtapaOrdem(idx, 1)}
+                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer"
+                                                        title="Mover para baixo"
+                                                    >
+                                                        ▼
+                                                    </button>
+                                                </div>
                                                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: et.cor_hex || '#6366f1' }}></span>
                                                 <span className="font-bold text-slate-100 text-xs">{et.nome}</span>
                                                 <span className="bg-slate-900 text-purple-400 border border-slate-800 px-2 py-0.5 rounded text-[10px] font-mono">
@@ -312,7 +362,6 @@ export default function ConfiguracoesCrm() {
                                     ))}
                                 </div>
 
-                                {/* Form Etapa */}
                                 <form onSubmit={salvarEtapa} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
                                     <h5 className="text-xs font-bold text-slate-300">
                                         {etapaEmEdicao ? `Editando Etapa: ${etapaEmEdicao.nome}` : '+ Adicionar Nova Etapa'}
@@ -366,6 +415,7 @@ export default function ConfiguracoesCrm() {
                                         )}
                                         <button
                                             type="submit"
+                                            disabled={salvando}
                                             className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded text-xs font-bold cursor-pointer"
                                         >
                                             {etapaEmEdicao ? 'Atualizar Etapa' : 'Cadastrar Etapa'}
@@ -378,7 +428,6 @@ export default function ConfiguracoesCrm() {
                 </div>
             )}
 
-            {/* Aba Motivos de Perda */}
             {tabAtiva === 'motivos_perda' && (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
                     <div>
