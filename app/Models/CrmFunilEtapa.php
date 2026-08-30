@@ -28,4 +28,8 @@ class CrmFunilEtapa extends Model
     {
         return $this->hasMany(CrmOportunidade::class, 'etapa_id')->orderByDesc('created_at');
     }
+    public function funil()
+    {
+        return $this->belongsTo(CrmFunil::class, 'funil_id');
+    }
 }
