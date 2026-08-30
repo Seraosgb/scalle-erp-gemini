@@ -22,7 +22,7 @@ import FiscalPage from './pages/fiscal/FiscalPage';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
 import MasterPage from './pages/master/MasterPage';
 import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
-import BoardCrm from './Pages/Crm/BoardCrm';
+import BoardCrm from './pages/Crm/BoardCrm';
 import ConfiguracoesCrm from './pages/Crm/ConfiguracoesCrm';
 import LandingCrm from './pages/public/LandingCrm';
 
@@ -45,6 +45,9 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
           <Route path="/crm" element={<LandingCrm />} />
+          
+          {/* Alias / Redirecionamento de segurança para rota interna do CRM */}
+          <Route path="/crm/configuracoes" element={<Navigate to="/app/crm/configuracoes" replace />} />
 
           {/* Redirecionamento da raiz pura */}
           <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
