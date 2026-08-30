@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { api } from '../../services/api';
 
 export default function BoardCrm() {
+    const navigate = useNavigate();
     const [pipeline, setPipeline] = useState(null);
     const [pipelinesDisponiveis, setPipelinesDisponiveis] = useState([]);
     const [pipelineSelecionadoId, setPipelineSelecionadoId] = useState('');
     const [motivosPerda, setMotivosPerda] = useState([]);
     const [vendedores, setVendedores] = useState([]);
-    const [permissoes, setPermissoes] = useState({ pode_gerenciar_pipeline: false });
+    const [permissoes, setPermissoes] = useState({ pode_gerenciar_pipeline: true });
     const [loading, setLoading] = useState(true);
 
     // Filtros
@@ -90,7 +92,10 @@ export default function BoardCrm() {
             setPipelinesDisponiveis(payload?.pipelines_disponiveis || []);
             setMotivosPerda(payload?.motivos_perda || []);
             setVendedores(payload?.vendedores || []);
-            setPermissoes(payload?.permissoes || { pode_gerenciar_pipeline: false });
+            
+            if (payload?.permissoes) {
+                setPermissoes(payload.permissoes);
+            }
 
             if (cardSelecionado && pipe?.etapas) {
                 for (const et of pipe.etapas) {
@@ -317,13 +322,13 @@ export default function BoardCrm() {
 
     return (
         <div className="p-4 sm:p-6 min-h-full flex flex-col space-y-4">
-            {/* Header com Seletor, RBAC e Edição do Pipeline */}
+            {/* Header com Seletor, RBAC, Atalho de Configurações e Ações */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                     <select
                         value={pipelineSelecionadoId}
                         onChange={(e) => setPipelineSelecionadoId(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 text-slate-100 font-bold text-lg rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500"
+                        className="bg-slate-900 border border-slate-700 text-slate-100 font-bold text-base sm:text-lg rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500"
                     >
                         {pipelinesDisponiveis.map(p => (
                             <option key={p.id} value={p.id}>🎯 {p.nome} {p.is_padrao ? '(Padrão)' : ''}</option>
@@ -341,8 +346,8 @@ export default function BoardCrm() {
                                         className="bg-slate-950 border border-indigo-500 rounded px-2 py-1 text-xs text-white"
                                         autoFocus
                                     />
-                                    <button onClick={salvarNovoNomePipeline} className="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold">✓</button>
-                                    <button onClick={() => setEditandoNome(false)} className="bg-slate-700 text-white px-2 py-1 rounded text-xs font-bold">✕</button>
+                                    <button onClick={salvarNovoNomePipeline} className="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold cursor-pointer">✓</button>
+                                    <button onClick={() => setEditandoNome(false)} className="bg-slate-700 text-white px-2 py-1 rounded text-xs font-bold cursor-pointer">✕</button>
                                 </div>
                             ) : (
                                 <button
@@ -357,10 +362,18 @@ export default function BoardCrm() {
                                 onClick={() => setModalEtapasAberto(true)}
                                 className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer"
                             >
-                                ⚙️ Gerenciar Etapas
+                                📑 Etapas
                             </button>
                         </>
                     )}
+
+                    <button
+                        onClick={() => navigate('/crm/configuracoes')}
+                        className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold px-2.5 py-1 bg-indigo-950/40 border border-indigo-800/60 rounded-lg transition cursor-pointer flex items-center gap-1"
+                        title="Tela Completa de Configurações do CRM"
+                    >
+                        <span>⚙️</span> Configurações
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -446,7 +459,7 @@ export default function BoardCrm() {
                             key={st}
                             type="button"
                             onClick={() => setStatusFiltro(st)}
-                            className={`px-3 py-1 rounded text-xs font-semibold transition ${
+                            className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
                                 statusFiltro === st
                                     ? 'bg-indigo-600 text-white'
                                     : 'text-slate-400 hover:text-slate-200'
@@ -518,7 +531,7 @@ export default function BoardCrm() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={(e) => abrirWhatsApp(card.telefone_contato, card.nome_contato, e)}
-                                                                        className="text-emerald-400 hover:text-emerald-300 font-bold text-xs"
+                                                                        className="text-emerald-400 hover:text-emerald-300 font-bold text-xs cursor-pointer"
                                                                         title="Falar no WhatsApp"
                                                                     >
                                                                         💬 WA
@@ -536,14 +549,14 @@ export default function BoardCrm() {
                                                                         <button
                                                                             type="button"
                                                                             onClick={(e) => abrirModalPerda(card, e)}
-                                                                            className="text-[11px] bg-rose-950 text-rose-400 border border-rose-900 hover:bg-rose-900 hover:text-white px-2 py-0.5 rounded transition"
+                                                                            className="text-[11px] bg-rose-950 text-rose-400 border border-rose-900 hover:bg-rose-900 hover:text-white px-2 py-0.5 rounded transition cursor-pointer"
                                                                         >
                                                                             Perdido
                                                                         </button>
                                                                         <button
                                                                             type="button"
                                                                             onClick={(e) => converterEmOrcamento(card.id, e)}
-                                                                            className="text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded font-medium transition"
+                                                                            className="text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded font-medium transition cursor-pointer"
                                                                         >
                                                                             Orçar
                                                                         </button>
@@ -570,10 +583,9 @@ export default function BoardCrm() {
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-lg shadow-xl text-slate-100">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-base font-bold">Configurar Etapas do Pipeline</h2>
-                            <button onClick={() => setModalEtapasAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+                            <button onClick={() => setModalEtapasAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer">✕</button>
                         </div>
 
-                        {/* Lista de Etapas Atuais */}
                         <div className="space-y-2 mb-4 max-h-56 overflow-y-auto">
                             {etapas.map((et, idx) => (
                                 <div key={et.id} className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
@@ -585,7 +597,7 @@ export default function BoardCrm() {
                                     <button
                                         type="button"
                                         onClick={() => excluirEtapa(et.id)}
-                                        className="text-rose-400 hover:text-rose-300 font-bold px-2 py-1 rounded bg-rose-950/40"
+                                        className="text-rose-400 hover:text-rose-300 font-bold px-2 py-1 rounded bg-rose-950/40 cursor-pointer"
                                     >
                                         Excluir
                                     </button>
@@ -593,7 +605,6 @@ export default function BoardCrm() {
                             ))}
                         </div>
 
-                        {/* Formulário Nova Etapa */}
                         <form onSubmit={adicionarEtapa} className="pt-3 border-t border-slate-800 space-y-3">
                             <p className="text-xs font-bold text-slate-400">Adicionar Nova Coluna / Etapa</p>
                             <div className="grid grid-cols-12 gap-2">
@@ -604,7 +615,7 @@ export default function BoardCrm() {
                                         placeholder="Nome da Etapa"
                                         value={formNovaEtapa.nome}
                                         onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, nome: e.target.value })}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                                     />
                                 </div>
                                 <div className="col-span-3">
@@ -616,7 +627,7 @@ export default function BoardCrm() {
                                         placeholder="Prob. %"
                                         value={formNovaEtapa.probabilidade_fechamento}
                                         onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, probabilidade_fechamento: parseInt(e.target.value) || 0 })}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                                     />
                                 </div>
                                 <div className="col-span-3">
@@ -632,7 +643,7 @@ export default function BoardCrm() {
                                 <button
                                     type="submit"
                                     disabled={salvando}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs font-semibold"
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs font-semibold cursor-pointer"
                                 >
                                     + Adicionar Etapa
                                 </button>
@@ -651,7 +662,7 @@ export default function BoardCrm() {
                                 <h2 className="text-lg font-bold text-slate-100">{cardSelecionado.titulo}</h2>
                                 <p className="text-xs text-slate-400 mt-0.5">{cardSelecionado.nome_contato}</p>
                             </div>
-                            <button onClick={() => setDrawerAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold p-1">✕</button>
+                            <button onClick={() => setDrawerAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer">✕</button>
                         </div>
 
                         {/* Dados Principais do Deal */}
@@ -675,7 +686,7 @@ export default function BoardCrm() {
                                             <button
                                                 type="button"
                                                 onClick={() => abrirWhatsApp(cardSelecionado.telefone_contato, cardSelecionado.nome_contato)}
-                                                className="text-emerald-400 font-bold hover:underline"
+                                                className="text-emerald-400 font-bold hover:underline cursor-pointer"
                                             >
                                                 Abrir WA
                                             </button>
@@ -693,14 +704,14 @@ export default function BoardCrm() {
                                     <button
                                         type="button"
                                         onClick={() => converterEmOrcamento(cardSelecionado.id)}
-                                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-semibold transition"
+                                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-semibold transition cursor-pointer"
                                     >
                                         Converter em Orçamento
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => abrirModalPerda(cardSelecionado)}
-                                        className="bg-rose-950 text-rose-400 border border-rose-900 hover:bg-rose-900 hover:text-white px-3 py-2 rounded-lg font-medium transition"
+                                        className="bg-rose-950 text-rose-400 border border-rose-900 hover:bg-rose-900 hover:text-white px-3 py-2 rounded-lg font-medium transition cursor-pointer"
                                     >
                                         Marcar Perdido
                                     </button>
@@ -717,7 +728,7 @@ export default function BoardCrm() {
                                     <select
                                         value={novaAtividade.tipo}
                                         onChange={(e) => setNovaAtividade({ ...novaAtividade, tipo: e.target.value })}
-                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1"
+                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
                                     >
                                         <option value="NOTA">📝 Nota</option>
                                         <option value="LIGACAO">📞 Ligação</option>
@@ -729,7 +740,7 @@ export default function BoardCrm() {
                                         type="datetime-local"
                                         value={novaAtividade.data_agendamento}
                                         onChange={(e) => setNovaAtividade({ ...novaAtividade, data_agendamento: e.target.value })}
-                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 flex-1"
+                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 flex-1 focus:outline-none focus:border-indigo-500"
                                     />
                                 </div>
                                 <textarea
@@ -741,7 +752,7 @@ export default function BoardCrm() {
                                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                                 ></textarea>
                                 <div className="flex justify-end">
-                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-semibold">
+                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-semibold cursor-pointer">
                                         Adicionar Registro
                                     </button>
                                 </div>
@@ -763,7 +774,7 @@ export default function BoardCrm() {
                                                 <button
                                                     type="button"
                                                     onClick={() => toggleAtividade(atv.id)}
-                                                    className={`px-2 py-0.5 rounded font-bold ${atv.is_concluida ? 'bg-emerald-950 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}
+                                                    className={`px-2 py-0.5 rounded font-bold cursor-pointer ${atv.is_concluida ? 'bg-emerald-950 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}
                                                 >
                                                     {atv.is_concluida ? '✓ Concluída' : 'Pendente'}
                                                 </button>
@@ -808,14 +819,14 @@ export default function BoardCrm() {
                                 <button
                                     type="button"
                                     onClick={() => setModalNovoPipelineAberto(false)}
-                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition"
+                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={salvando}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
                                 >
                                     {salvando ? 'Criando...' : 'Criar Pipeline'}
                                 </button>
@@ -905,14 +916,14 @@ export default function BoardCrm() {
                                 <button
                                     type="button"
                                     onClick={() => setModalNovoAberto(false)}
-                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition"
+                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={salvando}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
                                 >
                                     {salvando ? 'Salvando...' : 'Salvar Oportunidade'}
                                 </button>
@@ -956,14 +967,14 @@ export default function BoardCrm() {
                                 <button
                                     type="button"
                                     onClick={() => setModalPerdaAberto(false)}
-                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition"
+                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={salvando}
-                                    className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                                    className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
                                 >
                                     {salvando ? 'Salvando...' : 'Confirmar Perda'}
                                 </button>
