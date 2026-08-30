@@ -230,4 +230,5 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/crm/board', [CrmController::class, 'board']);
     Route::put('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
     Route::post('/crm/oportunidades/{id}/converter-orcamento', [CrmController::class, 'converterParaOrcamento']);
+    Route::post('/crm/oportunidades', [CrmController::class, 'storeOportunidade']);
 });

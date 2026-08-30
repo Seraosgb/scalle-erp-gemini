@@ -139,4 +139,31 @@ class CrmController extends Controller
             return response()->json(['error' => 'Erro ao converter lead: ' . $e->getMessage()], 500);
         }
     }
+    public function storeOportunidade(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'etapa_id' => 'required|uuid|exists:crm_funil_etapas,id',
+            'titulo' => 'required|string|max:255',
+            'nome_contato' => 'required|string|max:255',
+            'email_contato' => 'nullable|email|max:255',
+            'telefone_contato' => 'nullable|string|max:30',
+            'valor_estimado' => 'nullable|numeric|min:0',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+
+        $oportunidade = CrmOportunidade::create([
+            'tenant_id' => $tenantId,
+            'etapa_id' => $validated['etapa_id'],
+            'usuario_responsavel_id' => $request->user()->id,
+            'titulo' => $validated['titulo'],
+            'nome_contato' => $validated['nome_contato'],
+            'email_contato' => $validated['email_contato'] ?? null,
+            'telefone_contato' => $validated['telefone_contato'] ?? null,
+            'valor_estimado' => $validated['valor_estimado'] ?? 0,
+            'status' => 'ABERTO',
+        ]);
+
+        return response()->json(['data' => $oportunidade], 201);
+    }
 }
