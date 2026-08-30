@@ -23,40 +23,23 @@ class CrmController extends Controller
     public function board(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $statusFiltro = $request->get('status', 'ABERTO'); // ABERTO, GANHO, PERDIDO ou TODOS
+        $statusFiltro = $request->get('status', 'ABERTO');
         $vendedorId = $request->get('vendedor_id');
         $search = $request->get('search');
-        
-        $funil = CrmFunil::where('tenant_id', $tenantId)
-            ->with(['etapas.oportunidades' => function ($q) use ($statusFiltro, $vendedorId, $search) {
-                if ($statusFiltro !== 'TODOS') {
-                    $q->where('status', $statusFiltro);
-                }
-                if (!empty($vendedorId)) {
-                    $q->where('vendedor_id', $vendedorId);
-                }
-                if (!empty($search)) {
-                    $q->where(function($sub) use ($search) {
-                        $sub->where('titulo', 'ILIKE', "%{$search}%")
-                            ->orWhere('nome_contato', 'ILIKE', "%{$search}%")
-                            ->orWhere('telefone_contato', 'ILIKE', "%{$search}%");
-                    });
-                }
-                $q->with(['vendedor:id,name', 'atividades'])
-                  ->orderByDesc('created_at');
-            }])
-            ->first();
 
-        if (!$funil) {
-            $funil = CrmFunil::create([
-                'tenant_id' => $tenantId,
+        // 1. Recupera ou cria o funil padrão do tenant
+        $funil = CrmFunil::firstOrCreate(
+            ['tenant_id' => $tenantId],
+            [
+                'id' => (string) Str::uuid(),
                 'nome' => 'Funil Comercial Padrão',
                 'token_captacao' => Str::random(40),
                 'is_padrao' => true,
                 'is_ativo' => true,
-            ]);
-        }
+            ]
+        );
 
+        // 2. Garante que as 4 etapas existam vinculadas a este funil
         $etapasPadrao = [
             1 => 'Prospecção',
             2 => 'Qualificação',
@@ -64,21 +47,69 @@ class CrmController extends Controller
             4 => 'Negociação'
         ];
 
-        $etapasExistentes = $funil->etapas()->pluck('nome')->toArray();
         foreach ($etapasPadrao as $ordem => $nomeEtapa) {
-            if (!in_array($nomeEtapa, $etapasExistentes)) {
-                $funil->etapas()->create([
+            CrmFunilEtapa::firstOrCreate(
+                [
+                    'funil_id' => $funil->id,
                     'nome' => $nomeEtapa,
+                ],
+                [
+                    'id' => (string) Str::uuid(),
                     'ordem_exibicao' => $ordem,
-                ]);
-            }
+                    'cor_hex' => match($ordem) {
+                        1 => '#6366f1',
+                        2 => '#3b82f6',
+                        3 => '#f59e0b',
+                        4 => '#10b981',
+                        default => '#64748b'
+                    }
+                ]
+            );
         }
 
-        $funil->load(['etapas' => function ($q) {
-            $q->orderBy('ordem_exibicao', 'asc');
-        }]);
+        // 3. Recupera a primeira etapa para reparar eventuais leads sem etapa
+        $primeiraEtapa = CrmFunilEtapa::where('funil_id', $funil->id)->orderBy('ordem_exibicao')->first();
 
-        // Auto-provisionamento de Motivos de Perda no Dropdown como Tabela
+        if ($primeiraEtapa) {
+            CrmOportunidade::where('tenant_id', $tenantId)
+                ->where(function ($q) use ($funil) {
+                    $q->whereNull('funil_id')
+                      ->orWhereNull('etapa_id')
+                      ->orWhere('funil_id', '!=', $funil->id);
+                })
+                ->update([
+                    'funil_id' => $funil->id,
+                    'etapa_id' => $primeiraEtapa->id
+                ]);
+        }
+
+        // 4. Carrega o funil com as etapas e oportunidades filtradas
+        $funilCarregado = CrmFunil::where('id', $funil->id)
+            ->with(['etapas' => function ($queryEtapa) use ($statusFiltro, $vendedorId, $search, $tenantId) {
+                $queryEtapa->orderBy('ordem_exibicao', 'asc')
+                    ->with(['oportunidades' => function ($q) use ($statusFiltro, $vendedorId, $search, $tenantId) {
+                        $q->where('tenant_id', $tenantId);
+                        
+                        if ($statusFiltro !== 'TODOS') {
+                            $q->where('status', $statusFiltro);
+                        }
+                        if (!empty($vendedorId)) {
+                            $q->where('vendedor_id', $vendedorId);
+                        }
+                        if (!empty($search)) {
+                            $q->where(function ($sub) use ($search) {
+                                $sub->where('titulo', 'ILIKE', "%{$search}%")
+                                    ->orWhere('nome_contato', 'ILIKE', "%{$search}%")
+                                    ->orWhere('telefone_contato', 'ILIKE', "%{$search}%");
+                            });
+                        }
+                        $q->with(['vendedor:id,name', 'atividades'])
+                          ->orderByDesc('created_at');
+                    }]);
+            }])
+            ->first();
+
+        // 5. Motivos de Perda e Vendedores
         self::garantirMotivosPerdaPadrao($tenantId);
         $motivosPerda = TabelaDominio::where('tenant_id', $tenantId)
             ->where('tipo_lista', 'CRM_MOTIVO_PERDA')
@@ -89,7 +120,7 @@ class CrmController extends Controller
 
         return response()->json([
             'data' => [
-                'funil' => $funil,
+                'funil' => $funilCarregado,
                 'motivos_perda' => $motivosPerda,
                 'vendedores' => $vendedores,
             ]
