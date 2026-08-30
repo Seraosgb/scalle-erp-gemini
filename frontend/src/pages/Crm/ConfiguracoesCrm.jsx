@@ -110,7 +110,7 @@ export default function ConfiguracoesCrm() {
                     </p>
                 </div>
                 <button
-                    onClick={() => navigate('/crm')}
+                    onClick={() => navigate('app/crm')}
                     className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2"
                 >
                     <span>←</span> Voltar ao Board Kanban
