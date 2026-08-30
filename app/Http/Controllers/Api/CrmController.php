@@ -152,8 +152,10 @@ class CrmController extends Controller
 
         $tenantId = $request->user()->tenant_id;
 
-        // Recupera a etapa para obter o funil_id obrigatório
-        $etapa = \App\Models\CrmFunilEtapa::where('tenant_id', $tenantId)->findOrFail($validated['etapa_id']);
+        // Recupera a etapa garantindo que o Funil pai pertença ao tenant autenticado
+        $etapa = \App\Models\CrmFunilEtapa::whereHas('funil', function ($q) use ($tenantId) {
+            $q->where('tenant_id', $tenantId);
+        })->findOrFail($validated['etapa_id']);
 
         $oportunidade = CrmOportunidade::create([
             'tenant_id' => $tenantId,
