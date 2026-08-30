@@ -31,7 +31,7 @@ export default function BoardCrm() {
     const [drawerAberto, setDrawerAberto] = useState(false);
     const [salvando, setSalvando] = useState(false);
 
-    // Forms
+    // Formulários
     const [formNovo, setFormNovo] = useState({
         titulo: '',
         nome_contato: '',
@@ -67,7 +67,6 @@ export default function BoardCrm() {
     useEffect(() => {
         carregarBoard();
 
-        // Escuta atualizações vindas da tela de configurações
         const handleAtualizacao = () => carregarBoard();
         window.addEventListener('crm_pipeline_atualizado', handleAtualizacao);
         return () => window.removeEventListener('crm_pipeline_atualizado', handleAtualizacao);
@@ -170,9 +169,13 @@ export default function BoardCrm() {
             return;
         }
         try {
-            await api.put(`/crm/pipelines/${pipeline.id}`, { nome: novoNomePipeline });
+            await api.put(`/crm/pipelines/${pipeline.id}`, { 
+                nome: novoNomePipeline,
+                cor_hex: pipeline.cor_hex || '#4f46e5'
+            });
             setPipeline({ ...pipeline, nome: novoNomePipeline });
             setEditandoNome(false);
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
             alert("Erro ao renomear pipeline.");
         }
@@ -186,6 +189,7 @@ export default function BoardCrm() {
             setModalNovoPipelineAberto(false);
             setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
             setPipelineSelecionadoId(data.data.id);
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
             alert("Erro ao criar novo pipeline.");
         } finally {
@@ -200,6 +204,7 @@ export default function BoardCrm() {
             await api.post(`/crm/pipelines/${pipeline.id}/etapas`, formNovaEtapa);
             setFormNovaEtapa({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
             carregarBoard();
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
             alert("Erro ao criar etapa.");
         } finally {
@@ -212,6 +217,7 @@ export default function BoardCrm() {
         try {
             await api.delete(`/crm/etapas/${etapaId}`);
             carregarBoard();
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
             alert(err.response?.data?.error || "Erro ao excluir etapa.");
         }
@@ -330,15 +336,20 @@ export default function BoardCrm() {
             {/* Header com Seletor, RBAC, Atalho de Configurações e Ações */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex flex-wrap items-center gap-2.5">
-                    <select
-                        value={pipelineSelecionadoId}
-                        onChange={(e) => setPipelineSelecionadoId(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 text-slate-100 font-bold text-base sm:text-lg rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500"
-                    >
-                        {pipelinesDisponiveis.map(p => (
-                            <option key={p.id} value={p.id}>🎯 {p.nome} {p.is_padrao ? '(Padrão)' : ''}</option>
-                        ))}
-                    </select>
+                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 shadow-sm">
+                        <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: pipeline.cor_hex || '#4f46e5' }}></span>
+                        <select
+                            value={pipelineSelecionadoId}
+                            onChange={(e) => setPipelineSelecionadoId(e.target.value)}
+                            className="bg-transparent text-slate-100 font-bold text-base sm:text-lg focus:outline-none cursor-pointer"
+                        >
+                            {pipelinesDisponiveis.map(p => (
+                                <option key={p.id} value={p.id} className="bg-slate-900 text-white">
+                                    {p.nome} {p.is_padrao ? '(Padrão)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
                     {permissoes.pode_gerenciar_pipeline && (
                         <>
@@ -373,22 +384,23 @@ export default function BoardCrm() {
                     )}
 
                     <button
-    type="button"
-    onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        navigate('/app/crm/configuracoes');
-    }}
-    className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold px-2.5 py-1.5 bg-indigo-950/40 border border-indigo-800/60 rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-    title="Tela Completa de Parametrização e Configurações do CRM"
->
-    <span>⚙️</span> Configurações
-</button>
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigate('/app/crm/configuracoes');
+                        }}
+                        className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold px-2.5 py-1.5 bg-indigo-950/40 border border-indigo-800/60 rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                        title="Tela Completa de Parametrização e Configurações do CRM"
+                    >
+                        <span>⚙️</span> Configurações
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-2">
                     {permissoes.pode_gerenciar_pipeline && (
                         <button
+                            type="button"
                             onClick={() => setModalNovoPipelineAberto(true)}
                             className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
                         >
@@ -396,6 +408,7 @@ export default function BoardCrm() {
                         </button>
                     )}
                     <button
+                        type="button"
                         onClick={() => setModalNovoAberto(true)}
                         className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
@@ -455,7 +468,7 @@ export default function BoardCrm() {
                     <select
                         value={vendedorFiltro}
                         onChange={(e) => setVendedorFiltro(e.target.value)}
-                        className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
                     >
                         <option value="">Todos os Vendedores</option>
                         {vendedores.map(v => (
@@ -489,7 +502,7 @@ export default function BoardCrm() {
                         const totalEtapa = oportunidades.reduce((acc, curr) => acc + Number(curr.valor_estimado || 0), 0);
 
                         return (
-                            <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl w-80 shrink-0 flex flex-col max-h-[calc(100vh-16rem)]">
+                            <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl w-80 shrink-0 flex flex-col max-h-[calc(100vh-16rem)] shadow-sm">
                                 <div className="p-3.5 border-b border-slate-800 flex justify-between items-center text-slate-200">
                                     <div>
                                         <div className="flex items-center gap-2">
@@ -738,7 +751,7 @@ export default function BoardCrm() {
                                     <select
                                         value={novaAtividade.tipo}
                                         onChange={(e) => setNovaAtividade({ ...novaAtividade, tipo: e.target.value })}
-                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer"
                                     >
                                         <option value="NOTA">📝 Nota</option>
                                         <option value="LIGACAO">📞 Ligação</option>
@@ -824,6 +837,18 @@ export default function BoardCrm() {
                                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
                                     placeholder="Ex: Venda consultiva recorrente"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Cor de Destaque</label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="color"
+                                        value={formNovoPipe.cor_hex}
+                                        onChange={(e) => setFormNovoPipe({ ...formNovoPipe, cor_hex: e.target.value })}
+                                        className="w-10 h-8 bg-slate-950 border border-slate-700 rounded-lg cursor-pointer p-0.5"
+                                    />
+                                    <span className="text-xs font-mono text-slate-300 uppercase">{formNovoPipe.cor_hex}</span>
+                                </div>
                             </div>
                             <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
                                 <button
@@ -912,7 +937,7 @@ export default function BoardCrm() {
                                     <select
                                         value={formNovo.vendedor_id}
                                         onChange={(e) => setFormNovo({ ...formNovo, vendedor_id: e.target.value })}
-                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 cursor-pointer"
                                     >
                                         <option value="">Atribuir a mim</option>
                                         {vendedores.map(v => (
@@ -955,7 +980,7 @@ export default function BoardCrm() {
                                     required
                                     value={formPerda.motivo_perda_id}
                                     onChange={(e) => setFormPerda({ ...formPerda, motivo_perda_id: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500 cursor-pointer"
                                 >
                                     {motivosPerda.map(m => (
                                         <option key={m.id} value={m.id}>{m.nome}</option>
