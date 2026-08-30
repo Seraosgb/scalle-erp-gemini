@@ -220,10 +220,32 @@ class CrmController extends Controller
                 'tenant_id' => $tenantId,
                 'nome' => 'Pipeline Principal',
                 'descricao' => 'Fluxo mestre de vendas',
+                'cor_hex' => '#4f46e5',
                 'token_captacao' => Str::random(40),
                 'is_padrao' => true,
                 'is_ativo' => true,
             ]);
+        }
+
+        // Garante etapas básicas caso seja funil virgem
+        $qtdEtapas = CrmFunilEtapa::where('funil_id', $pipeline->id)->count();
+        if ($qtdEtapas === 0) {
+            $etapasIniciais = [
+                ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
+                ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
+                ['nome' => 'Proposta Comercial', 'ordem' => 3, 'prob' => 70, 'cor' => '#f59e0b'],
+                ['nome' => 'Negociação / Fechamento', 'ordem' => 4, 'prob' => 90, 'cor' => '#10b981'],
+            ];
+            foreach ($etapasIniciais as $e) {
+                CrmFunilEtapa::create([
+                    'id' => (string) Str::uuid(),
+                    'funil_id' => $pipeline->id,
+                    'nome' => $e['nome'],
+                    'ordem_exibicao' => $e['ordem'],
+                    'probabilidade_fechamento' => $e['prob'],
+                    'cor_hex' => $e['cor'],
+                ]);
+            }
         }
 
         $pipelineCarregado = CrmFunil::where('id', $pipeline->id)
@@ -240,17 +262,25 @@ class CrmController extends Controller
                                     ->orWhere('telefone_contato', 'ILIKE', "%{$search}%");
                             });
                         }
-                        $q->with(['vendedor:id,name', 'atividades', 'itens.produto:id,nome_produto,sku'])
+                        // Eager load seguro
+                        $q->with(['vendedor:id,name', 'atividades', 'itens'])
                           ->orderByDesc('created_at');
                     }]);
             }])
             ->first();
 
         $todosPipelines = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true)->orderBy('nome')->get(['id', 'nome', 'cor_hex', 'is_padrao', 'token_captacao']);
+        
         self::garantirMotivosPerdaPadrao($tenantId);
         $motivosPerda = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'CRM_MOTIVO_PERDA')->where('is_ativo', true)->orderBy('ordem_exibicao')->get();
         $vendedores = User::where('tenant_id', $tenantId)->where('is_ativo', true)->get(['id', 'name']);
-        $produtos = Produto::where('tenant_id', $tenantId)->where('is_ativo', true)->get(['id', 'nome_produto', 'sku', 'preco_venda_padrao']);
+
+        // Carrega produtos sem forçar colunas fixas que possam quebrar entre versões
+        try {
+            $produtos = Produto::where('tenant_id', $tenantId)->where('is_ativo', true)->get();
+        } catch (\Throwable $th) {
+            $produtos = [];
+        }
 
         $usuarioLogado = $request->user();
         $perfilNome = is_object($usuarioLogado->perfil) ? ($usuarioLogado->perfil->nome ?? '') : (string)($usuarioLogado->perfil ?? '');
