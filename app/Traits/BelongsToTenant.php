@@ -2,33 +2,28 @@
 
 namespace App\Traits;
 
-use App\Models\Scopes\GlobalScopeTenant;
-use App\Models\Tenant;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Scopes\TenantScope;
 use Illuminate\Support\Facades\App;
-use Illuminate\Support\Str;
+use RuntimeException;
 
 trait BelongsToTenant
 {
     protected static function bootBelongsToTenant(): void
     {
-        // Aplica o Global Scope para isolamento automático em queries
-        static::addGlobalScope(new GlobalScopeTenant);
+        // Aplica o cerco do TenantScope em TODAS as queries de leitura/update/delete
+        static::addGlobalScope(new TenantScope);
 
-        // Auto-injeta UUID no id e o tenant_id ativo na criação de qualquer registro
+        // Intercepta a criação (insert) para injetar o tenant_id automaticamente
         static::creating(function ($model) {
-            if (empty($model->{$model->getKeyName()})) {
-                $model->{$model->getKeyName()} = (string) Str::uuid();
-            }
+            if (empty($model->tenant_id)) {
+                $tenantId = App::bound('current_tenant_id') ? App::make('current_tenant_id') : null;
 
-            if (empty($model->tenant_id) && App::bound('current_tenant_id')) {
-                $model->tenant_id = App::make('current_tenant_id');
+                if (!$tenantId && !app()->runningInConsole()) {
+                    throw new RuntimeException("🔒 Furo de Segurança Bloqueado [Padrão Gemini]: Tentativa de inserir registro no model " . class_basename($model) . " sem tenant_id.");
+                }
+
+                $model->tenant_id = $tenantId;
             }
         });
-    }
-
-    public function tenant(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::class, 'tenant_id');
     }
 }
