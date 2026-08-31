@@ -231,7 +231,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'listarPipelines']);
     Route::post('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'storePipeline']);
     Route::put('/crm/pipelines/{id}', [App\Http\Controllers\Api\CrmController::class, 'atualizarPipeline']);
-    
+
     // Gestão Dinâmica de Etapas (RBAC Admin/Gestor)
     Route::post('/crm/pipelines/{pipelineId}/etapas', [App\Http\Controllers\Api\CrmController::class, 'storeEtapa']);
     Route::put('/crm/etapas/{id}', [App\Http\Controllers\Api\CrmController::class, 'updateEtapa']);
@@ -243,8 +243,10 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::put('/crm/oportunidades/{id}/mover', [App\Http\Controllers\Api\CrmController::class, 'moverCard']);
     Route::post('/crm/oportunidades/{id}/marcar-perdido', [App\Http\Controllers\Api\CrmController::class, 'marcarPerdido']);
     Route::post('/crm/oportunidades/{id}/converter-orcamento', [App\Http\Controllers\Api\CrmController::class, 'converterParaOrcamento']);
-    
+
     // Follow-ups e Atividades
     Route::post('/crm/oportunidades/{id}/atividades', [App\Http\Controllers\Api\CrmController::class, 'adicionarAtividade']);
     Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [App\Http\Controllers\Api\CrmController::class, 'toggleAtividade']);
+    // Métricas analíticas do CRM
+    Route::get('/crm/metricas', [App\Http\Controllers\Api\CrmController::class, 'metricasAnaliticas']);
 });
