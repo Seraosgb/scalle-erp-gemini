@@ -94,10 +94,13 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::put('/perfis/{id}', [PerfilController::class, 'update']);
     Route::delete('/perfis/{id}', [PerfilController::class, 'destroy']);
 
-    // Cadastros Mestres (Pessoas & Itens)
-    Route::get('/pessoas', [PessoaController::class, 'index']);
-    Route::post('/pessoas', [PessoaController::class, 'store']);
-    Route::get('/pessoas/{id}', [PessoaController::class, 'show']);
+    // Cadastros e Pessoas
+    Route::get('/pessoas', [App\Http\Controllers\Api\PessoaController::class, 'index']);
+    Route::post('/pessoas', [App\Http\Controllers\Api\PessoaController::class, 'store']);
+    Route::get('/pessoas/{id}', [App\Http\Controllers\Api\PessoaController::class, 'show']);
+    Route::put('/pessoas/{id}', [App\Http\Controllers\Api\PessoaController::class, 'update']);
+    Route::delete('/pessoas/{id}', [App\Http\Controllers\Api\PessoaController::class, 'destroy']);
+    Route::get('/pessoas/consultar-cnpj/{cnpj}', [App\Http\Controllers\Api\PessoaController::class, 'consultarCnpj']);
 
     Route::get('/itens', [ItemController::class, 'index']);
     Route::post('/itens', [ItemController::class, 'store']);
