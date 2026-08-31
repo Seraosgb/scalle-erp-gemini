@@ -20,7 +20,8 @@ class AuthController extends Controller
             'mfa_code' => 'nullable|string|size:6',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        // Ignora a blindagem do tenant momentaneamente apenas para validar as credenciais
+        $user = User::withoutGlobalScopes()->where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
@@ -40,7 +41,6 @@ class AuthController extends Controller
             ], Response::HTTP_FORBIDDEN);
         }
 
-        // Validação de Segundo Fator (MFA)
         if ($user->mfa_ativo) {
             if (!$request->filled('mfa_code')) {
                 return response()->json([
@@ -163,6 +163,7 @@ class AuthController extends Controller
             ]
         ]);
     }
+
     public function updatePassword(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -178,7 +179,6 @@ class AuthController extends Controller
 
         $user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['nova_senha'])]);
 
-        // Revoga outras sessões por segurança, mantendo a atual
         $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
 
         return response()->json(['data' => ['message' => 'Senha atualizada com sucesso. Demais dispositivos foram desconectados.']]);
