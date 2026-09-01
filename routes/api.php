@@ -252,4 +252,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [App\Http\Controllers\Api\CrmController::class, 'toggleAtividade']);
     // Métricas analíticas do CRM
     Route::get('/crm/metricas', [App\Http\Controllers\Api\CrmController::class, 'metricasAnaliticas']);
+
+    // --- GESTÃO DE ASSINATURA (PORTAL DO INQUILINO) ---
+    Route::get('/billing/minha-assinatura', [App\Http\Controllers\Api\TenantBillingController::class, 'minhaAssinatura']);
+    Route::get('/billing/historico-faturas', [App\Http\Controllers\Api\TenantBillingController::class, 'historicoFaturas']);
 });
