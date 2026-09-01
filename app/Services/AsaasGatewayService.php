@@ -21,25 +21,36 @@ class AsaasGatewayService
     /**
      * Cria ou recupera o Customer no Asaas para o Tenant
      */
+    /**
+     * Cria ou recupera o Customer no Asaas para o Tenant
+     */
     public function criarOuAtualizarCliente(Tenant $tenant): string
     {
+        $docLimpo = preg_replace('/[^0-9]/', '', $tenant->documento);
+
         $payload = [
             'name' => $tenant->razao_social,
-            'cpfCnpj' => $tenant->documento,
-            'externalReference' => $tenant->id, // Chave de ligação vital para o nosso Webhook
-            'notificationDisabled' => false,
+            'cpfCnpj' => $docLimpo,
+            'email' => 'financeiro@' . strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $tenant->nome_fantasia)) . '.com.br',
+            'mobilePhone' => '21999998888',
+            'externalReference' => $tenant->id,
+            'notificationDisabled' => true,
         ];
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->post("{$this->baseUrl}/customers", $payload);
+        $request = Http::withHeaders(['access_token' => $this->apiKey]);
+
+        if (app()->environment('local', 'testing')) {
+            $request->withoutVerifying();
+        }
+
+        $response = $request->post("{$this->baseUrl}/customers", $payload);
 
         if (!$response->successful()) {
-            throw new Exception('Erro ao criar cliente no Asaas: ' . $response->body());
+            throw new \Exception('Erro ao criar cliente no Asaas: ' . $response->body());
         }
 
         return $response->json('id');
     }
-
     /**
      * Gera a assinatura híbrida: aceita todos os meios e configura o trial dinâmico
      */

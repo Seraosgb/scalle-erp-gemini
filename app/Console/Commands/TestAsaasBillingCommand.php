@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
 class TestAsaasBillingCommand extends Command
 {
     protected $signature = 'scalle:test-billing';
-    protected $description = 'Executa o ciclo completo (Ida e Volta) do Billing SaaS no Sandbox do Asaas com CNPJ de teste';
+    protected $description = 'Executa o ciclo completo (Ida e Volta) do Billing SaaS no Sandbox do Asaas';
 
     public function handle(AsaasGatewayService $asaasService): int
     {
@@ -23,7 +23,9 @@ class TestAsaasBillingCommand extends Command
 
         $tenantId = (string) Str::uuid();
         $planoId = (string) Str::uuid();
-        $cnpjTeste = '35544341000102'; // 35.544.341/0001-02 limpo para envio à API
+
+        // CNPJ corporativo de testes (sem formatação, 14 dígitos válidos)
+        $cnpjTeste = '35544341000102';
 
         // --- ETAPA 1: SETUP TEMPORÁRIO ---
         $this->line("1️⃣ Criando dados de teste no banco...");
@@ -40,8 +42,8 @@ class TestAsaasBillingCommand extends Command
 
         $tenant = Tenant::create([
             'id' => $tenantId,
-            'nome_fantasia' => 'Empresa Teste Sandbox',
-            'razao_social' => 'Empresa Teste Sandbox LTDA',
+            'nome_fantasia' => 'Scalle Teste Sandbox',
+            'razao_social' => 'Scalle Testes e Automacao LTDA',
             'documento' => $cnpjTeste,
             'status' => 'ativo',
         ]);
@@ -99,7 +101,7 @@ class TestAsaasBillingCommand extends Command
                 $this->error("❌ Falha no Webhook: " . $response->getContent());
             }
 
-            // --- ETAPA 4: VERIFICAÇÃO FINAL ---
+            // --- ETAPA 4: AUDITORIA ---
             $this->line("5️⃣ Auditando resultados no Banco de Dados...");
             $fatura = FaturaBilling::withoutGlobalScopes()->where('gateway_payment_id', $paymentFakeId)->first();
             $assinaturaAtualizada = Assinatura::withoutGlobalScopes()->find($assinatura->id);
@@ -113,7 +115,7 @@ class TestAsaasBillingCommand extends Command
         } catch (\Exception $e) {
             $this->error("❌ Erro Crítico durante o teste: " . $e->getMessage());
         } finally {
-            // --- ETAPA 5: CLEANUP ---
+            // --- ETAPA 5: LIMPEZA ---
             $this->line("🧹 Limpando dados de teste do banco...");
             FaturaBilling::withoutGlobalScopes()->where('tenant_id', $tenantId)->forceDelete();
             $assinatura->forceDelete();
