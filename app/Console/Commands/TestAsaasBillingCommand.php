@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
 class TestAsaasBillingCommand extends Command
 {
     protected $signature = 'scalle:test-billing';
-    protected $description = 'Executa o ciclo completo (Ida e Volta) do Billing SaaS no Sandbox do Asaas com dados fakes';
+    protected $description = 'Executa o ciclo completo (Ida e Volta) do Billing SaaS no Sandbox do Asaas com CNPJ de teste';
 
     public function handle(AsaasGatewayService $asaasService): int
     {
@@ -23,10 +23,10 @@ class TestAsaasBillingCommand extends Command
 
         $tenantId = (string) Str::uuid();
         $planoId = (string) Str::uuid();
-        $cnpjFake = '00000000' . random_int(100000, 999999);
+        $cnpjTeste = '35544341000102'; // 35.544.341/0001-02 limpo para envio à API
 
-        // --- ETAPA 1: SETUP FAKE ---
-        $this->line("1️⃣ Criando dados fake temporários no banco...");
+        // --- ETAPA 1: SETUP TEMPORÁRIO ---
+        $this->line("1️⃣ Criando dados de teste no banco...");
 
         $plano = Plano::create([
             'id' => $planoId,
@@ -40,9 +40,9 @@ class TestAsaasBillingCommand extends Command
 
         $tenant = Tenant::create([
             'id' => $tenantId,
-            'nome_fantasia' => 'Vasco Sandbox LTDA',
-            'razao_social' => 'Vasco Sandbox Automacao LTDA',
-            'documento' => $cnpjFake,
+            'nome_fantasia' => 'Empresa Teste Sandbox',
+            'razao_social' => 'Empresa Teste Sandbox LTDA',
+            'documento' => $cnpjTeste,
             'status' => 'ativo',
         ]);
 
@@ -63,21 +63,20 @@ class TestAsaasBillingCommand extends Command
             $this->info("✔ Customer criado com Sucesso! ID: {$customerId}");
 
             $this->line("3️⃣ Gerando Assinatura Híbrida no Asaas...");
-            $assinaturaAsaas = $asaasService->criarAssinatura($customerId, $plano, 0); // 0 = Sem trial, cobra hoje
+            $assinaturaAsaas = $asaasService->criarAssinatura($customerId, $plano, 0);
             $subscriptionId = $assinaturaAsaas['id'];
             $this->info("✔ Assinatura criada! ID: {$subscriptionId}");
 
             // --- ETAPA 3: A "VOLTA" (Simulação do Webhook) ---
             $this->line("4️⃣ Simulando recebimento de Webhook (PAYMENT_RECEIVED)...");
 
-            // Mock do Payload enviado pelo Asaas quando uma fatura é paga
             $paymentFakeId = 'pay_' . Str::random(10);
             $webhookPayload = [
                 'event' => 'PAYMENT_RECEIVED',
                 'payment' => [
                     'id' => $paymentFakeId,
                     'customer' => $customerId,
-                    'externalReference' => $tenantId, // O Elo vital de ligação
+                    'externalReference' => $tenantId,
                     'value' => 99.90,
                     'netValue' => 98.90,
                     'billingType' => 'PIX',
@@ -89,7 +88,6 @@ class TestAsaasBillingCommand extends Command
             ];
 
             $request = Request::create('/api/billing/asaas-webhook', 'POST', $webhookPayload);
-            // Injeta o token de segurança fake para passar no middleware do webhook
             $request->headers->set('asaas-access-token', config('services.asaas.webhook_token', env('ASAAS_WEBHOOK_TOKEN')));
 
             $webhookController = app(BillingWebhookController::class);
@@ -116,7 +114,7 @@ class TestAsaasBillingCommand extends Command
             $this->error("❌ Erro Crítico durante o teste: " . $e->getMessage());
         } finally {
             // --- ETAPA 5: CLEANUP ---
-            $this->line("🧹 Limpando dados fake do banco...");
+            $this->line("🧹 Limpando dados de teste do banco...");
             FaturaBilling::withoutGlobalScopes()->where('tenant_id', $tenantId)->forceDelete();
             $assinatura->forceDelete();
             $tenant->forceDelete();
