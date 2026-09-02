@@ -25,6 +25,7 @@ import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
 import BoardCrm from './pages/Crm/BoardCrm';
 import ConfiguracoesCrm from './pages/Crm/ConfiguracoesCrm';
 import LandingCrm from './pages/public/LandingCrm';
+import PainelCobrancaView from './Pages/Billing/PainelCobrancaView'
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -45,7 +46,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
           <Route path="/crm" element={<LandingCrm />} />
-          
+
           {/* Alias / Redirecionamento de segurança para rota interna do CRM */}
           <Route path="/crm/configuracoes" element={<Navigate to="/app/crm/configuracoes" replace />} />
 
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="usuarios" element={<UsuariosPage />} />
+            <Route path="/billing" element={<PainelCobrancaView />} />
             <Route path="master" element={<MasterPage />} />
           </Route>
 

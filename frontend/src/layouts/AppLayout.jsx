@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench, 
-  DollarSign, FileText, Users, LogOut, Menu, X, 
+import {
+  LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench,
+  DollarSign, FileText, Users, LogOut, Menu, X,
   Building2, ShieldAlert, Factory, FileSpreadsheet,
-  Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings
+  Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings,
+  CreditCard
 } from 'lucide-react';
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
@@ -88,6 +89,7 @@ export default function AppLayout() {
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
     { name: 'RH & Ponto REP-P', path: '/app/rh', icon: UserCheck },
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
+    { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: '/app/fiscal', icon: FileText },
     { name: 'Governança & Equipe', path: '/app/usuarios', icon: Users },
@@ -97,7 +99,7 @@ export default function AppLayout() {
     <div className="min-h-screen bg-slate-950 flex text-slate-100 font-sans">
       {/* Sidebar Mobile Overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -121,8 +123,8 @@ export default function AppLayout() {
               )}
             </div>
           </div>
-          <button 
-            type="button" 
+          <button
+            type="button"
             onClick={() => setSidebarOpen(false)}
             className="p-1 rounded-lg text-slate-400 hover:text-white lg:hidden cursor-pointer"
           >
@@ -140,8 +142,8 @@ export default function AppLayout() {
                 end={item.end}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) => `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition ${
-                  isActive 
-                    ? item.isMaster 
+                  isActive
+                    ? item.isMaster
                       ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20 font-bold'
                       : 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold'
                     : item.isMaster
@@ -206,8 +208,8 @@ export default function AppLayout() {
               type="button"
               onClick={() => setModalMfaAberto(true)}
               className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
-                usuario?.mfa_ativo 
-                  ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300 hover:bg-emerald-900/50' 
+                usuario?.mfa_ativo
+                  ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300 hover:bg-emerald-900/50'
                   : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
               title="Configuração de Autenticação em 2 Etapas (MFA/2FA)"
@@ -223,8 +225,8 @@ export default function AppLayout() {
               </div>
             </div>
             <div className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold text-xs shadow-inner ${
-              usuario?.is_master 
-                ? 'bg-rose-600/20 border-rose-500/30 text-rose-400' 
+              usuario?.is_master
+                ? 'bg-rose-600/20 border-rose-500/30 text-rose-400'
                 : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
             }`}>
               {usuario?.name?.charAt(0) || 'U'}
