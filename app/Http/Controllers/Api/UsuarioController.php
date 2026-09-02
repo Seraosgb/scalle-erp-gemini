@@ -10,7 +10,6 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -93,8 +92,8 @@ class UsuarioController extends Controller
             'empresa_padrao_id' => 'nullable|uuid|exists:sis_empresas,id',
         ]);
 
-        $empresaPadrao = $validated['empresa_padrao_id'] 
-                      ?? $loggedUser->empresa_padrao_id 
+        $empresaPadrao = $validated['empresa_padrao_id']
+                      ?? $loggedUser->empresa_padrao_id
                       ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
 
         $usuario = User::create([
@@ -102,8 +101,7 @@ class UsuarioController extends Controller
             'tenant_id' => $tenantId,
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'telefone' => $validated['telefone'] ?? null,
+            'password' => $validated['password'], // Removido o Hash::make()            'telefone' => $validated['telefone'] ?? null,
             'perfil_id' => $validated['perfil_id'] ?? null,
             'empresa_padrao_id' => $empresaPadrao,
             'is_ativo' => true,
@@ -142,8 +140,8 @@ class UsuarioController extends Controller
         }
 
         if (!empty($validated['password'])) {
-            $usuario->password = Hash::make($validated['password']);
-        }
+                $usuario->password = $validated['password']; // Removido o Hash::make()
+            }
 
         $usuario->save();
 

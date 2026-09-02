@@ -66,8 +66,7 @@ class TenantProvisioningService
                 'perfil_id' => $perfilAdmin->id,
                 'name' => $dados['admin_name'],
                 'email' => $dados['admin_email'],
-                'password' => Hash::make($dados['admin_password']),
-                'telefone' => $dados['admin_telefone'] ?? null,
+                'password' => $dados['admin_password'], // Removido o Hash::make()                'telefone' => $dados['admin_telefone'] ?? null,
                 'is_ativo' => true,
                 'is_master' => false,
             ]);
@@ -85,7 +84,7 @@ class TenantProvisioningService
             ]);
 
             // 6. Vincular Assinatura e Plano
-            $plano = Plano::where('slug', $dados['plano_slug'] ?? 'pro')->first() 
+            $plano = Plano::where('slug', $dados['plano_slug'] ?? 'pro')->first()
                   ?? Plano::firstOrCreate(
                       ['slug' => 'pro'],
                       [
