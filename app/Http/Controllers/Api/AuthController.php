@@ -20,11 +20,11 @@ class AuthController extends Controller
             'mfa_code' => 'nullable|string|size:6',
         ]);
 
-       // Ignora a blindagem do tenant momentaneamente, mas respeita o SoftDeletes
-        $user = User::withoutGlobalScope(\App\Models\Scopes\GlobalScopeTenant::class)
-                    ->withoutGlobalScope(\App\Scopes\TenantScope::class)
-                    ->where('email', $request->email)
-                    ->first();
+        // Ignora escopos de tenant, mas força a verificação de registros não deletados (SoftDeletes)
+        $user = User::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('email', $request->email)
+            ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
