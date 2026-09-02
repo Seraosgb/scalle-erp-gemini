@@ -20,7 +20,7 @@ class AuthController extends Controller
             'mfa_code' => 'nullable|string|size:6',
         ]);
 
-        // Ignora escopos de tenant, mas força a verificação de registros não deletados (SoftDeletes)
+        // Consulta o usuário ignorando escopos globais e respeitando soft deletes
         $user = User::withoutGlobalScopes()
             ->whereNull('deleted_at')
             ->where('email', $request->email)
@@ -64,6 +64,17 @@ class AuthController extends Controller
             }
         }
 
+        // Injeta temporariamente o tenant do usuário autenticado no container
+        if (!empty($user->tenant_id)) {
+            \Illuminate\Support\Facades\App::instance('current_tenant_id', $user->tenant_id);
+        }
+
+        // Carrega o perfil contornando a trava estrita antes da emissão do token
+        $perfil = null;
+        if (!empty($user->perfil_id)) {
+            $perfil = \App\Models\Perfil::withoutGlobalScopes()->find($user->perfil_id);
+        }
+
         $token = $user->createToken('scalle_auth_token')->plainTextToken;
 
         return response()->json([
@@ -74,8 +85,8 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'tenant_id' => $user->tenant_id,
-                    'perfil' => $user->perfil?->nome,
-                    'is_admin' => $user->perfil?->is_admin ?? false,
+                    'perfil' => $perfil?->nome,
+                    'is_admin' => $perfil?->is_admin ?? false,
                     'mfa_ativo' => (bool) $user->mfa_ativo,
                 ]
             ]

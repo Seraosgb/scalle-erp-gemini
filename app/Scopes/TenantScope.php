@@ -15,15 +15,17 @@ class TenantScope implements Scope
         $tenantId = App::bound('current_tenant_id') ? App::make('current_tenant_id') : null;
 
         if (!$tenantId) {
-            // Bypass de Autenticação (O Ovo ou a Galinha):
-            // Permite que o Sanctum consulte o Usuário no banco ANTES de sabermos qual é o tenant dele.
-            if (class_basename($model) === 'User' || class_basename($model) === 'PersonalAccessToken') {
+            $modelClass = class_basename($model);
+
+            // Bypass de Autenticação inicial:
+            // Permite checar Usuário, Token e Perfil antes de amarrar o tenant ativo
+            if (in_array($modelClass, ['User', 'PersonalAccessToken', 'Perfil'], true)) {
                 return;
             }
 
-            // Strict Mode: Trava qualquer outra tabela do sistema!
+            // Strict Mode: Bloqueia qualquer outra tabela do sistema sem contexto
             if (!app()->runningInConsole()) {
-                throw new RuntimeException("🔒 Vazamento Evitado [Padrão Gemini]: Tentativa de consulta no model " . class_basename($model) . " sem contexto de Tenant definido.");
+                throw new RuntimeException("🔒 Vazamento Evitado [Padrão Gemini]: Tentativa de consulta no model " . $modelClass . " sem contexto de Tenant definido.");
             }
             return;
         }
