@@ -5557,7 +5557,7 @@ class TestBillingSoftLockCommand extends Command
             'tenant_id' => $tenantId,
             'name' => 'Usuario Teste Inadimplente',
             'email' => 'teste.' . Str::random(5) . '@softlock.com',
-            'password' => bcrypt('secret123'),
+            'password' => 'secret123',
             'is_ativo' => true,
             'is_master' => false,
         ]);
@@ -6074,8 +6074,11 @@ class AuthController extends Controller
             'mfa_code' => 'nullable|string|size:6',
         ]);
 
-        // Ignora a blindagem do tenant momentaneamente apenas para validar as credenciais
-        $user = User::withoutGlobalScopes()->where('email', $request->email)->first();
+        // Consulta o usuário ignorando escopos globais e respeitando soft deletes
+        $user = User::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('email', $request->email)
+            ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
@@ -6115,6 +6118,17 @@ class AuthController extends Controller
             }
         }
 
+        // Injeta temporariamente o tenant do usuário autenticado no container
+        if (!empty($user->tenant_id)) {
+            \Illuminate\Support\Facades\App::instance('current_tenant_id', $user->tenant_id);
+        }
+
+        // Carrega o perfil contornando a trava estrita antes da emissão do token
+        $perfil = null;
+        if (!empty($user->perfil_id)) {
+            $perfil = \App\Models\Perfil::withoutGlobalScopes()->find($user->perfil_id);
+        }
+
         $token = $user->createToken('scalle_auth_token')->plainTextToken;
 
         return response()->json([
@@ -6125,8 +6139,8 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'tenant_id' => $user->tenant_id,
-                    'perfil' => $user->perfil?->nome,
-                    'is_admin' => $user->perfil?->is_admin ?? false,
+                    'perfil' => $perfil?->nome,
+                    'is_admin' => $perfil?->is_admin ?? false,
                     'mfa_ativo' => (bool) $user->mfa_ativo,
                 ]
             ]
@@ -6231,8 +6245,7 @@ class AuthController extends Controller
             return response()->json(['error' => ['message' => 'A senha atual informada está incorreta.']], 422);
         }
 
-        $user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['nova_senha'])]);
-
+$user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['nova_senha'])]);
         $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
 
         return response()->json(['data' => ['message' => 'Senha atualizada com sucesso. Demais dispositivos foram desconectados.']]);
@@ -10763,7 +10776,6 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -10846,8 +10858,8 @@ class UsuarioController extends Controller
             'empresa_padrao_id' => 'nullable|uuid|exists:sis_empresas,id',
         ]);
 
-        $empresaPadrao = $validated['empresa_padrao_id'] 
-                      ?? $loggedUser->empresa_padrao_id 
+        $empresaPadrao = $validated['empresa_padrao_id']
+                      ?? $loggedUser->empresa_padrao_id
                       ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
 
         $usuario = User::create([
@@ -10855,8 +10867,7 @@ class UsuarioController extends Controller
             'tenant_id' => $tenantId,
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'telefone' => $validated['telefone'] ?? null,
+            'password' => $validated['password'], // Removido o Hash::make()            'telefone' => $validated['telefone'] ?? null,
             'perfil_id' => $validated['perfil_id'] ?? null,
             'empresa_padrao_id' => $empresaPadrao,
             'is_ativo' => true,
@@ -10895,8 +10906,8 @@ class UsuarioController extends Controller
         }
 
         if (!empty($validated['password'])) {
-            $usuario->password = Hash::make($validated['password']);
-        }
+                $usuario->password = $validated['password']; // Removido o Hash::make()
+            }
 
         $usuario->save();
 
@@ -10921,6 +10932,7 @@ class UsuarioController extends Controller
         return response()->json(['data' => ['message' => 'Usuário removido com sucesso.']]);
     }
 }
+
 
 
 ========================================
@@ -14694,15 +14706,17 @@ class TenantScope implements Scope
         $tenantId = App::bound('current_tenant_id') ? App::make('current_tenant_id') : null;
 
         if (!$tenantId) {
-            // Bypass de Autenticação (O Ovo ou a Galinha):
-            // Permite que o Sanctum consulte o Usuário no banco ANTES de sabermos qual é o tenant dele.
-            if (class_basename($model) === 'User' || class_basename($model) === 'PersonalAccessToken') {
+            $modelClass = class_basename($model);
+
+            // Bypass de Autenticação inicial:
+            // Permite checar Usuário, Token e Perfil antes de amarrar o tenant ativo
+            if (in_array($modelClass, ['User', 'PersonalAccessToken', 'Perfil'], true)) {
                 return;
             }
 
-            // Strict Mode: Trava qualquer outra tabela do sistema!
+            // Strict Mode: Bloqueia qualquer outra tabela do sistema sem contexto
             if (!app()->runningInConsole()) {
-                throw new RuntimeException("🔒 Vazamento Evitado [Padrão Gemini]: Tentativa de consulta no model " . class_basename($model) . " sem contexto de Tenant definido.");
+                throw new RuntimeException("🔒 Vazamento Evitado [Padrão Gemini]: Tentativa de consulta no model " . $modelClass . " sem contexto de Tenant definido.");
             }
             return;
         }
@@ -16218,8 +16232,7 @@ class TenantProvisioningService
                 'perfil_id' => $perfilAdmin->id,
                 'name' => $dados['admin_name'],
                 'email' => $dados['admin_email'],
-                'password' => Hash::make($dados['admin_password']),
-                'telefone' => $dados['admin_telefone'] ?? null,
+                'password' => $dados['admin_password'], // Removido o Hash::make()                'telefone' => $dados['admin_telefone'] ?? null,
                 'is_ativo' => true,
                 'is_master' => false,
             ]);
@@ -16237,7 +16250,7 @@ class TenantProvisioningService
             ]);
 
             // 6. Vincular Assinatura e Plano
-            $plano = Plano::where('slug', $dados['plano_slug'] ?? 'pro')->first() 
+            $plano = Plano::where('slug', $dados['plano_slug'] ?? 'pro')->first()
                   ?? Plano::firstOrCreate(
                       ['slug' => 'pro'],
                       [
@@ -16270,6 +16283,7 @@ class TenantProvisioningService
         });
     }
 }
+
 
 
 ========================================
