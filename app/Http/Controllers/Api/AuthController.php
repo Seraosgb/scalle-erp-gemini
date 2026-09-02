@@ -20,8 +20,11 @@ class AuthController extends Controller
             'mfa_code' => 'nullable|string|size:6',
         ]);
 
-        // Ignora a blindagem do tenant momentaneamente apenas para validar as credenciais
-        $user = User::withoutGlobalScopes()->where('email', $request->email)->first();
+       // Ignora a blindagem do tenant momentaneamente, mas respeita o SoftDeletes
+        $user = User::withoutGlobalScope(\App\Models\Scopes\GlobalScopeTenant::class)
+                    ->withoutGlobalScope(\App\Scopes\TenantScope::class)
+                    ->where('email', $request->email)
+                    ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
@@ -177,8 +180,7 @@ class AuthController extends Controller
             return response()->json(['error' => ['message' => 'A senha atual informada está incorreta.']], 422);
         }
 
-        $user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['nova_senha'])]);
-
+$user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['nova_senha'])]);
         $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
 
         return response()->json(['data' => ['message' => 'Senha atualizada com sucesso. Demais dispositivos foram desconectados.']]);

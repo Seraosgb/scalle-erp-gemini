@@ -63,7 +63,7 @@ class TestBillingSoftLockCommand extends Command
             'tenant_id' => $tenantId,
             'name' => 'Usuario Teste Inadimplente',
             'email' => 'teste.' . Str::random(5) . '@softlock.com',
-            'password' => bcrypt('secret123'),
+            'password' => 'secret123',
             'is_ativo' => true,
             'is_master' => false,
         ]);
