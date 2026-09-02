@@ -73,7 +73,7 @@ export default function App() {
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="usuarios" element={<UsuariosPage />} />
-            <Route path="/billing" element={<PainelCobrancaView />} />
+            <Route path="billing" element={<PainelCobrancaView />} />
             <Route path="master" element={<MasterPage />} />
           </Route>
 
