@@ -13,10 +13,32 @@ class TenantBillingController extends Controller
     private function autorizarFinanceiro(Request $request): void
     {
         $usuario = $request->user();
-        if ($usuario->is_master) return;
 
-        $perfil = strtoupper(trim($usuario->perfil->nome ?? $usuario->role ?? ''));
-        if (!in_array($perfil, ['ADMIN', 'FINANCEIRO', 'DIRETOR', 'MASTER'])) {
+        // 1. Libera imediatamente se for Master SaaS ou Admin do Tenant
+        if ($usuario->is_master || ($usuario->perfil && $usuario->perfil->is_admin)) {
+            return;
+        }
+
+        // 2. Normaliza o nome ou slug do perfil e verifica permissões permitidas
+        $perfilNome = strtoupper(trim($usuario->perfil->nome ?? ''));
+        $perfilSlug = strtoupper(trim($usuario->perfil->slug ?? ''));
+        $role = strtoupper(trim($usuario->role ?? ''));
+
+        $cargosPermitidos = ['ADMIN', 'ADMINISTRADOR', 'FINANCEIRO', 'GESTOR', 'GERENTE', 'DIRETOR', 'MASTER'];
+
+        $autorizado = false;
+        foreach ($cargosPermitidos as $cargo) {
+            if (
+                str_contains($perfilNome, $cargo) ||
+                str_contains($perfilSlug, $cargo) ||
+                str_contains($role, $cargo)
+            ) {
+                $autorizado = true;
+                break;
+            }
+        }
+
+        if (!$autorizado) {
             abort(403, 'Acesso restrito ao gestor financeiro ou administrador da conta.');
         }
     }
