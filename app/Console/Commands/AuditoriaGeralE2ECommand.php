@@ -528,10 +528,21 @@ class AuditoriaGeralE2ECommand extends Command
         $modulo = "8. Billing & Soft-Lock";
         $tenantId = Tenant::first()->id;
 
+        // Recupera um plano existente ou provisiona temporariamente para o teste
+        $plano = Plano::first() ?? Plano::create([
+            'id' => (string) Str::uuid(),
+            'nome' => 'Plano Auditoria',
+            'slug' => 'plano-audit-' . Str::random(4),
+            'valor_mensal' => 199.00,
+            'limite_usuarios' => 10,
+            'cota_storage_bytes' => 10737418240, // 10 GB
+            'is_ativo' => true,
+        ]);
+
         $assinatura = Assinatura::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'plano_id' => (string) Str::uuid(),
+            'plano_id' => $plano->id, // ID com foreign key válida
             'status' => 'SOFT_LOCK',
             'data_inicio' => now()->subDays(30)->toDateString(),
             'data_proximo_vencimento' => now()->subDays(5)->toDateString(),
