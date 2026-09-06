@@ -77,7 +77,8 @@ export default function App() {
             <Route path="billing" element={<PainelCobrancaView />} />
             <Route path="master" element={<MasterPage />} />
 <Route path="master/auditoria" element={<AuditoriaE2EView />} />
-<Route path="master/auditoria-e2e" element={<AuditoriaE2EView />} />          </Route>
+<Route path="master/auditoria-e2e" element={<AuditoriaE2EView />} />
+          </Route>
 
           {/* Fallback de Segurança */}
           <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
