@@ -5,7 +5,7 @@ import {
   DollarSign, FileText, Users, LogOut, Menu, X,
   Building2, ShieldAlert, Factory, FileSpreadsheet,
   Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings,
-  CreditCard
+  CreditCard, FileCheck
 } from 'lucide-react';
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
@@ -93,6 +93,9 @@ export default function AppLayout() {
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: '/app/fiscal', icon: FileText },
     { name: 'Governança & Equipe', path: '/app/usuarios', icon: Users },
+    ...(usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin ? [
+      { name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }
+    ] : []),
   ];
 
   return (
