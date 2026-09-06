@@ -12,25 +12,39 @@ class TenantScope implements Scope
 {
     public function apply(Builder $builder, Model $model)
     {
-        $tenantId = App::bound('current_tenant_id') ? App::make('current_tenant_id') : null;
-
-        if (!$tenantId) {
-            $modelClass = class_basename($model);
-
-            // Bypass de Autenticação inicial:
-            // Permite checar Usuário, Token e Perfil antes de amarrar o tenant ativo
-            if (in_array($modelClass, ['User', 'PersonalAccessToken', 'Perfil'], true)) {
-                return;
-            }
-
-            // Strict Mode: Bloqueia qualquer outra tabela do sistema sem contexto
-            if (!app()->runningInConsole()) {
-                throw new RuntimeException("🔒 Vazamento Evitado [Padrão Gemini]: Tentativa de consulta no model " . $modelClass . " sem contexto de Tenant definido.");
-            }
+        // 1. Bypass para comandos Artisan de console e rotinas de deploy
+        if (app()->runningInConsole() || App::bound('bypass_tenant_scope')) {
             return;
         }
 
-        // Aplica a blindagem para a tabela atual
+        // 2. Se o usuário autenticado for o SaaS Owner (Master Global), ele tem acesso irrestrito
+        $user = auth()->user() ?? request()->user();
+        if ($user && $user->is_master) {
+            return;
+        }
+
+        // 3. Resolução do Tenant ativo no container
+        $tenantId = App::bound('current_tenant_id') ? App::make('current_tenant_id') : null;
+
+        // Se o usuário autenticado comum tiver tenant_id, usa como fallback seguro
+        if (!$tenantId && $user && !empty($user->tenant_id)) {
+            $tenantId = $user->tenant_id;
+            App::instance('current_tenant_id', $tenantId);
+        }
+
+        // 4. Se não há tenant resolvido e NÃO é Master: trava intransigente de segurança
+        if (!$tenantId) {
+            // Se for endpoint de autenticação preliminar (login público)
+            if (request()?->is('api/auth/*')) {
+                return;
+            }
+
+            throw new RuntimeException(
+                "🔒 Vazamento Evitado [Padrão Gemini]: Tentativa de consulta no model " . class_basename($model) . " sem contexto de Tenant definido."
+            );
+        }
+
+        // 5. Injeta a cláusula hermética de isolamento para inquilinos
         $builder->where($model->getTable() . '.tenant_id', $tenantId);
     }
 }
