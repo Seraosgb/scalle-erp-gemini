@@ -131,7 +131,7 @@ class AuditoriaGeralE2ECommand extends Command
             'status' => 'ativo',
         ]);
 
-        // Injeta Tenant A
+        // 1. Injeta Tenant A e cria registro
         App::instance('current_tenant_id', $tenantA->id);
 
         $pessoaA = Pessoa::create([
@@ -152,16 +152,43 @@ class AuditoriaGeralE2ECommand extends Command
             $modulo
         );
 
-        // Troca para Tenant B e tenta invadir Tenant A
+        // 2. Troca para Tenant B e tenta invadir Tenant A (Operador Comum)
         App::instance('current_tenant_id', $tenantB->id);
         $buscaInvasao = Pessoa::find($pessoaA->id);
 
         $this->registrarResultado(
-            "Isolamento Cruzado de Leitura (TenantScope)",
+            "Isolamento Cruzado de Leitura (Operador Comum)",
             $buscaInvasao === null,
             $buscaInvasao === null ? "Tenant B não conseguiu ler o cliente do Tenant A (Retorno Nulo blindado)" : "Vazamento inter-tenant detectado",
             $modulo
         );
+
+        // 3. Validação do SaaS Owner / Master Global (Visão Panorâmica)
+        $masterUser = new User([
+            'id' => (string) Str::uuid(),
+            'name' => 'SaaS Master Auditor',
+            'email' => 'master.audit.' . Str::random(5) . '@scalle.com',
+            'is_master' => true,
+            'tenant_id' => null,
+        ]);
+
+        // Simula autenticação do SaaS Owner sem tenant ativo no container
+        App::forgetInstance('current_tenant_id');
+        auth()->setUser($masterUser);
+
+        $buscaMaster = Pessoa::find($pessoaA->id);
+
+        $this->registrarResultado(
+            "Visão Panorâmica do SaaS Owner (is_master)",
+            $buscaMaster !== null,
+            $buscaMaster !== null
+                ? "SaaS Owner consultou entidade globalmente sem restrição indevida e sem falso positivo"
+                : "Falha: SaaS Owner foi bloqueado indevidamente pelo TenantScope",
+            $modulo
+        );
+
+        // Limpa autenticação simulada para os próximos testes
+        auth()->forgetUser();
     }
 
     private function auditarMultiFilial(): void
