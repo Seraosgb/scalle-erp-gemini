@@ -47,7 +47,7 @@ class AuditoriaGeralE2ECommand extends Command
         DB::beginTransaction();
 
         try {
-            // Módulo 1: Fundação Multi-Tenant & Governança
+            // Módulo 1: Fundação Multi-Tenant, Governança & SaaS Owner
             $this->auditarCoreMultiTenant();
 
             // Módulo 2: Multi-Filial & Catálogo Unificado
@@ -131,7 +131,7 @@ class AuditoriaGeralE2ECommand extends Command
             'status' => 'ativo',
         ]);
 
-        // 1. Injeta Tenant A e cria registro
+        // 1. Injeta Tenant A
         App::instance('current_tenant_id', $tenantA->id);
 
         $pessoaA = Pessoa::create([
@@ -157,13 +157,13 @@ class AuditoriaGeralE2ECommand extends Command
         $buscaInvasao = Pessoa::find($pessoaA->id);
 
         $this->registrarResultado(
-            "Isolamento Cruzado de Leitura (Operador Comum)",
+            "Isolamento Cruzado de Leitura (TenantScope)",
             $buscaInvasao === null,
             $buscaInvasao === null ? "Tenant B não conseguiu ler o cliente do Tenant A (Retorno Nulo blindado)" : "Vazamento inter-tenant detectado",
             $modulo
         );
 
-        // 3. Validação do SaaS Owner / Master Global (Visão Panorâmica)
+        // 3. Validação da visão panorâmica do SaaS Owner (is_master = true)
         $masterUser = new User([
             'id' => (string) Str::uuid(),
             'name' => 'SaaS Master Auditor',
@@ -172,7 +172,6 @@ class AuditoriaGeralE2ECommand extends Command
             'tenant_id' => null,
         ]);
 
-        // Simula autenticação do SaaS Owner sem tenant ativo no container
         App::forgetInstance('current_tenant_id');
         auth()->setUser($masterUser);
 
@@ -182,12 +181,11 @@ class AuditoriaGeralE2ECommand extends Command
             "Visão Panorâmica do SaaS Owner (is_master)",
             $buscaMaster !== null,
             $buscaMaster !== null
-                ? "SaaS Owner consultou entidade globalmente sem restrição indevida e sem falso positivo"
-                : "Falha: SaaS Owner foi bloqueado indevidamente pelo TenantScope",
+                ? "SaaS Owner consultou entidade globalmente sem bloqueio indevido de TenantScope"
+                : "Falha: SaaS Owner foi bloqueado indevidamente no TenantScope",
             $modulo
         );
 
-        // Limpa autenticação simulada para os próximos testes
         auth()->forgetUser();
     }
 
