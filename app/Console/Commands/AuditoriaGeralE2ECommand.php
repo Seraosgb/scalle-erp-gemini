@@ -573,7 +573,15 @@ class AuditoriaGeralE2ECommand extends Command
     private function auditarBillingSoftLock(): void
     {
         $modulo = "8. Billing & Soft-Lock";
-        $tenantId = Tenant::first()->id;
+
+        // Cria um tenant exclusivo para o teste de Billing para não afetar outros módulos
+        $tenantSoftLock = Tenant::create([
+            'id' => (string) Str::uuid(),
+            'nome_fantasia' => 'Tenant SoftLock Test',
+            'razao_social' => 'Tenant SoftLock Test LTDA',
+            'documento' => '99999999000199',
+            'status' => 'soft_lock', // Alinha status do Tenant
+        ]);
 
         $plano = Plano::first() ?? Plano::create([
             'id' => (string) Str::uuid(),
@@ -585,12 +593,9 @@ class AuditoriaGeralE2ECommand extends Command
             'is_ativo' => true,
         ]);
 
-        // Remove assinaturas anteriores desse tenant de teste para não haver concorrência de status
-        Assinatura::where('tenant_id', $tenantId)->delete();
-
         $assinatura = Assinatura::create([
             'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
+            'tenant_id' => $tenantSoftLock->id,
             'plano_id' => $plano->id,
             'status' => 'SOFT_LOCK',
             'data_inicio' => now()->subDays(30)->toDateString(),
@@ -598,28 +603,27 @@ class AuditoriaGeralE2ECommand extends Command
             'storage_utilizado_bytes' => 0,
         ]);
 
-        // Usuário inquilino estrito (sem is_master)
         $userTenant = new User([
             'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
+            'tenant_id' => $tenantSoftLock->id,
             'name' => 'Inquilino Soft Lock',
             'email' => 'softlock.' . Str::random(5) . '@scalle.com',
             'is_master' => false,
         ]);
 
-        App::instance('current_tenant_id', $tenantId);
+        App::instance('current_tenant_id', $tenantSoftLock->id);
         auth()->setUser($userTenant);
         request()->setUserResolver(fn() => $userTenant);
 
         $middleware = new \App\Http\Middleware\CheckSubscriptionStatus();
 
-        // 1. Simula requisição POST bloqueada
+        // 1. Simula requisição POST (Mutação) que deve ser barrada com 402
         $reqPost = \Illuminate\Http\Request::create('/api/pessoas', 'POST', ['nome_razao_social' => 'Teste Mutação']);
         $reqPost->setUserResolver(fn() => $userTenant);
 
         $respPost = $middleware->handle($reqPost, fn() => response()->json(['data' => 'ok'], 201));
 
-        // 2. Simula requisição GET permitida
+        // 2. Simula requisição GET (Consulta) que deve ser liberada com 200
         $reqGet = \Illuminate\Http\Request::create('/api/pessoas', 'GET');
         $reqGet->setUserResolver(fn() => $userTenant);
 
