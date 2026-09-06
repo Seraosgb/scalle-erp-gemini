@@ -6,10 +6,11 @@ use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
 
 class OsApontamentoHora extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant, BelongsToEmpresa;
 
     protected $table = 'os_apontamentos_horas';
     public $incrementing = false;

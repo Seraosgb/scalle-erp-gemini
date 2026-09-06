@@ -6,10 +6,11 @@ use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
 
 class RegraTributaria extends Model
 {
-    use SoftDeletes, BelongsToTenant;
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
 
     protected $table = 'fis_regras_tributarias';
     public $incrementing = false;

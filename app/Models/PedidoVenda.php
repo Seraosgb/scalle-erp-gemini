@@ -7,11 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
 
 class PedidoVenda extends Model
 {
-    use SoftDeletes, BelongsToTenant;
-
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
     protected $table = 'ven_pedidos';
     public $incrementing = false;
     protected $keyType = 'string';

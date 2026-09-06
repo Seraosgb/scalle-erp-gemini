@@ -8,17 +8,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
 
 class CrmOportunidadeAtividade extends Model
 {
-    use SoftDeletes, BelongsToTenant, Auditable;
+    use SoftDeletes, BelongsToTenant, Auditable, BelongsToEmpresa;
 
     protected $table = 'crm_oportunidade_atividades';
     public $incrementing = false;
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'tenant_id', 'oportunidade_id', 'usuario_id', 
+        'id', 'tenant_id', 'oportunidade_id', 'usuario_id',
         'tipo', 'descricao', 'data_agendamento', 'is_concluida'
     ];
 

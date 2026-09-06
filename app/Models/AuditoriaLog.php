@@ -6,10 +6,11 @@ use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
 
 class AuditoriaLog extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant, BelongsToEmpresa;
 
     protected $table = 'sis_auditoria_logs';
     public $incrementing = false;
@@ -17,8 +18,8 @@ class AuditoriaLog extends Model
     public $timestamps = false; // Usa apenas created_at
 
     protected $fillable = [
-        'id', 'tenant_id', 'usuario_id', 'acao', 'modulo', 
-        'tabela_entidade', 'registro_id', 'valores_anteriores', 
+        'id', 'tenant_id', 'usuario_id', 'acao', 'modulo',
+        'tabela_entidade', 'registro_id', 'valores_anteriores',
         'valores_novos', 'ip', 'user_agent', 'created_at'
     ];
 

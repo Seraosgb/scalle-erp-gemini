@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
 
 class OrdemServico extends Model
 {
-    use SoftDeletes, BelongsToTenant;
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
 
     protected $table = 'os_ordens_servico';
     public $incrementing = false;
@@ -68,7 +69,7 @@ class OrdemServico extends Model
         'valor_total' => 'decimal:2',
         'latitude_assinatura' => 'decimal:8',
         'longitude_assinatura' => 'decimal:8',
-        
+
     ];
 
     public function empresa(): BelongsTo

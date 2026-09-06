@@ -8,18 +8,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
 
 class CotacaoCompra extends Model
 {
-    use SoftDeletes, BelongsToTenant;
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
 
     protected $table = 'cmp_cotacoes';
     public $incrementing = false;
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'tenant_id', 'empresa_id', 'solicitante_id', 
-        'deposito_destino_id', 'titulo', 'status', 
+        'id', 'tenant_id', 'empresa_id', 'solicitante_id',
+        'deposito_destino_id', 'titulo', 'status',
         'data_limite_resposta', 'fornecedor_vencedor_id', 'observacoes'
     ];
 

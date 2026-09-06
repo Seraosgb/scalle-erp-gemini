@@ -5,10 +5,11 @@ namespace App\Models;
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
 
 class MovimentacaoEstoque extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant, BelongsToEmpresa;
 
     protected $table = 'wms_movimentacoes';
     public $incrementing = false;

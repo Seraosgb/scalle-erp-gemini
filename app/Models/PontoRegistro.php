@@ -5,10 +5,11 @@ namespace App\Models;
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
 
 class PontoRegistro extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant; use BelongsToEmpresa;
 
     protected $table = 'rh_pontos';
     public $incrementing = false;

@@ -6,10 +6,11 @@ use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
 
 class PcpLoteRastreabilidade extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant , BelongsToEmpresa;
 
     protected $table = 'pcp_lotes_rastreabilidade';
     public $incrementing = false;

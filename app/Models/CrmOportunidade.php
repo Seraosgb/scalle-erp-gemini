@@ -9,19 +9,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
 
 class CrmOportunidade extends Model
 {
-    use SoftDeletes, BelongsToTenant, Auditable;
+    use SoftDeletes, BelongsToTenant, Auditable, BelongsToEmpresa;
 
     protected $table = 'crm_oportunidades';
     public $incrementing = false;
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'tenant_id', 'funil_id', 'etapa_id', 'vendedor_id', 'cliente_id', 
-        'titulo', 'nome_contato', 'email_contato', 'telefone_contato', 
-        'valor_estimado', 'data_fechamento_esperada', 'status', 'observacoes', 
+        'id', 'tenant_id', 'funil_id', 'etapa_id', 'vendedor_id', 'cliente_id',
+        'titulo', 'nome_contato', 'email_contato', 'telefone_contato',
+        'valor_estimado', 'data_fechamento_esperada', 'status', 'observacoes',
         'origem_lead', 'motivo_perda_id', 'justificativa_perda', 'data_fechamento'
     ];
 
@@ -37,19 +38,19 @@ class CrmOportunidade extends Model
         static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
     }
 
-    public function etapa(): BelongsTo 
-    { 
-        return $this->belongsTo(CrmFunilEtapa::class, 'etapa_id'); 
+    public function etapa(): BelongsTo
+    {
+        return $this->belongsTo(CrmFunilEtapa::class, 'etapa_id');
     }
 
-    public function vendedor(): BelongsTo 
-    { 
-        return $this->belongsTo(User::class, 'vendedor_id'); 
+    public function vendedor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'vendedor_id');
     }
 
-    public function cliente(): BelongsTo 
-    { 
-        return $this->belongsTo(Pessoa::class, 'cliente_id'); 
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
     }
 
     public function atividades(): HasMany
