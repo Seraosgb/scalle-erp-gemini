@@ -132,20 +132,32 @@ class MasterController extends Controller
         rsort($arquivos);
         return response()->file($arquivos[0]);
     }
-    public function executarAuditoria(): \Illuminate\Http\JsonResponse
+    public function executarAuditoria(): JsonResponse
     {
         try {
-            // Executa o comando Artisan capturando a saída
-            \Illuminate\Support\Facades\Artisan::call('scalle:audit-e2e');
+            // Aumenta limites temporários para a suíte de testes
+            set_time_limit(120);
+            ini_set('memory_limit', '512M');
+
+            $diretorio = storage_path('app/auditorias');
+            if (!File::exists($diretorio)) {
+                File::makeDirectory($diretorio, 0775, true);
+            }
+
+            // Executa o comando isoladamente
+            \Illuminate\Support\Facades\Artisan::call('scalle:audit-e2e', ['--export' => 'html']);
             $saidaTexto = \Illuminate\Support\Facades\Artisan::output();
 
-            // Localiza o último arquivo JSON gravado
-            $arquivosJson = \Illuminate\Support\Facades\File::glob(storage_path('app/auditorias/*.json'));
-
+            // Localiza o último arquivo JSON gerado
+            $arquivosJson = File::glob("{$diretorio}/*.json");
             $dadosRelatorio = null;
+
             if (!empty($arquivosJson)) {
                 rsort($arquivosJson);
-                $dadosRelatorio = json_decode(file_get_contents($arquivosJson[0]), true);
+                $conteudo = @file_get_contents($arquivosJson[0]);
+                if ($conteudo) {
+                    $dadosRelatorio = json_decode($conteudo, true);
+                }
             }
 
             return response()->json([
@@ -155,11 +167,18 @@ class MasterController extends Controller
                     'laudo' => $dadosRelatorio,
                 ]
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Erro na execução da Auditoria E2E: " . $e->getMessage(), [
+                'linha' => $e->getLine(),
+                'arquivo' => $e->getFile(),
+            ]);
+
             return response()->json([
                 'error' => [
                     'code' => 'AUDIT_EXECUTION_ERROR',
                     'message' => $e->getMessage(),
+                    'file' => basename($e->getFile()),
+                    'line' => $e->getLine(),
                 ]
             ], 500);
         }
