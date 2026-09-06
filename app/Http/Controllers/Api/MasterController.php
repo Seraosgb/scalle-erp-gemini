@@ -132,4 +132,36 @@ class MasterController extends Controller
         rsort($arquivos);
         return response()->file($arquivos[0]);
     }
+    public function executarAuditoria(): \Illuminate\Http\JsonResponse
+    {
+        try {
+            // Executa o comando Artisan capturando a saída
+            \Illuminate\Support\Facades\Artisan::call('scalle:audit-e2e');
+            $saidaTexto = \Illuminate\Support\Facades\Artisan::output();
+
+            // Localiza o último arquivo JSON gravado
+            $arquivosJson = \Illuminate\Support\Facades\File::glob(storage_path('app/auditorias/*.json'));
+
+            $dadosRelatorio = null;
+            if (!empty($arquivosJson)) {
+                rsort($arquivosJson);
+                $dadosRelatorio = json_decode(file_get_contents($arquivosJson[0]), true);
+            }
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Auditoria E2E executada com sucesso!',
+                    'output_console' => $saidaTexto,
+                    'laudo' => $dadosRelatorio,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'AUDIT_EXECUTION_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 500);
+        }
+    }
 }

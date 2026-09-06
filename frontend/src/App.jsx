@@ -26,6 +26,7 @@ import BoardCrm from './pages/Crm/BoardCrm';
 import ConfiguracoesCrm from './pages/Crm/ConfiguracoesCrm';
 import LandingCrm from './pages/public/LandingCrm';
 import PainelCobrancaView from './Pages/Billing/PainelCobrancaView'
+import AuditoriaE2EView from './Pages/Master/AuditoriaE2EView';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="billing" element={<PainelCobrancaView />} />
             <Route path="master" element={<MasterPage />} />
+            <Route path="master/auditoria-e2e" element={<AuditoriaE2EView />} />
           </Route>
 
           {/* Fallback de Segurança */}
