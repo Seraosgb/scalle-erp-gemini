@@ -131,8 +131,24 @@ class AuditoriaGeralE2ECommand extends Command
             'status' => 'ativo',
         ]);
 
-        // 1. Injeta Tenant A
+        // Cria usuários de teste comuns (sem is_master) para garantir teste fidedigno
+        $userA = new User([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantA->id,
+            'name' => 'Operador A',
+            'is_master' => false,
+        ]);
+
+        $userB = new User([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantB->id,
+            'name' => 'Operador B',
+            'is_master' => false,
+        ]);
+
+        // 1. Injeta Tenant A e Usuário Comum A
         App::instance('current_tenant_id', $tenantA->id);
+        request()->setUserResolver(fn() => $userA);
 
         $pessoaA = Pessoa::create([
             'id' => (string) Str::uuid(),
@@ -143,7 +159,6 @@ class AuditoriaGeralE2ECommand extends Command
             'is_cliente' => true,
         ]);
 
-        // Valida se Tenant A localiza seu registro
         $buscaA = Pessoa::find($pessoaA->id);
         $this->registrarResultado(
             "Leitura em contexto do Tenant próprio",
@@ -152,8 +167,10 @@ class AuditoriaGeralE2ECommand extends Command
             $modulo
         );
 
-        // 2. Troca para Tenant B e tenta invadir Tenant A (Operador Comum)
+        // 2. Troca para Tenant B e Usuário Comum B (Tenta invadir Tenant A)
         App::instance('current_tenant_id', $tenantB->id);
+        request()->setUserResolver(fn() => $userB);
+
         $buscaInvasao = Pessoa::find($pessoaA->id);
 
         $this->registrarResultado(
@@ -163,31 +180,32 @@ class AuditoriaGeralE2ECommand extends Command
             $modulo
         );
 
-        // 3. Validação do SaaS Owner / Master Global (is_master = true)
-        $masterUser = new User();
-        $masterUser->id = (string) Str::uuid();
-        $masterUser->name = 'SaaS Master Auditor';
-        $masterUser->email = 'master.audit.' . Str::random(5) . '@scalle.com';
-        $masterUser->is_master = true;
-        $masterUser->tenant_id = null;
+        // 3. Validação da visão panorâmica do SaaS Owner (is_master = true)
+        $masterUser = new User([
+            'id' => (string) Str::uuid(),
+            'name' => 'SaaS Master Auditor',
+            'email' => 'master.audit.' . Str::random(5) . '@scalle.com',
+            'is_master' => true,
+            'tenant_id' => null,
+        ]);
 
-        // Limpa tenant do container e injeta resolver sem acionar guards de sessão
         App::forgetInstance('current_tenant_id');
         request()->setUserResolver(fn() => $masterUser);
 
-        $buscaMaster = Pessoa::withoutGlobalScope(TenantScope::class)->find($pessoaA->id);
+        $buscaMaster = Pessoa::find($pessoaA->id);
 
         $this->registrarResultado(
             "Visão Panorâmica do SaaS Owner (is_master)",
             $buscaMaster !== null,
             $buscaMaster !== null
                 ? "SaaS Owner consultou entidade globalmente sem restrição indevida"
-                : "Falha: SaaS Owner foi bloqueado indevidamente",
+                : "Falha: SaaS Owner foi bloqueado indevidamente no TenantScope",
             $modulo
         );
 
-        // Restaura o contexto do tenant principal para os próximos módulos
+        // Restaura contexto de Tenant A para os próximos testes
         App::instance('current_tenant_id', $tenantA->id);
+        request()->setUserResolver(fn() => $userA);
     }
 
     private function auditarMultiFilial(): void
@@ -554,41 +572,49 @@ class AuditoriaGeralE2ECommand extends Command
         $modulo = "8. Billing & Soft-Lock";
         $tenantId = Tenant::first()->id;
 
-        // Recupera um plano existente ou provisiona temporariamente para o teste
         $plano = Plano::first() ?? Plano::create([
             'id' => (string) Str::uuid(),
             'nome' => 'Plano Auditoria',
             'slug' => 'plano-audit-' . Str::random(4),
             'valor_mensal' => 199.00,
             'limite_usuarios' => 10,
-            'cota_storage_bytes' => 10737418240, // 10 GB
+            'cota_storage_bytes' => 10737418240,
             'is_ativo' => true,
         ]);
 
         $assinatura = Assinatura::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'plano_id' => $plano->id, // ID com foreign key válida
+            'plano_id' => $plano->id,
             'status' => 'SOFT_LOCK',
             'data_inicio' => now()->subDays(30)->toDateString(),
             'data_proximo_vencimento' => now()->subDays(5)->toDateString(),
             'storage_utilizado_bytes' => 0,
         ]);
 
-        $user = User::where('tenant_id', $tenantId)->first();
+        // Usuário inquilino estrito (sem is_master)
+        $userTenant = new User([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'name' => 'Inquilino Soft Lock',
+            'email' => 'softlock.' . Str::random(5) . '@scalle.com',
+            'is_master' => false,
+        ]);
+
         App::instance('current_tenant_id', $tenantId);
+        request()->setUserResolver(fn() => $userTenant);
 
         $middleware = new \App\Http\Middleware\CheckSubscriptionStatus();
 
         // 1. Simula requisição POST bloqueada
         $reqPost = \Illuminate\Http\Request::create('/api/pessoas', 'POST', ['nome_razao_social' => 'Teste Mutação']);
-        $reqPost->setUserResolver(fn() => $user);
+        $reqPost->setUserResolver(fn() => $userTenant);
 
         $respPost = $middleware->handle($reqPost, fn() => response()->json(['data' => 'ok'], 201));
 
         // 2. Simula requisição GET permitida
         $reqGet = \Illuminate\Http\Request::create('/api/pessoas', 'GET');
-        $reqGet->setUserResolver(fn() => $user);
+        $reqGet->setUserResolver(fn() => $userTenant);
 
         $respGet = $middleware->handle($reqGet, fn() => response()->json(['data' => []], 200));
 
