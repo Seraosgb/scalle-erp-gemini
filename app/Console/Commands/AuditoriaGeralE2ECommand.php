@@ -131,7 +131,6 @@ class AuditoriaGeralE2ECommand extends Command
             'status' => 'ativo',
         ]);
 
-        // Cria usuários de teste comuns (sem is_master) para garantir teste fidedigno
         $userA = new User([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantA->id,
@@ -146,8 +145,9 @@ class AuditoriaGeralE2ECommand extends Command
             'is_master' => false,
         ]);
 
-        // 1. Injeta Tenant A e Usuário Comum A
+        // 1. Contexto Tenant A (Inquilino Comum)
         App::instance('current_tenant_id', $tenantA->id);
+        auth()->setUser($userA);
         request()->setUserResolver(fn() => $userA);
 
         $pessoaA = Pessoa::create([
@@ -167,8 +167,9 @@ class AuditoriaGeralE2ECommand extends Command
             $modulo
         );
 
-        // 2. Troca para Tenant B e Usuário Comum B (Tenta invadir Tenant A)
+        // 2. Troca para Tenant B (Inquilino Comum) - Tentativa de invasão
         App::instance('current_tenant_id', $tenantB->id);
+        auth()->setUser($userB);
         request()->setUserResolver(fn() => $userB);
 
         $buscaInvasao = Pessoa::find($pessoaA->id);
@@ -180,7 +181,7 @@ class AuditoriaGeralE2ECommand extends Command
             $modulo
         );
 
-        // 3. Validação da visão panorâmica do SaaS Owner (is_master = true)
+        // 3. Validação do SaaS Owner (is_master = true)
         $masterUser = new User([
             'id' => (string) Str::uuid(),
             'name' => 'SaaS Master Auditor',
@@ -190,6 +191,7 @@ class AuditoriaGeralE2ECommand extends Command
         ]);
 
         App::forgetInstance('current_tenant_id');
+        auth()->setUser($masterUser);
         request()->setUserResolver(fn() => $masterUser);
 
         $buscaMaster = Pessoa::find($pessoaA->id);
@@ -205,6 +207,7 @@ class AuditoriaGeralE2ECommand extends Command
 
         // Restaura contexto de Tenant A para os próximos testes
         App::instance('current_tenant_id', $tenantA->id);
+        auth()->setUser($userA);
         request()->setUserResolver(fn() => $userA);
     }
 
@@ -582,6 +585,9 @@ class AuditoriaGeralE2ECommand extends Command
             'is_ativo' => true,
         ]);
 
+        // Remove assinaturas anteriores desse tenant de teste para não haver concorrência de status
+        Assinatura::where('tenant_id', $tenantId)->delete();
+
         $assinatura = Assinatura::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
@@ -602,6 +608,7 @@ class AuditoriaGeralE2ECommand extends Command
         ]);
 
         App::instance('current_tenant_id', $tenantId);
+        auth()->setUser($userTenant);
         request()->setUserResolver(fn() => $userTenant);
 
         $middleware = new \App\Http\Middleware\CheckSubscriptionStatus();
@@ -623,7 +630,9 @@ class AuditoriaGeralE2ECommand extends Command
         $this->registrarResultado(
             "Garantia de Soft-Lock (Bloqueio 402 em Mutações e Liberação Read-Only em Consultas)",
             $bloqueioEfetivo,
-            $bloqueioEfetivo ? "POST retornou 402 Payment Required e GET retornou 200 OK" : "Falha na regra de contingência Soft-Lock",
+            $bloqueioEfetivo
+                ? "POST retornou 402 Payment Required e GET retornou 200 OK"
+                : "Falha na regra de contingência Soft-Lock (POST: {$respPost->getStatusCode()} | GET: {$respGet->getStatusCode()})",
             $modulo
         );
     }
