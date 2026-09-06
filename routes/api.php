@@ -64,14 +64,18 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/me', [AuthController::class, 'me']);
     });
 
-    // SaaS Owner (Master Global)
+   // SaaS Owner (Master Global)
     Route::middleware(CheckMaster::class)->prefix('master')->group(function () {
         Route::get('/metricas', [MasterController::class, 'metricas']);
         Route::get('/tenants', [MasterController::class, 'tenants']);
         Route::post('/tenants', [MasterController::class, 'storeTenant']);
         Route::put('/tenants/{id}/status', [MasterController::class, 'alterarStatusTenant']);
-        Route::get('master/ultima-auditoria', [MasterController::class, 'ultimaAuditoria'])->middleware('auth:sanctum');
-        Route::post('master/executar-auditoria', [MasterController::class, 'executarAuditoria'])->middleware('auth:sanctum');
+    });
+
+    // Auditoria E2E (Acesso via MasterController)
+    Route::prefix('master')->group(function () {
+        Route::get('/ultima-auditoria', [MasterController::class, 'ultimaAuditoria']);
+        Route::post('/executar-auditoria', [MasterController::class, 'executarAuditoria']);
     });
 
     // Dashboard Executivo
