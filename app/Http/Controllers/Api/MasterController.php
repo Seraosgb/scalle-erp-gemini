@@ -121,4 +121,15 @@ class MasterController extends Controller
             ]
         ]);
     }
+    public function ultimaAuditoria(): \Symfony\Component\HttpFoundation\BinaryFileResponse|\Illuminate\Http\JsonResponse
+    {
+        $arquivos = \Illuminate\Support\Facades\File::glob(storage_path('app/auditorias/*.html'));
+        if (empty($arquivos)) {
+            return response()->json(['error' => 'Nenhum laudo de auditoria gerado até o momento.'], 404);
+        }
+
+        // Pega o laudo mais recente
+        rsort($arquivos);
+        return response()->file($arquivos[0]);
+    }
 }

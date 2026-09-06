@@ -70,6 +70,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/tenants', [MasterController::class, 'tenants']);
         Route::post('/tenants', [MasterController::class, 'storeTenant']);
         Route::put('/tenants/{id}/status', [MasterController::class, 'alterarStatusTenant']);
+        Route::get('master/ultima-auditoria', [MasterController::class, 'ultimaAuditoria'])->middleware('auth:sanctum');
     });
 
     // Dashboard Executivo
