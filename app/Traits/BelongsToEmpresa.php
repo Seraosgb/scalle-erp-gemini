@@ -6,6 +6,7 @@ use App\Models\Empresa;
 use App\Scopes\EmpresaScope;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Schema;
 
 trait BelongsToEmpresa
 {
@@ -14,8 +15,11 @@ trait BelongsToEmpresa
         static::addGlobalScope(new EmpresaScope());
 
         static::creating(function ($model) {
-            if (empty($model->empresa_id) && App::bound('current_empresa_id')) {
-                $model->empresa_id = App::make('current_empresa_id');
+            // Só injeta se a tabela de fato possuir a coluna empresa_id
+            if (Schema::hasColumn($model->getTable(), 'empresa_id')) {
+                if (empty($model->empresa_id) && App::bound('current_empresa_id')) {
+                    $model->empresa_id = App::make('current_empresa_id');
+                }
             }
         });
     }
