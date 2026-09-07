@@ -45,6 +45,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Administrador Scalle',
                 'password' => Hash::make('Scalle@2026'),
                 'is_ativo' => true,
+                'is_master' => false,
             ]
         );
 
@@ -52,5 +53,10 @@ class DatabaseSeeder extends Seeder
         if (method_exists($adminUser, 'roles')) {
             $adminUser->roles()->syncWithoutDetaching([$adminRole->id]);
         }
+
+        // 4. Executa Seeders Auxiliares (Itens de Catálogo, etc.)
+        $this->call([
+            ItemSeeder::class,
+        ]);
     }
 }
