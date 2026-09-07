@@ -44,7 +44,7 @@ class CrmController extends Controller
         $perfilUpper = strtoupper(trim((string)$perfilNome));
         $roleUpper = strtoupper(trim((string)$role));
 
-        $autorizado = in_array($perfilUpper, $cargosPermitidos, true) 
+        $autorizado = in_array($perfilUpper, $cargosPermitidos, true)
                    || in_array($roleUpper, $cargosPermitidos, true)
                    || str_contains($perfilUpper, 'ADMIN')
                    || str_contains($perfilUpper, 'GESTOR')
@@ -325,14 +325,14 @@ class CrmController extends Controller
             }
 
             $usuarioLogado = $request->user();
-            $perfilNome = is_object($usuarioLogado->perfil) 
-                ? ($usuarioLogado->perfil->nome ?? $usuarioLogado->perfil->codigo ?? '') 
+            $perfilNome = is_object($usuarioLogado->perfil)
+                ? ($usuarioLogado->perfil->nome ?? $usuarioLogado->perfil->codigo ?? '')
                 : ($usuarioLogado->perfil ?? '');
-                
+
             $perfilUpper = strtoupper(trim((string)$perfilNome));
             $roleUpper = strtoupper(trim((string)($usuarioLogado->role ?? '')));
 
-            $isGestor = ($usuarioLogado->is_master ?? false) 
+            $isGestor = ($usuarioLogado->is_master ?? false)
                      || ($usuarioLogado->is_admin ?? false)
                      || in_array($perfilUpper, ['ADMIN', 'ADMINISTRADOR', 'GESTOR_COMERCIAL', 'GERENTE', 'GERENTE_COMERCIAL', 'DIRETOR', 'MASTER', 'SAAS_OWNER'], true)
                      || in_array($roleUpper, ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE'], true)
@@ -409,39 +409,54 @@ class CrmController extends Controller
         return response()->json(['data' => $oportunidade], 201);
     }
 
-    public function adicionarItemOportunidade(Request $request, string $id): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+    public function adicionarItemOportunidade(Request $request, string $id)
+{
+    $tenantId = $this->getTenantId();
 
-        $validated = $request->validate([
-            'produto_id' => 'nullable|uuid|exists:pro_itens,id', // CORREÇÃO
-            'descricao' => 'required|string|max:255',
-            'quantidade' => 'required|numeric|min:0.01',
-            'valor_unitario' => 'required|numeric|min:0',
+    // Valida o acesso à oportunidade garantindo o isolamento do tenant
+    $oportunidade = Oportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+
+    $validated = $request->validate([
+        'produto_id'     => 'nullable|uuid',
+        'item_id'        => 'nullable|uuid',
+        'descricao'      => 'required|string|max:255',
+        'quantidade'     => 'required|numeric|min:0.0001',
+        'valor_unitario' => 'required|numeric|min:0',
+    ]);
+
+    $produtoId = !empty($validated['produto_id'])
+        ? $validated['produto_id']
+        : (!empty($validated['item_id']) ? $validated['item_id'] : null);
+
+    $qtd = (float) $validated['quantidade'];
+    $valorUnit = (float) $validated['valor_unitario'];
+    $valorTotal = round($qtd * $valorUnit, 2);
+
+    $itemCriado = DB::transaction(function () use ($oportunidade, $produtoId, $validated, $qtd, $valorUnit, $valorTotal) {
+        // Insere na tabela crm_oportunidade_itens sem forçar tenant_id inexistente
+        $item = $oportunidade->itens()->create([
+            'produto_id'     => $produtoId,
+            'descricao'      => $validated['descricao'],
+            'quantidade'     => $qtd,
+            'valor_unitario' => $valorUnit,
+            'valor_total'    => $valorTotal,
         ]);
 
-        $item = DB::transaction(function () use ($validated, $oportunidade, $tenantId) {
-            $totalItem = (float)$validated['quantidade'] * (float)$validated['valor_unitario'];
-            $novoItem = CrmOportunidadeItem::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'oportunidade_id' => $oportunidade->id,
-                'produto_id' => $validated['produto_id'] ?? null, // CORREÇÃO
-                'descricao' => $validated['descricao'],
-                'quantidade' => (float)$validated['quantidade'],
-                'valor_unitario' => (float)$validated['valor_unitario'],
-                'valor_total' => $totalItem,
-            ]);
+        // Recalcula o valor estimado da oportunidade
+        $novoValorEstimado = (float) $oportunidade->itens()->sum('valor_total');
+        $oportunidade->update([
+            'valor_estimado' => $novoValorEstimado,
+        ]);
 
-            $novoTotalOp = CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)->sum('valor_total');
-            $oportunidade->update(['valor_estimado' => $novoTotalOp]);
+        return $item;
+    });
 
-            return $novoItem;
-        });
-
-        return response()->json(['data' => $item], 201);
-    }
+    return response()->json([
+        'success' => true,
+        'data'    => $itemCriado,
+        'message' => 'Item adicionado com sucesso à oportunidade.'
+    ], 201);
+}
 
     public function removerItemOportunidade(Request $request, string $id, string $itemId): JsonResponse
     {
@@ -503,8 +518,8 @@ class CrmController extends Controller
                     $oportunidade->update(['cliente_id' => $clienteId]);
                 }
 
-                $empresaId = $request->user()->empresa_padrao_id 
-                          ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                $empresaId = $request->user()->empresa_padrao_id
+                          ?? Empresa::where('tenant_id', $tenantId)->first()?->id
                           ?? Empresa::first()?->id;
 
                 $depositoId = Deposito::where('tenant_id', $tenantId)->where('is_padrao', true)->first()?->id
