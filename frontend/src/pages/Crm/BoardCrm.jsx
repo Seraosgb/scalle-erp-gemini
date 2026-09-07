@@ -34,47 +34,31 @@ export default function BoardCrm() {
 
     // Formulários
     const [formNovo, setFormNovo] = useState({
-        titulo: '',
-        nome_contato: '',
-        email_contato: '',
-        telefone_contato: '',
-        valor_estimado: '',
-        vendedor_id: ''
+        titulo: '', nome_contato: '', email_contato: '', telefone_contato: '', valor_estimado: '', vendedor_id: ''
     });
 
     const [formNovoPipe, setFormNovoPipe] = useState({
-        nome: '',
-        descricao: '',
-        cor_hex: '#4f46e5'
+        nome: '', descricao: '', cor_hex: '#4f46e5'
     });
 
     const [formNovaEtapa, setFormNovaEtapa] = useState({
-        nome: '',
-        probabilidade_fechamento: 50,
-        cor_hex: '#6366f1'
+        nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1'
     });
 
     const [formNovoItem, setFormNovoItem] = useState({
-        produto_id: '',
-        descricao: '',
-        quantidade: 1,
-        valor_unitario: 0
+        produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0
     });
 
     const [formPerda, setFormPerda] = useState({
-        motivo_perda_id: '',
-        justificativa_perda: ''
+        motivo_perda_id: '', justificativa_perda: ''
     });
 
     const [novaAtividade, setNovaAtividade] = useState({
-        tipo: 'NOTA',
-        descricao: '',
-        data_agendamento: ''
+        tipo: 'NOTA', descricao: '', data_agendamento: ''
     });
 
     useEffect(() => {
         carregarBoard();
-
         const handleAtualizacao = () => carregarBoard();
         window.addEventListener('crm_pipeline_atualizado', handleAtualizacao);
         return () => window.removeEventListener('crm_pipeline_atualizado', handleAtualizacao);
@@ -126,7 +110,6 @@ export default function BoardCrm() {
         }
     };
 
-    // KPIs com Forecast Ponderado
     const kpis = useMemo(() => {
         if (!pipeline?.etapas) return { totalPipeline: 0, totalCards: 0, ticketMedio: 0, forecastPonderado: 0 };
         let totalPipeline = 0;
@@ -186,7 +169,7 @@ export default function BoardCrm() {
             setEditandoNome(false);
             window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
-            alert("Erro ao renomear pipeline.");
+            alert(err.response?.data?.error?.message || "Erro ao renomear pipeline.");
         }
     };
 
@@ -200,7 +183,7 @@ export default function BoardCrm() {
             setPipelineSelecionadoId(data.data.id);
             window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
-            alert("Erro ao criar novo pipeline.");
+            alert(err.response?.data?.error?.message || "Erro ao criar novo pipeline.");
         } finally {
             setSalvando(false);
         }
@@ -215,7 +198,7 @@ export default function BoardCrm() {
             carregarBoard();
             window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
-            alert("Erro ao criar etapa.");
+            alert(err.response?.data?.error?.message || "Erro ao criar etapa.");
         } finally {
             setSalvando(false);
         }
@@ -228,7 +211,7 @@ export default function BoardCrm() {
             carregarBoard();
             window.dispatchEvent(new Event('crm_pipeline_atualizado'));
         } catch (err) {
-            alert(err.response?.data?.error || "Erro ao excluir etapa.");
+            alert(err.response?.data?.error?.message || err.response?.data?.error || "Erro ao excluir etapa.");
         }
     };
 
@@ -245,16 +228,11 @@ export default function BoardCrm() {
             });
             setModalNovoAberto(false);
             setFormNovo({
-                titulo: '',
-                nome_contato: '',
-                email_contato: '',
-                telefone_contato: '',
-                valor_estimado: '',
-                vendedor_id: ''
+                titulo: '', nome_contato: '', email_contato: '', telefone_contato: '', valor_estimado: '', vendedor_id: ''
             });
             carregarBoard();
-        } catch (error) {
-            alert("Erro ao cadastrar oportunidade.");
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao cadastrar oportunidade.");
         } finally {
             setSalvando(false);
         }
@@ -266,8 +244,8 @@ export default function BoardCrm() {
         setSalvando(true);
         try {
             const payload = {
-                produto_id: formNovoItem.produto_id || null, // Garante envio da chave certa
-                item_id: formNovoItem.produto_id || null, // Envia fallback por garantia
+                produto_id: formNovoItem.produto_id || null,
+                item_id: formNovoItem.produto_id || null,
                 descricao: formNovoItem.descricao,
                 quantidade: parseFloat(formNovoItem.quantidade) || 1,
                 valor_unitario: parseFloat(formNovoItem.valor_unitario) || 0
@@ -277,7 +255,7 @@ export default function BoardCrm() {
             setFormNovoItem({ produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0 });
             await carregarBoard();
         } catch (err) {
-            alert(err.response?.data?.message || err.response?.data?.error || "Erro ao adicionar produto.");
+            alert(err.response?.data?.error?.message || err.response?.data?.message || "Erro ao adicionar produto.");
         } finally {
             setSalvando(false);
         }
@@ -289,7 +267,7 @@ export default function BoardCrm() {
             await api.delete(`/crm/oportunidades/${cardSelecionado.id}/itens/${itemId}`);
             await carregarBoard();
         } catch (err) {
-            alert("Erro ao remover item.");
+            alert(err.response?.data?.error?.message || "Erro ao remover item.");
         }
     };
 
@@ -298,11 +276,11 @@ export default function BoardCrm() {
         if (!confirm("Confirmar conversão da oportunidade com os itens em Orçamento Comercial?")) return;
         try {
             const { data } = await api.post(`/crm/oportunidades/${oportunidadeId}/converter-orcamento`);
-            alert(data.data.message);
+            alert(data?.data?.message || "Orçamento gerado com sucesso!");
             if (drawerAberto) setDrawerAberto(false);
             carregarBoard();
         } catch (err) {
-            alert("Erro ao converter lead em orçamento.");
+            alert(err.response?.data?.error?.message || "Erro ao converter lead em orçamento.");
         }
     };
 
@@ -326,7 +304,7 @@ export default function BoardCrm() {
             if (drawerAberto) setDrawerAberto(false);
             carregarBoard();
         } catch (err) {
-            alert("Erro ao registrar perda.");
+            alert(err.response?.data?.error?.message || "Erro ao registrar perda.");
         } finally {
             setSalvando(false);
         }
@@ -347,7 +325,7 @@ export default function BoardCrm() {
             setNovaAtividade({ tipo: 'NOTA', descricao: '', data_agendamento: '' });
             carregarBoard();
         } catch (err) {
-            alert("Erro ao registrar atividade.");
+            alert(err.response?.data?.error?.message || "Erro ao registrar atividade.");
         }
     };
 
@@ -779,14 +757,14 @@ export default function BoardCrm() {
                                 <div className="pt-2 flex gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => converterEmOrcamento(cardSelecionado.id)}
+                                        onClick={(e) => converterEmOrcamento(cardSelecionado.id, e)}
                                         className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-semibold transition cursor-pointer"
                                     >
                                         Converter em Orçamento ERP
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => abrirModalPerda(cardSelecionado)}
+                                        onClick={(e) => abrirModalPerda(cardSelecionado, e)}
                                         className="bg-rose-950 text-rose-400 border border-rose-900 hover:bg-rose-900 hover:text-white px-3 py-2 rounded-lg font-medium transition cursor-pointer"
                                     >
                                         Marcar Perdido

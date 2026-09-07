@@ -581,7 +581,12 @@ class CrmController extends Controller
                 ]);
             });
         } catch (\Exception $e) {
-            return response()->json(['error' => ['message' => 'Falha na conversão: ' . $e->getMessage()]], 500);
+            return response()->json([
+                'error' => [
+                    'code' => 'CONVERSION_ERROR',
+                    'message' => $e->getMessage()
+                ]
+            ], 422); // <-- Corrigido para 422 para o frontend conseguir ler a mensagem
         }
     }
 
