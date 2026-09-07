@@ -495,6 +495,7 @@ class CrmController extends Controller
             return DB::transaction(function () use ($oportunidade, $tenantId, $request) {
                 $clienteId = $oportunidade->cliente_id;
 
+                // Cria o cliente se ele ainda for apenas um Lead
                 if (!$clienteId) {
                     $cpfAleatorio = 'CRM' . strtoupper(substr(str_replace('-', '', (string) Str::uuid()), 0, 8));
                     $pessoa = Pessoa::create([
@@ -523,6 +524,7 @@ class CrmController extends Controller
                 $ultimoNumero = PedidoVenda::withoutGlobalScopes()->where('tenant_id', $tenantId)->max('numero_pedido') ?? 1000;
                 $valorEstimado = (float) ($oportunidade->valor_estimado ?? 0);
 
+                // Cria o cabeçalho do Orçamento
                 $orcamento = PedidoVenda::create([
                     'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
@@ -544,19 +546,43 @@ class CrmController extends Controller
                     'observacoes' => "Orçamento gerado a partir do Funil CRM: {$oportunidade->titulo}",
                 ]);
 
-                // Itens detalhados do orçamento
+                $observacoesAvulsos = [];
+
+                // Lança os itens no Orçamento
                 if ($oportunidade->itens->isNotEmpty()) {
                     foreach ($oportunidade->itens as $itemOp) {
 
-                        // Validação: ERPs exigem vínculo com o catálogo para faturamento
-                        if (empty($itemOp->produto_id)) {
-                            throw new \Exception("O item '{$itemOp->descricao}' é avulso. Para converter em Orçamento, todos os itens devem estar vinculados a produtos do catálogo.");
+                        $produtoIdParaFaturar = $itemOp->produto_id;
+
+                        // MÁGICA AQUI: Se o item for avulso, resolve de forma invisível para o usuário
+                        if (empty($produtoIdParaFaturar)) {
+                            $itemGenerico = \App\Models\Item::firstOrCreate(
+                                [
+                                    'tenant_id' => $tenantId,
+                                    'codigo_sku' => 'ITEM-AVULSO'
+                                ],
+                                [
+                                    'id' => (string) Str::uuid(),
+                                    'nome' => 'Item Avulso / Diversos',
+                                    'tipo_item' => 'SERVICO', // Seta como Serviço para não impactar estoque WMS
+                                    'unidade_medida' => 'UN',
+                                    'preco_venda' => 0.00,
+                                    'controla_estoque' => false,
+                                    'is_ativo' => true,
+                                ]
+                            );
+
+                            $produtoIdParaFaturar = $itemGenerico->id;
+                            $itemOp->update(['produto_id' => $produtoIdParaFaturar]);
+
+                            // Guarda a descrição que o vendedor digitou para não perder a informação
+                            $observacoesAvulsos[] = "Item Avulso: " . $itemOp->descricao . " (Qtd: " . (float)$itemOp->quantidade . ")";
                         }
 
                         \App\Models\PedidoVendaItem::create([
                             'id' => (string) Str::uuid(),
                             'pedido_id' => $orcamento->id,
-                            'item_id' => $itemOp->produto_id, // <-- CORREÇÃO AQUI (produto_id em vez de item_id)
+                            'item_id' => $produtoIdParaFaturar,
                             'quantidade' => $itemOp->quantidade,
                             'preco_tabela_unitario' => $itemOp->valor_unitario,
                             'percentual_desconto' => 0.00,
@@ -568,6 +594,14 @@ class CrmController extends Controller
                     }
                 }
 
+                // Se houveram itens avulsos, adiciona as descrições nas notas do Orçamento
+                if (!empty($observacoesAvulsos)) {
+                    $orcamento->update([
+                        'observacoes' => $orcamento->observacoes . "\n\nDetalhes de Itens Avulsos:\n" . implode("\n", $observacoesAvulsos)
+                    ]);
+                }
+
+                // Finaliza a Oportunidade
                 $oportunidade->update([
                     'status' => 'GANHO',
                     'data_fechamento' => now()
@@ -584,9 +618,9 @@ class CrmController extends Controller
             return response()->json([
                 'error' => [
                     'code' => 'CONVERSION_ERROR',
-                    'message' => $e->getMessage()
+                    'message' => 'Falha na conversão: ' . $e->getMessage()
                 ]
-            ], 422); // <-- Corrigido para 422 para o frontend conseguir ler a mensagem
+            ], 422);
         }
     }
 
