@@ -488,7 +488,7 @@ class CrmController extends Controller
 
     public function converterParaOrcamento(Request $request, string $id): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
+        $tenantId = $this->getTenantId();
         $oportunidade = CrmOportunidade::with('itens')->where('tenant_id', $tenantId)->findOrFail($id);
 
         try {
@@ -544,20 +544,26 @@ class CrmController extends Controller
                     'observacoes' => "Orçamento gerado a partir do Funil CRM: {$oportunidade->titulo}",
                 ]);
 
-                // Itens detalhados do orçamento - Mapeando de produto_id
+                // Itens detalhados do orçamento
                 if ($oportunidade->itens->isNotEmpty()) {
                     $itemSeq = 1;
                     foreach ($oportunidade->itens as $itemOp) {
-                        PedidoVendaItem::create([
+                        // 👉 CORREÇÃO: \App\Models\PedidoVendaItem em vez de PedidoVendaItem
+                        \App\Models\PedidoVendaItem::create([
                             'id' => (string) Str::uuid(),
                             'tenant_id' => $tenantId,
                             'pedido_venda_id' => $orcamento->id,
-                            'produto_id' => $itemOp->produto_id, // CORREÇÃO: Utilizando a propriedade correta
+                            'item_id' => $itemOp->item_id, // <-- Corrigido para referenciar o item correto
                             'sequencia_item' => $itemSeq++,
                             'descricao' => $itemOp->descricao,
                             'quantidade' => $itemOp->quantidade,
-                            'valor_unitario' => $itemOp->valor_unitario,
-                            'valor_total' => $itemOp->valor_total,
+                            'valor_unitario' => $itemOp->valor_unitario, // No PedidoVendaItem original chama-se preco_venda_unitario, mas vamos adaptar ao DTO
+                            'preco_venda_unitario' => $itemOp->valor_unitario,
+                            'preco_tabela_unitario' => $itemOp->valor_unitario,
+                            'valor_total_bruto' => $itemOp->valor_total,
+                            'valor_total_liquido' => $itemOp->valor_total,
+                            'percentual_desconto' => 0.00,
+                            'valor_desconto_unitario' => 0.00,
                         ]);
                     }
                 }
