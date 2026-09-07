@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
+use App\Models\Perfil;
 use App\Models\Tenant;
-use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -13,35 +13,36 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Criação do Tenant Principal
+        // 1. Criação do Tenant Principal (coluna correta: 'documento')
         $tenant = Tenant::firstOrCreate(
-            ['documento_federal' => '00.000.000/0001-91'],
+            ['documento' => '00.000.000/0001-91'],
             [
                 'id' => (string) Str::uuid(),
                 'razao_social' => 'Scalle Enterprise Matriz',
                 'nome_fantasia' => 'Scalle Matriz',
-                'regime_tributario' => 'LUCRO_PRESUMIDO',
-                'plano_assinatura' => 'ENTERPRISE',
-                'is_ativo' => true,
+                'status' => 'ativo',
             ]
         );
 
-        // 2. Perfil de Acesso Administrador Total
-        $adminRole = Role::firstOrCreate(
-            ['tenant_id' => $tenant->id, 'nome_regra' => 'ADMIN'],
+        // 2. Perfil de Acesso Administrador
+        $adminPerfil = Perfil::firstOrCreate(
+            ['tenant_id' => $tenant->id, 'nome' => 'ADMINISTRADOR'],
             [
                 'id' => (string) Str::uuid(),
-                'descricao' => 'Administrador Geral do Sistema com Acesso Irrestrito',
-                'permissoes' => ['*'],
+                'slug' => 'administrador',
+                'descricao' => 'Acesso total administrativo',
+                'is_admin' => true,
+                'is_sistema' => true,
             ]
         );
 
-        // 3. Usuário Administrador Master
-        $adminUser = User::firstOrCreate(
+        // 3. Usuário Administrador Master (SaaS Owner)
+        User::firstOrCreate(
             ['email' => 'admin@scalle.com.br'],
             [
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $tenant->id,
+                'perfil_id' => $adminPerfil->id,
                 'name' => 'Administrador Scalle',
                 'password' => Hash::make('Scalle@2026'),
                 'is_ativo' => true,
@@ -49,12 +50,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // Vincula a role ao usuário se existir relação
-        if (method_exists($adminUser, 'roles')) {
-            $adminUser->roles()->syncWithoutDetaching([$adminRole->id]);
-        }
-
-        // 4. Executa Seeders Auxiliares (Itens de Catálogo, etc.)
+        // 4. Executa seeders complementares
         $this->call([
             ItemSeeder::class,
         ]);

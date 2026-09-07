@@ -13345,6 +13345,7 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CrmOportunidadeItem.php
 
 namespace App\Models;
 
+use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13352,16 +13353,19 @@ use Illuminate\Support\Str;
 
 class CrmOportunidadeItem extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToTenant;
 
     protected $table = 'crm_oportunidade_itens';
+
     public $incrementing = false;
+
     protected $keyType = 'string';
 
     protected $fillable = [
         'id',
+        'tenant_id',
         'oportunidade_id',
-        'produto_id', // <-- COLUNA CORRETA DA TABELA
+        'produto_id',
         'descricao',
         'quantidade',
         'valor_unitario',
@@ -13377,17 +13381,30 @@ class CrmOportunidadeItem extends Model
     protected static function boot(): void
     {
         parent::boot();
-        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
     }
 
     public function oportunidade(): BelongsTo
     {
-        return $this->belongsTo(CrmOportunidade::class, 'oportunidade_id', 'id');
+        return $this->belongsTo(
+            CrmOportunidade::class,
+            'oportunidade_id',
+            'id'
+        );
     }
 
     public function produto(): BelongsTo
     {
-        return $this->belongsTo(Item::class, 'produto_id', 'id');
+        return $this->belongsTo(
+            Item::class,
+            'produto_id',
+            'id'
+        );
     }
 }
 
@@ -22611,6 +22628,45 @@ return new class extends Migration
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_07_014401_add_produto_id_to_crm_oportunidade_itens_table.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasTable('crm_oportunidade_itens')
+            && !Schema::hasColumn('crm_oportunidade_itens', 'produto_id')) {
+
+            Schema::table('crm_oportunidade_itens', function (Blueprint $table) {
+                $table->uuid('produto_id')
+                    ->nullable()
+                    ->index();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasTable('crm_oportunidade_itens')
+            && Schema::hasColumn('crm_oportunidade_itens', 'produto_id')) {
+
+            Schema::table('crm_oportunidade_itens', function (Blueprint $table) {
+                $table->dropColumn('produto_id');
+            });
+        }
+    }
+};
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\DatabaseSeeder.php
 ========================================
 
@@ -22661,6 +22717,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Administrador Scalle',
                 'password' => Hash::make('Scalle@2026'),
                 'is_ativo' => true,
+                'is_master' => false,
             ]
         );
 
@@ -22668,8 +22725,110 @@ class DatabaseSeeder extends Seeder
         if (method_exists($adminUser, 'roles')) {
             $adminUser->roles()->syncWithoutDetaching([$adminRole->id]);
         }
+
+        // 4. Executa Seeders Auxiliares (Itens de Catálogo, etc.)
+        $this->call([
+            ItemSeeder::class,
+        ]);
     }
 }
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\ItemSeeder.php
+========================================
+
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\Item;
+use App\Models\Tenant;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
+
+class ItemSeeder extends Seeder
+{
+    public function run(): void
+    {
+        // Pega o primeiro tenant ativo ou cria um de exemplo se não existir
+        $tenantId = Tenant::first()?->id ?? (string) Str::uuid();
+
+        $itens = [
+            [
+                'nome' => 'Sensor de Temperatura Termistor NTC 10K',
+                'codigo_sku' => 'COMP-TERM-10K',
+                'codigo_barras_ean' => '7891234567890',
+                'tipo_item' => 'PRODUTO',
+                'preco_venda' => 45.90,
+                'preco_custo' => 18.50,
+                'unidade_medida' => 'UN',
+                'ncm' => '90251990',
+                'cfop_padrao' => '5102',
+                'controla_estoque' => true,
+                'estoque_minimo' => 5.0000,
+                'is_ativo' => true,
+            ],
+            [
+                'nome' => 'Fluido Refrigerante R-410A (Cilindro 11.3kg)',
+                'codigo_sku' => 'FLUIDO-R410A',
+                'codigo_barras_ean' => '7899876543210',
+                'tipo_item' => 'PRODUTO',
+                'preco_venda' => 850.00,
+                'preco_custo' => 520.00,
+                'unidade_medida' => 'UN',
+                'ncm' => '38247800',
+                'cfop_padrao' => '5102',
+                'controla_estoque' => true,
+                'estoque_minimo' => 2.0000,
+                'is_ativo' => true,
+            ],
+            [
+                'nome' => 'Mão de Obra de Instalação de Ar Condicionado Split',
+                'codigo_sku' => 'SERV-INST-SPLIT',
+                'codigo_barras_ean' => null,
+                'tipo_item' => 'SERVICO',
+                'preco_venda' => 350.00,
+                'preco_custo' => 0.00,
+                'unidade_medida' => 'SV',
+                'ncm' => null,
+                'cfop_padrao' => '5933',
+                'controla_estoque' => false,
+                'estoque_minimo' => 0.0000,
+                'is_ativo' => true,
+            ],
+            [
+                'nome' => 'Disjuntor Tripolar 50A',
+                'codigo_sku' => 'IND-INS-01',
+                'codigo_barras_ean' => '7891112223334',
+                'tipo_item' => 'MATERIA_PRIMA',
+                'preco_venda' => 120.00,
+                'preco_custo' => 80.00,
+                'unidade_medida' => 'UN',
+                'ncm' => '85362000',
+                'cfop_padrao' => '5102',
+                'controla_estoque' => true,
+                'estoque_minimo' => 10.0000,
+                'is_ativo' => true,
+            ],
+        ];
+
+        foreach ($itens as $dados) {
+            Item::updateOrCreate(
+                [
+                    'tenant_id' => $tenantId,
+                    'codigo_sku' => $dados['codigo_sku'],
+                ],
+                array_merge($dados, [
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                ])
+            );
+        }
+    }
+}
+
 
 
 ========================================
@@ -22715,6 +22874,7 @@ class MasterOwnerSeeder extends Seeder
         );
     }
 }
+
 
 
 ========================================
