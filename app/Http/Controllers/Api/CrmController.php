@@ -495,6 +495,7 @@ class CrmController extends Controller
             return DB::transaction(function () use ($oportunidade, $tenantId, $request) {
                 $clienteId = $oportunidade->cliente_id;
 
+                // Se o lead não for cliente, cria um cadastro rápido
                 if (!$clienteId) {
                     $cpfAleatorio = 'CRM' . strtoupper(substr(str_replace('-', '', (string) Str::uuid()), 0, 8));
                     $pessoa = Pessoa::create([
@@ -523,6 +524,7 @@ class CrmController extends Controller
                 $ultimoNumero = PedidoVenda::withoutGlobalScopes()->where('tenant_id', $tenantId)->max('numero_pedido') ?? 1000;
                 $valorEstimado = (float) ($oportunidade->valor_estimado ?? 0);
 
+                // Cria o Orçamento na tabela de Pedidos
                 $orcamento = PedidoVenda::create([
                     'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
@@ -544,30 +546,25 @@ class CrmController extends Controller
                     'observacoes' => "Orçamento gerado a partir do Funil CRM: {$oportunidade->titulo}",
                 ]);
 
-                // Itens detalhados do orçamento
+                // Itens detalhados do orçamento (Agora com as chaves corretas)
                 if ($oportunidade->itens->isNotEmpty()) {
-                    $itemSeq = 1;
                     foreach ($oportunidade->itens as $itemOp) {
-                        // 👉 CORREÇÃO: \App\Models\PedidoVendaItem em vez de PedidoVendaItem
                         \App\Models\PedidoVendaItem::create([
                             'id' => (string) Str::uuid(),
-                            'tenant_id' => $tenantId,
-                            'pedido_venda_id' => $orcamento->id,
-                            'item_id' => $itemOp->item_id, // <-- Corrigido para referenciar o item correto
-                            'sequencia_item' => $itemSeq++,
-                            'descricao' => $itemOp->descricao,
+                            'pedido_id' => $orcamento->id, // <-- CORREÇÃO: Chave exata do model
+                            'item_id' => $itemOp->item_id,
                             'quantidade' => $itemOp->quantidade,
-                            'valor_unitario' => $itemOp->valor_unitario, // No PedidoVendaItem original chama-se preco_venda_unitario, mas vamos adaptar ao DTO
-                            'preco_venda_unitario' => $itemOp->valor_unitario,
                             'preco_tabela_unitario' => $itemOp->valor_unitario,
-                            'valor_total_bruto' => $itemOp->valor_total,
-                            'valor_total_liquido' => $itemOp->valor_total,
                             'percentual_desconto' => 0.00,
                             'valor_desconto_unitario' => 0.00,
+                            'preco_venda_unitario' => $itemOp->valor_unitario,
+                            'valor_total_bruto' => $itemOp->valor_total,
+                            'valor_total_liquido' => $itemOp->valor_total,
                         ]);
                     }
                 }
 
+                // Finaliza a Oportunidade no CRM
                 $oportunidade->update([
                     'status' => 'GANHO',
                     'data_fechamento' => now()
