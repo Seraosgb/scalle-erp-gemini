@@ -28,7 +28,7 @@ import UsuariosPage from './pages/usuarios/UsuariosPage';
 // CRM & Funil
 import BoardCrm from './pages/crm/BoardCrm';
 import ConfiguracoesCrm from './pages/crm/ConfiguracoesCrm';
-import CrmKanbanView from './pages/crm/CrmKanbanView';
+import CrmKanbanView from './Pages/Crm/CrmKanbanView';
 
 // Gestão Master & Billing
 import MasterPage from './pages/master/MasterPage';
@@ -51,6 +51,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           {/* Rotas Públicas */}
+          <Route path="/login" element={<Login />} />
           <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
           <Route path="/crm" element={<LandingCrm />} />
