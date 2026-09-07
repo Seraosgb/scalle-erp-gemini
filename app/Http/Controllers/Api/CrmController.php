@@ -409,62 +409,51 @@ class CrmController extends Controller
         return response()->json(['data' => $oportunidade], 201);
     }
 
-    public function adicionarItemOportunidade(Request $request, string $id)
-{
-    // Obtém o tenant_id de forma segura através do usuário autenticado
-    $tenantId = $request->user()->tenant_id ?? auth()->user()->tenant_id ?? session('tenant_id');
+    public function adicionarItemOportunidade(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
 
-    // Busca a oportunidade garantindo o isolamento
-    $oportunidade = \App\Models\CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
-
-    $validated = $request->validate([
-        'produto_id'     => 'nullable|uuid',
-        'item_id'        => 'nullable|uuid',
-        'descricao'      => 'required|string|max:255',
-        'quantidade'     => 'required|numeric|min:0.0001',
-        'valor_unitario' => 'required|numeric|min:0',
-    ]);
-
-    $produtoId = !empty($validated['produto_id'])
-        ? $validated['produto_id']
-        : (!empty($validated['item_id']) ? $validated['item_id'] : null);
-
-    $qtd = (float) $validated['quantidade'];
-    $valorUnit = (float) $validated['valor_unitario'];
-    $valorTotal = round($qtd * $valorUnit, 2);
-
-    $itemCriado = \Illuminate\Support\Facades\DB::transaction(function () use ($oportunidade, $produtoId, $validated, $qtd, $valorUnit, $valorTotal) {
-        $item = $oportunidade->itens()->create([
-            'produto_id'     => $produtoId,
-            'descricao'      => $validated['descricao'],
-            'quantidade'     => $qtd,
-            'valor_unitario' => $valorUnit,
-            'valor_total'    => $valorTotal,
+        $validated = $request->validate([
+            'produto_id' => 'nullable|uuid|exists:pro_itens,id',
+            'descricao' => 'required|string|max:255',
+            'quantidade' => 'required|numeric|min:0.01',
+            'valor_unitario' => 'required|numeric|min:0',
         ]);
 
-        // Recalcula o valor estimado total da oportunidade somando os itens
-        $novoValorEstimado = (float) $oportunidade->itens()->sum('valor_total');
-        $oportunidade->update([
-            'valor_estimado' => $novoValorEstimado,
-        ]);
+        $item = DB::transaction(function () use ($validated, $oportunidade) {
+            $totalItem = (float)$validated['quantidade'] * (float)$validated['valor_unitario'];
 
-        return $item;
-    });
+            $novoItem = CrmOportunidadeItem::create([
+                'id' => (string) Str::uuid(),
+                'oportunidade_id' => $oportunidade->id,
+                'produto_id' => $validated['produto_id'] ?? null,
+                'descricao' => $validated['descricao'],
+                'quantidade' => (float)$validated['quantidade'],
+                'valor_unitario' => (float)$validated['valor_unitario'],
+                'valor_total' => $totalItem,
+            ]);
 
-    return response()->json([
-        'success' => true,
-        'data'    => $itemCriado,
-        'message' => 'Item adicionado com sucesso à oportunidade.'
-    ], 201);
-}
+            $novoTotalOp = CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)->sum('valor_total');
+            $oportunidade->update(['valor_estimado' => $novoTotalOp]);
+
+            return $novoItem;
+        });
+
+        return response()->json(['data' => $item], 201);
+    }
 
     public function removerItemOportunidade(Request $request, string $id, string $itemId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
         $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
 
-        DB::transaction(function () use ($itemId, $oportunidade, $tenantId) {
-            CrmOportunidadeItem::where('tenant_id', $tenantId)->where('oportunidade_id', $oportunidade->id)->where('id', $itemId)->delete();
+        DB::transaction(function () use ($itemId, $oportunidade) {
+            // Removido o where('tenant_id', $tenantId) que causava o erro SQL
+            CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)
+                ->where('id', $itemId)
+                ->delete();
+
             $novoTotalOp = CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)->sum('valor_total');
             $oportunidade->update(['valor_estimado' => $novoTotalOp]);
         });

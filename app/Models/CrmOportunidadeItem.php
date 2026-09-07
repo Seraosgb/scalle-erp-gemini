@@ -26,9 +26,9 @@ class CrmOportunidadeItem extends Model
     ];
 
     protected $casts = [
-        'quantidade'     => 'decimal:4',
+        'quantidade' => 'decimal:4',
         'valor_unitario' => 'decimal:4',
-        'valor_total'    => 'decimal:2',
+        'valor_total' => 'decimal:2',
     ];
 
     protected static function boot(): void
@@ -39,6 +39,7 @@ class CrmOportunidadeItem extends Model
 
     public function oportunidade(): BelongsTo
     {
+        // Força explicitamente a FK 'oportunidade_id' para a tabela crm_oportunidades
         return $this->belongsTo(CrmOportunidade::class, 'oportunidade_id', 'id');
     }
 
