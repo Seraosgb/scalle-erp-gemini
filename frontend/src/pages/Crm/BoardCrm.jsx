@@ -269,7 +269,7 @@ export default function BoardCrm() {
             setFormNovoItem({ produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0 });
             await carregarBoard();
         } catch (err) {
-            alert("Erro ao adicionar produto.");
+            alert(err.response?.data?.message || err.response?.data?.error || "Erro ao adicionar produto.");
         } finally {
             setSalvando(false);
         }
@@ -831,15 +831,17 @@ export default function BoardCrm() {
                                                     setFormNovoItem({
                                                         ...formNovoItem,
                                                         produto_id: e.target.value,
-                                                        descricao: prod ? prod.nome_produto : formNovoItem.descricao,
-                                                        valor_unitario: prod ? prod.preco_venda_padrao : formNovoItem.valor_unitario
+                                                        descricao: prod ? prod.nome : formNovoItem.descricao,
+                                                        valor_unitario: prod ? parseFloat(prod.preco_venda || 0) : formNovoItem.valor_unitario
                                                     });
                                                 }}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white cursor-pointer"
                                             >
                                                 <option value="">Item Avulso / Catálogo</option>
                                                 {produtos.map(p => (
-                                                    <option key={p.id} value={p.id}>{p.nome_produto}</option>
+                                                    <option key={p.id} value={p.id}>
+                                                        {p.nome} {p.codigo_sku ? `(${p.codigo_sku})` : ''} - R$ {Number(p.preco_venda || 0).toFixed(2)}
+                                                    </option>
                                                 ))}
                                             </select>
                                         </div>

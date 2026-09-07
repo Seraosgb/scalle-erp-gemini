@@ -1,11 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\AtivoController;
+use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillingWebhookController;
 use App\Http\Controllers\Api\CertificadoFiscalController;
 use App\Http\Controllers\Api\CompraController;
 use App\Http\Controllers\Api\CotacaoCompraController;
+use App\Http\Controllers\Api\CrmController;
+use App\Http\Controllers\Api\CrmInboundController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmpresaController;
 use App\Http\Controllers\Api\ExportacaoContabilController;
@@ -18,16 +21,14 @@ use App\Http\Controllers\Api\PcpController;
 use App\Http\Controllers\Api\PerfilController;
 use App\Http\Controllers\Api\PessoaController;
 use App\Http\Controllers\Api\PortalClienteController;
+use App\Http\Controllers\Api\SessaoController;
+use App\Http\Controllers\Api\TenantBillingController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VendaController;
 use App\Http\Middleware\CheckMaster;
 use App\Http\Middleware\CheckSubscriptionStatus;
 use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuditoriaController;
-use App\Http\Controllers\Api\SessaoController;
-use App\Http\Controllers\Api\CrmInboundController;
-use App\Http\Controllers\Api\CrmController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -36,7 +37,7 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
-// Webhook de Captação de Leads (Landing Pages / RD Station)
+// Webhooks de Captação de Leads (Landing Pages / RD Station)
 Route::post('/crm/webhook/lead/{token}', [CrmInboundController::class, 'receberLead']);
 Route::post('/crm/webhook/{token}', [CrmController::class, 'webhookCapturaLead']);
 
@@ -50,9 +51,6 @@ Route::prefix('portal')->group(function () {
     Route::post('/os/{token}/assinar', [PortalClienteController::class, 'assinarLaudoCliente']);
 });
 
-Route::get('/portal/os/{token}', [PortalClienteController::class, 'consultarOs']);
-Route::post('/portal/os/{token}/aprovar', [PortalClienteController::class, 'aprovarOrcamento']);
-
 // ==========================================
 // Rotas Protegidas por Autenticação (Sanctum + Tenant + Subscription)
 // ==========================================
@@ -62,9 +60,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::prefix('auth')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
+        Route::post('/mfa/setup', [AuthController::class, 'mfaSetup']);
+        Route::post('/mfa/confirmar', [AuthController::class, 'mfaConfirmar']);
+        Route::post('/auth/mfa/desativar', [AuthController::class, 'mfaDesativar']);
+        Route::post('/password/update', [AuthController::class, 'updatePassword']);
+        Route::get('/sessoes', [SessaoController::class, 'index']);
+        Route::delete('/sessoes/{id}', [SessaoController::class, 'revogar']);
     });
 
-   // SaaS Owner (Master Global)
+    // SaaS Owner (Master Global)
     Route::middleware(CheckMaster::class)->prefix('master')->group(function () {
         Route::get('/metricas', [MasterController::class, 'metricas']);
         Route::get('/tenants', [MasterController::class, 'tenants']);
@@ -101,13 +105,14 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::delete('/perfis/{id}', [PerfilController::class, 'destroy']);
 
     // Cadastros e Pessoas
-    Route::get('/pessoas', [App\Http\Controllers\Api\PessoaController::class, 'index']);
-    Route::post('/pessoas', [App\Http\Controllers\Api\PessoaController::class, 'store']);
-    Route::get('/pessoas/{id}', [App\Http\Controllers\Api\PessoaController::class, 'show']);
-    Route::put('/pessoas/{id}', [App\Http\Controllers\Api\PessoaController::class, 'update']);
-    Route::delete('/pessoas/{id}', [App\Http\Controllers\Api\PessoaController::class, 'destroy']);
-    Route::get('/pessoas/consultar-cnpj/{cnpj}', [App\Http\Controllers\Api\PessoaController::class, 'consultarCnpj']);
+    Route::get('/pessoas', [PessoaController::class, 'index']);
+    Route::post('/pessoas', [PessoaController::class, 'store']);
+    Route::get('/pessoas/{id}', [PessoaController::class, 'show']);
+    Route::put('/pessoas/{id}', [PessoaController::class, 'update']);
+    Route::delete('/pessoas/{id}', [PessoaController::class, 'destroy']);
+    Route::get('/pessoas/consultar-cnpj/{cnpj}', [PessoaController::class, 'consultarCnpj']);
 
+    // Catálogo de Itens & Produtos
     Route::get('/itens', [ItemController::class, 'index']);
     Route::post('/itens', [ItemController::class, 'store']);
     Route::put('/itens/{id}', [ItemController::class, 'update']);
@@ -223,43 +228,48 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/pcp/mrp/gerar-cotacao', [PcpController::class, 'gerarCotacaoMrp']);
     Route::get('/pcp/ordens/{id}/genealogia', [PcpController::class, 'genealogiaLote']);
 
-    // Gestão de MFA / 2FA
-    Route::post('/auth/mfa/setup', [AuthController::class, 'mfaSetup']);
-    Route::post('/auth/mfa/confirmar', [AuthController::class, 'mfaConfirmar']);
-    Route::post('/auth/mfa/desativar', [AuthController::class, 'mfaDesativar']);
-
-    // Self-Service do Usuário (Identidade)
-    Route::post('/auth/password/update', [AuthController::class, 'updatePassword']);
-    Route::get('/auth/sessoes', [SessaoController::class, 'index']);
-    Route::delete('/auth/sessoes/{id}', [SessaoController::class, 'revogar']);
-
     // Auditoria (Administradores)
     Route::get('/auditoria', [AuditoriaController::class, 'index']);
 
+    // ==========================================
+    // CRM & FUNIL DE VENDAS
+    // ==========================================
     // Pipelines
-    Route::get('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'listarPipelines']);
-    Route::post('/crm/pipelines', [App\Http\Controllers\Api\CrmController::class, 'storePipeline']);
-    Route::put('/crm/pipelines/{id}', [App\Http\Controllers\Api\CrmController::class, 'atualizarPipeline']);
+    Route::get('/crm/pipelines', [CrmController::class, 'listarPipelines']);
+    Route::post('/crm/pipelines', [CrmController::class, 'storePipeline']);
+    Route::put('/crm/pipelines/{id}', [CrmController::class, 'atualizarPipeline']);
+    Route::put('/crm/pipelines/{pipelineId}/reordenar-etapas', [CrmController::class, 'reordenarEtapas']);
 
     // Gestão Dinâmica de Etapas (RBAC Admin/Gestor)
-    Route::post('/crm/pipelines/{pipelineId}/etapas', [App\Http\Controllers\Api\CrmController::class, 'storeEtapa']);
-    Route::put('/crm/etapas/{id}', [App\Http\Controllers\Api\CrmController::class, 'updateEtapa']);
-    Route::delete('/crm/etapas/{id}', [App\Http\Controllers\Api\CrmController::class, 'destroyEtapa']);
+    Route::post('/crm/pipelines/{pipelineId}/etapas', [CrmController::class, 'storeEtapa']);
+    Route::put('/crm/etapas/{id}', [CrmController::class, 'updateEtapa']);
+    Route::delete('/crm/etapas/{id}', [CrmController::class, 'destroyEtapa']);
 
     // Operação do Kanban
-    Route::get('/crm/board', [App\Http\Controllers\Api\CrmController::class, 'board']);
-    Route::post('/crm/oportunidades', [App\Http\Controllers\Api\CrmController::class, 'storeOportunidade']);
-    Route::put('/crm/oportunidades/{id}/mover', [App\Http\Controllers\Api\CrmController::class, 'moverCard']);
-    Route::post('/crm/oportunidades/{id}/marcar-perdido', [App\Http\Controllers\Api\CrmController::class, 'marcarPerdido']);
-    Route::post('/crm/oportunidades/{id}/converter-orcamento', [App\Http\Controllers\Api\CrmController::class, 'converterParaOrcamento']);
+    Route::get('/crm/board', [CrmController::class, 'board']);
+    Route::post('/crm/oportunidades', [CrmController::class, 'storeOportunidade']);
+    Route::put('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
+    Route::patch('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
+    Route::post('/crm/oportunidades/{id}/marcar-perdido', [CrmController::class, 'marcarPerdido']);
+    Route::post('/crm/oportunidades/{id}/converter-orcamento', [CrmController::class, 'converterParaOrcamento']);
+
+    // Itens e Grade de Produtos da Oportunidade
+    Route::post('/crm/oportunidades/{id}/itens', [CrmController::class, 'adicionarItemOportunidade']);
+    Route::delete('/crm/oportunidades/{id}/itens/{itemId}', [CrmController::class, 'removerItemOportunidade']);
 
     // Follow-ups e Atividades
-    Route::post('/crm/oportunidades/{id}/atividades', [App\Http\Controllers\Api\CrmController::class, 'adicionarAtividade']);
-    Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [App\Http\Controllers\Api\CrmController::class, 'toggleAtividade']);
+    Route::post('/crm/oportunidades/{id}/atividades', [CrmController::class, 'adicionarAtividade']);
+    Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [CrmController::class, 'toggleAtividade']);
+
+    // Motivos de Perda (Tabela de Domínio Parametrizável)
+    Route::post('/crm/motivos-perda', [CrmController::class, 'storeMotivoPerda']);
+    Route::put('/crm/motivos-perda/{id}', [CrmController::class, 'updateMotivoPerda']);
+    Route::delete('/crm/motivos-perda/{id}', [CrmController::class, 'destroyMotivoPerda']);
+
     // Métricas analíticas do CRM
-    Route::get('/crm/metricas', [App\Http\Controllers\Api\CrmController::class, 'metricasAnaliticas']);
+    Route::get('/crm/metricas', [CrmController::class, 'metricasAnaliticas']);
 
     // --- GESTÃO DE ASSINATURA (PORTAL DO INQUILINO) ---
-    Route::get('/billing/minha-assinatura', [App\Http\Controllers\Api\TenantBillingController::class, 'minhaAssinatura']);
-    Route::get('/billing/historico-faturas', [App\Http\Controllers\Api\TenantBillingController::class, 'historicoFaturas']);
+    Route::get('/billing/minha-assinatura', [TenantBillingController::class, 'minhaAssinatura']);
+    Route::get('/billing/historico-faturas', [TenantBillingController::class, 'historicoFaturas']);
 });
