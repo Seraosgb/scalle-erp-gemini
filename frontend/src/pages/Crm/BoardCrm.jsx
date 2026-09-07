@@ -265,7 +265,15 @@ export default function BoardCrm() {
         if (!cardSelecionado || !formNovoItem.descricao) return;
         setSalvando(true);
         try {
-            await api.post(`/crm/oportunidades/${cardSelecionado.id}/itens`, formNovoItem);
+            const payload = {
+                produto_id: formNovoItem.produto_id || null, // Garante envio da chave certa
+                item_id: formNovoItem.produto_id || null, // Envia fallback por garantia
+                descricao: formNovoItem.descricao,
+                quantidade: parseFloat(formNovoItem.quantidade) || 1,
+                valor_unitario: parseFloat(formNovoItem.valor_unitario) || 0
+            };
+
+            await api.post(`/crm/oportunidades/${cardSelecionado.id}/itens`, payload);
             setFormNovoItem({ produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0 });
             await carregarBoard();
         } catch (err) {

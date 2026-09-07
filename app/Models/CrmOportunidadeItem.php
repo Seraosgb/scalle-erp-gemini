@@ -18,7 +18,7 @@ class CrmOportunidadeItem extends Model
     protected $fillable = [
         'id',
         'oportunidade_id',
-        'item_id', // CORREÇÃO: item_id no lugar de produto_id
+        'produto_id', // <-- COLUNA CORRETA DA TABELA
         'descricao',
         'quantidade',
         'valor_unitario',
@@ -44,7 +44,6 @@ class CrmOportunidadeItem extends Model
 
     public function produto(): BelongsTo
     {
-        // A relação se chama 'produto', mas a chave estrangeira no banco é 'item_id'
-        return $this->belongsTo(Item::class, 'item_id', 'id');
+        return $this->belongsTo(Item::class, 'produto_id', 'id');
     }
 }

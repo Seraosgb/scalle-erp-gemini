@@ -422,17 +422,17 @@ class CrmController extends Controller
             'valor_unitario' => 'required|numeric|min:0',
         ]);
 
-        $itemId = !empty($validated['produto_id'])
+        $produtoReferenciaId = !empty($validated['produto_id'])
             ? $validated['produto_id']
             : (!empty($validated['item_id']) ? $validated['item_id'] : null);
 
-        $item = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $oportunidade, $itemId) {
+        $item = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $oportunidade, $produtoReferenciaId) {
             $totalItem = (float)$validated['quantidade'] * (float)$validated['valor_unitario'];
 
             $novoItem = \App\Models\CrmOportunidadeItem::create([
                 'id' => (string) Str::uuid(),
                 'oportunidade_id' => $oportunidade->id,
-                'item_id' => $itemId, // CORREÇÃO: Usar item_id
+                'produto_id' => $produtoReferenciaId, // <-- COLUNA CORRETA DA TABELA
                 'descricao' => $validated['descricao'],
                 'quantidade' => (float)$validated['quantidade'],
                 'valor_unitario' => (float)$validated['valor_unitario'],
