@@ -5,13 +5,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // Layout Principal com Sidebar
 import AppLayout from './layouts/AppLayout';
 
-// Páginas
+// Páginas de Autenticação e Públicas
 import Login from './pages/Login';
+import PortalOsPage from './pages/portal/PortalOsPage';
+import LandingCrm from './pages/public/LandingCrm';
+
+// Páginas Operacionais e Corporativas
 import DashboardPage from './pages/dashboard/DashboardPage';
 import WmsPage from './pages/wms/WmsPage';
 import OrdensServicoPage from './pages/os/OrdensServicoPage';
-import PortalOsPage from './pages/portal/PortalOsPage';
 import PcpPage from './pages/pcp/PcpPage';
+import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
 import VendasPage from './pages/vendas/VendasPage';
 import PdvPage from './pages/vendas/PdvPage';
 import ComprasPage from './pages/compras/ComprasPage';
@@ -20,13 +24,16 @@ import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
+
+// CRM & Funil
+import BoardCrm from './pages/crm/BoardCrm';
+import ConfiguracoesCrm from './pages/crm/ConfiguracoesCrm';
+import CrmKanbanView from './pages/crm/CrmKanbanView';
+
+// Gestão Master & Billing
 import MasterPage from './pages/master/MasterPage';
-import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
-import BoardCrm from './pages/Crm/BoardCrm';
-import ConfiguracoesCrm from './pages/Crm/ConfiguracoesCrm';
-import LandingCrm from './pages/public/LandingCrm';
-import PainelCobrancaView from './Pages/Billing/PainelCobrancaView'
-import AuditoriaE2EView from './Pages/Master/AuditoriaE2EView';
+import PainelCobrancaView from './pages/billing/PainelCobrancaView';
+import AuditoriaE2EView from './pages/master/AuditoriaE2EView';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -48,39 +55,54 @@ export default function App() {
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
           <Route path="/crm" element={<LandingCrm />} />
 
-          {/* Alias / Redirecionamento de segurança para rota interna do CRM */}
+          {/* Aliases e Redirecionamentos de Segurança */}
           <Route path="/crm/configuracoes" element={<Navigate to="/app/crm/configuracoes" replace />} />
-
-          {/* Redirecionamento da raiz pura */}
           <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
 
-          {/* Rotas Protegidas sob o Layout /app */}
+          {/* Rotas Protegidas sob o Layout Principal (/app) */}
           <Route path="/app" element={<AppLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
+
+            {/* Dashboard */}
             <Route path="dashboard" element={<DashboardPage />} />
+
+            {/* CRM & Vendas */}
             <Route path="crm" element={<BoardCrm />} />
+            <Route path="crm/kanban" element={<CrmKanbanView />} />
             <Route path="crm/configuracoes" element={<ConfiguracoesCrm />} />
-            <Route path="wms" element={<WmsPage />} />
-            <Route path="estoque" element={<WmsPage />} />
-            <Route path="pcp" element={<PcpPage />} />
-            <Route path="pcp/terminal" element={<TerminalFabricaPage />} />
-            <Route path="compras" element={<ComprasPage />} />
-            <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
             <Route path="vendas" element={<VendasPage />} />
             <Route path="pdv" element={<PdvPage />} />
+
+            {/* Suprimentos & WMS */}
+            <Route path="wms" element={<WmsPage />} />
+            <Route path="estoque" element={<Navigate to="/app/wms" replace />} />
+            <Route path="compras" element={<ComprasPage />} />
+            <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
+
+            {/* Indústria & PCP */}
+            <Route path="pcp" element={<PcpPage />} />
+            <Route path="pcp/terminal" element={<TerminalFabricaPage />} />
+
+            {/* Serviços & CMMS */}
             <Route path="os" element={<OrdensServicoPage />} />
-            <Route path="ordens-servico" element={<OrdensServicoPage />} />
+            <Route path="ordens-servico" element={<Navigate to="/app/os" replace />} />
+
+            {/* Financeiro, Fiscal & Controladoria */}
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
+
+            {/* Governança, Equipe & Billing */}
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="billing" element={<PainelCobrancaView />} />
+
+            {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
-<Route path="master/auditoria" element={<AuditoriaE2EView />} />
-<Route path="master/auditoria-e2e" element={<AuditoriaE2EView />} />
+            <Route path="master/auditoria" element={<AuditoriaE2EView />} />
+            <Route path="master/auditoria-e2e" element={<Navigate to="/app/master/auditoria" replace />} />
           </Route>
 
-          {/* Fallback de Segurança */}
+          {/* Fallback Global */}
           <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
