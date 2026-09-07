@@ -9,42 +9,28 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('@scalle:token')
-             || localStorage.getItem('token')
-             || localStorage.getItem('auth_token');
-
+  const token = localStorage.getItem('@scalle:token') || localStorage.getItem('token');
   if (token) {
-    config.headers.Authorization = `Bearer ${token.trim()}`;
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Flag na memória para não disparar múltiplos redirecionamentos simultâneos
-let isRedirecting = false;
-
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const status = error.response?.status;
-    const currentPath = window.location.pathname.toLowerCase();
-
-    if (status === 401) {
-      // Limpa dados de sessão
+    if (error.response?.status === 401) {
       localStorage.removeItem('@scalle:token');
       localStorage.removeItem('token');
-      localStorage.removeItem('auth_token');
       localStorage.removeItem('@scalle:user');
 
-      // Se já estiver em qualquer variação de login, NÃO redireciona de novo
-      if (!currentPath.includes('login') && !isRedirecting) {
-        isRedirecting = true;
-        // Redireciona para a rota padrão de login
-        window.location.replace('/app/login');
+      // Evita loop caso o próprio erro 401 ocorra durante uma tentativa de login
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/app/login';
       }
-    } else if (status === 402) {
+    } else if (error.response?.status === 402) {
       alert('⚠️ Atenção: Sua conta está em período de tolerância (Soft-Lock). Apenas consultas são permitidas.');
     }
-
     return Promise.reject(error);
   }
 );
