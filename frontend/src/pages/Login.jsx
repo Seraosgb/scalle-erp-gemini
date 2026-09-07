@@ -20,12 +20,11 @@ export default function Login() {
 
     try {
       const res = await api.post('/auth/login', {
-        email,
+        email: email.trim(),
         password,
-        mfa_code: mfaRequerido ? mfaCode : undefined
+        mfa_code: mfaRequerido ? mfaCode.trim() : undefined
       });
 
-      // Se o backend exigir o 2FA, ativa a tela de desafio
       if (res.data?.data?.mfa_requerido) {
         setMfaRequerido(true);
         setLoading(false);
@@ -33,10 +32,16 @@ export default function Login() {
       }
 
       const { token, user } = res.data.data;
-      localStorage.setItem('scalle_token', token);
-      localStorage.setItem('scalle_user', JSON.stringify(user));
 
-      navigate('/app/dashboard');
+      // Gravação padronizada em todas as chaves
+      localStorage.setItem('scalle_token', token);
+      localStorage.setItem('token', token);
+      localStorage.setItem('@scalle:token', token);
+      localStorage.setItem('scalle_user', JSON.stringify(user));
+      localStorage.setItem('@scalle:user', JSON.stringify(user));
+
+      // Redirecionamento limpo para o layout do app
+      window.location.replace('/app/dashboard');
     } catch (err) {
       setErro(err.response?.data?.error?.message || 'Falha na autenticação. Verifique os dados.');
     } finally {

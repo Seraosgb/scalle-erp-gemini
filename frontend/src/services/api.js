@@ -9,28 +9,42 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('@scalle:token') || localStorage.getItem('token');
+  // Lê prioritariamente 'scalle_token' (usado pelo Login.jsx original) e fallbacks
+  const token = localStorage.getItem('scalle_token')
+             || localStorage.getItem('token')
+             || localStorage.getItem('@scalle:token');
+
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = `Bearer ${token.trim()}`;
   }
   return config;
 });
 
+let isRedirecting = false;
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('@scalle:token');
+    const status = error.response?.status;
+    const currentPath = window.location.pathname.toLowerCase();
+
+    if (status === 401) {
+      // Limpa todas as possíveis chaves para evitar lixo de sessão
+      localStorage.removeItem('scalle_token');
+      localStorage.removeItem('scalle_user');
       localStorage.removeItem('token');
+      localStorage.removeItem('@scalle:token');
       localStorage.removeItem('@scalle:user');
 
-      // Evita loop caso o próprio erro 401 ocorra durante uma tentativa de login
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/app/login';
+      // Se não estiver na tela de login, redireciona de forma controlada (sem loop)
+      if (!currentPath.includes('login') && !isRedirecting) {
+        isRedirecting = true;
+        window.location.replace('/login');
       }
-    } else if (error.response?.status === 402) {
+    } else if (status === 402) {
       alert('⚠️ Atenção: Sua conta está em período de tolerância (Soft-Lock). Apenas consultas são permitidas.');
     }
+
     return Promise.reject(error);
   }
 );

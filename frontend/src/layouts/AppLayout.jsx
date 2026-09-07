@@ -47,6 +47,15 @@ export default function AppLayout() {
   };
 
   useEffect(() => {
+    const token = localStorage.getItem('scalle_token')
+               || localStorage.getItem('token')
+               || localStorage.getItem('@scalle:token');
+
+    if (!token) {
+      window.location.replace('/login');
+      return;
+    }
+
     carregarContexto();
   }, []);
 
