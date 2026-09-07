@@ -411,10 +411,11 @@ class CrmController extends Controller
 
     public function adicionarItemOportunidade(Request $request, string $id)
 {
-    $tenantId = $this->getTenantId();
+    // Obtém o tenant_id de forma segura através do usuário autenticado
+    $tenantId = $request->user()->tenant_id ?? auth()->user()->tenant_id ?? session('tenant_id');
 
-    // Valida o acesso à oportunidade garantindo o isolamento do tenant
-    $oportunidade = Oportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+    // Busca a oportunidade garantindo o isolamento
+    $oportunidade = \App\Models\CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
 
     $validated = $request->validate([
         'produto_id'     => 'nullable|uuid',
@@ -432,8 +433,7 @@ class CrmController extends Controller
     $valorUnit = (float) $validated['valor_unitario'];
     $valorTotal = round($qtd * $valorUnit, 2);
 
-    $itemCriado = DB::transaction(function () use ($oportunidade, $produtoId, $validated, $qtd, $valorUnit, $valorTotal) {
-        // Insere na tabela crm_oportunidade_itens sem forçar tenant_id inexistente
+    $itemCriado = \Illuminate\Support\Facades\DB::transaction(function () use ($oportunidade, $produtoId, $validated, $qtd, $valorUnit, $valorTotal) {
         $item = $oportunidade->itens()->create([
             'produto_id'     => $produtoId,
             'descricao'      => $validated['descricao'],
@@ -442,7 +442,7 @@ class CrmController extends Controller
             'valor_total'    => $valorTotal,
         ]);
 
-        // Recalcula o valor estimado da oportunidade
+        // Recalcula o valor estimado total da oportunidade somando os itens
         $novoValorEstimado = (float) $oportunidade->itens()->sum('valor_total');
         $oportunidade->update([
             'valor_estimado' => $novoValorEstimado,
@@ -815,4 +815,10 @@ class CrmController extends Controller
             }
         }
     }
+    private function getTenantId(): ?string
+{
+    return request()->user()->tenant_id
+        ?? auth()->user()->tenant_id
+        ?? session('tenant_id');
+}
 }
