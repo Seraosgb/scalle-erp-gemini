@@ -411,30 +411,35 @@ class CrmController extends Controller
 
     public function adicionarItemOportunidade(Request $request, string $id): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+        $tenantId = $request->user()->tenant_id ?? auth()->user()->tenant_id ?? session('tenant_id');
+        $oportunidade = \App\Models\CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
 
         $validated = $request->validate([
             'produto_id' => 'nullable|uuid|exists:pro_itens,id',
-            'descricao' => 'required|string|max:255',
+            'item_id'    => 'nullable|uuid|exists:pro_itens,id',
+            'descricao'  => 'required|string|max:255',
             'quantidade' => 'required|numeric|min:0.01',
             'valor_unitario' => 'required|numeric|min:0',
         ]);
 
-        $item = DB::transaction(function () use ($validated, $oportunidade) {
+        $itemId = !empty($validated['produto_id'])
+            ? $validated['produto_id']
+            : (!empty($validated['item_id']) ? $validated['item_id'] : null);
+
+        $item = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $oportunidade, $itemId) {
             $totalItem = (float)$validated['quantidade'] * (float)$validated['valor_unitario'];
 
-            $novoItem = CrmOportunidadeItem::create([
+            $novoItem = \App\Models\CrmOportunidadeItem::create([
                 'id' => (string) Str::uuid(),
                 'oportunidade_id' => $oportunidade->id,
-                'produto_id' => $validated['produto_id'] ?? null,
+                'item_id' => $itemId, // CORREÇÃO: Usar item_id
                 'descricao' => $validated['descricao'],
                 'quantidade' => (float)$validated['quantidade'],
                 'valor_unitario' => (float)$validated['valor_unitario'],
                 'valor_total' => $totalItem,
             ]);
 
-            $novoTotalOp = CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)->sum('valor_total');
+            $novoTotalOp = \App\Models\CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)->sum('valor_total');
             $oportunidade->update(['valor_estimado' => $novoTotalOp]);
 
             return $novoItem;
