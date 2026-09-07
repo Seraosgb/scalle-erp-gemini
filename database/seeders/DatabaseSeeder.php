@@ -4,42 +4,24 @@ namespace Database\Seeders;
 
 use App\Models\Deposito;
 use App\Models\Empresa;
-use App\Models\Perfil;
 use App\Models\TabelaDominio;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Criação do Tenant Principal (coluna correta: 'documento')
-        $tenant = Tenant::firstOrCreate(
-            ['documento' => '00.000.000/0001-91'],
-            [
-                'id' => (string) Str::uuid(),
-                'razao_social' => 'Scalle Enterprise Matriz',
-                'nome_fantasia' => 'Scalle Matriz',
-                'status' => 'ativo',
-            ]
-        );
+        // 1. Tenant, Matriz e Usuário Master Global
+        $this->call([
+            MasterOwnerSeeder::class,
+        ]);
 
-        // 2. Criação da Empresa Matriz
-        $empresa = Empresa::firstOrCreate(
-            ['tenant_id' => $tenant->id, 'cnpj' => '00.000.000/0001-91'],
-            [
-                'id' => (string) Str::uuid(),
-                'razao_social' => 'Scalle Enterprise Matriz',
-                'nome_fantasia' => 'Scalle Matriz',
-                'regime_tributario' => 'simples_nacional',
-                'is_matriz' => true,
-            ]
-        );
+        $tenant = Tenant::first();
+        $empresa = Empresa::where('tenant_id', $tenant->id)->first();
 
-        // 3. Depósito Padrão WMS
+        // 2. Depósito Padrão WMS
         Deposito::firstOrCreate(
             ['empresa_id' => $empresa->id, 'codigo' => 'DEP-01'],
             [
@@ -52,20 +34,12 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 4. Perfil de Acesso Administrador (ACL)
-        $adminPerfil = Perfil::firstOrCreate(
-            ['tenant_id' => $tenant->id, 'nome' => 'ADMINISTRADOR'],
-            [
-                'id' => (string) Str::uuid(),
-                'slug' => 'administrador',
-                'descricao' => 'Administrador Geral com Acesso Irrestrito',
-                'is_admin' => true,
-                'is_sistema' => true,
-            ]
-        );
+        // 3. Permissões Granulares e Matriz de Acesso RBAC
+        $this->call([
+            PermissoesSeeder::class,
+        ]);
 
-
-        // 6. Listas Suspensas de Domínio (Motivos de Perda CRM & Prioridades OS)
+        // 4. Tabelas de Domínio Dinâmicas (CRM & OS)
         $motivosPerda = [
             ['codigo' => 'PRECO_ALTO', 'nome' => 'Preço Acima do Orçamento', 'cor_hex' => '#ef4444'],
             ['codigo' => 'CONCORRENTE', 'nome' => 'Fechou com Concorrente', 'cor_hex' => '#f97316'],
@@ -109,7 +83,7 @@ class DatabaseSeeder extends Seeder
             );
         }
 
-        // 7. Catálogo de Itens e Peças
+        // 5. Catálogo de Itens de Estoque e Serviços
         $this->call([
             ItemSeeder::class,
         ]);
