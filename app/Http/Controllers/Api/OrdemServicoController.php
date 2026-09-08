@@ -40,7 +40,7 @@ class OrdemServicoController extends Controller
         return response()->json($ordens);
     }
 
-    
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -56,8 +56,8 @@ class OrdemServicoController extends Controller
         ]);
 
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
                   ?? Empresa::first()->id;
 
         $ultimoNumero = OrdemServico::where('empresa_id', $empresaId)->max('numero_os') ?? 1000;
@@ -223,7 +223,7 @@ class OrdemServicoController extends Controller
             ]
         ]);
     }
-    
+
     public function show(string $id): JsonResponse
     {
         $tenantId = request()->user()->tenant_id;
@@ -497,8 +497,14 @@ class OrdemServicoController extends Controller
             $dadosUpdate['tecnico_responsavel_id'] = $validated['tecnico_responsavel_id'];
         }
 
-        if (array_key_exists('diagnostico_tecnico', $validated)) {
-            $dadosUpdate['diagnostico_tecnico'] = $validated['diagnostico_tecnico'];
+        // MÁGICA AQUI: Transforma o diagnóstico em um Diário de Bordo (Append Log)
+        if (!empty($validated['diagnostico_tecnico'])) {
+            $novoRegistro = "[" . now()->format('d/m/Y H:i') . " | " . $request->user()->name . "] " . $validated['diagnostico_tecnico'];
+
+            // Coloca o registro mais novo no topo
+            $dadosUpdate['diagnostico_tecnico'] = empty($os->diagnostico_tecnico)
+                ? $novoRegistro
+                : $novoRegistro . "\n" . $os->diagnostico_tecnico;
         }
 
         if (!empty($validated['prioridade'])) {
@@ -524,7 +530,7 @@ class OrdemServicoController extends Controller
 
         return response()->json([
             'data' => [
-                'message' => 'Parâmetros técnicos e SLA atualizados com sucesso!',
+                'message' => 'Parâmetros e histórico atualizados com sucesso!',
                 'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
             ]
         ]);

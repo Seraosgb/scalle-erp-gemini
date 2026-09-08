@@ -21,6 +21,9 @@ class OrdemServicoItem extends Model
         'valor_unitario',
         'valor_total',
         'lote',
+        'status_requisicao', // <-- Liberado para gravação
+        'almoxarife_id',     // <-- Liberado para gravação
+        'atendido_em',       // <-- Liberado para gravação
     ];
 
     protected $casts = [

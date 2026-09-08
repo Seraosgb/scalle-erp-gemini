@@ -93,7 +93,7 @@ export default function OrdensServicoPage() {
   // Form Edição Técnica no Modal
   const [formEdicaoTecnica, setFormEdicaoTecnica] = useState({
     tecnico_responsavel_id: '',
-    diagnostico_tecnico: '',
+    diagnostico_tecnico: '', // Vai servir apenas para inserir novo log
     prioridade: 'NORMAL',
     prazo_sla_resolucao: '',
     recalcular_sla: false,
@@ -162,19 +162,13 @@ export default function OrdensServicoPage() {
         api.get('/os/planos-preventivos').catch(() => ({ data: { data: [] } }))
       ]);
 
-      const cliList = resCli.data?.data || [];
-      const userList = resUsers.data?.data?.usuarios || resUsers.data?.data || [];
+      setClientes(resCli.data?.data || []);
+      setTecnicos(resUsers.data?.data?.usuarios || resUsers.data?.data || []);
       const depList = resDeps.data?.data || [];
-      const itList = resItens.data?.data || [];
-      const atList = resAtivos.data?.data || [];
-      const pmList = resPmoc.data?.data || [];
-
-      setClientes(cliList);
-      setTecnicos(userList);
       setDepositos(depList);
-      setItensCatalogo(itList);
-      setAtivos(atList);
-      setPlanosPmoc(pmList);
+      setItensCatalogo(resItens.data?.data || []);
+      setAtivos(resAtivos.data?.data || []);
+      setPlanosPmoc(resPmoc.data?.data || []);
 
       if (depList.length > 0 && !formOs.deposito_saida_id) {
         setFormOs(prev => ({ ...prev, deposito_saida_id: depList[0].id }));
@@ -191,7 +185,6 @@ export default function OrdensServicoPage() {
     return () => clearTimeout(delay);
   }, [search]);
 
-  // Função centralizada para atualizar a OS na lista local sem recarregar tudo do servidor (Otimização Máxima)
   const atualizarOsLocal = (osAtualizada) => {
     setOsSelecionada(osAtualizada);
     setOrdens(prev => prev.map(o => o.id === osAtualizada.id ? osAtualizada : o));
@@ -201,7 +194,7 @@ export default function OrdensServicoPage() {
     setOsSelecionada(os);
     setFormEdicaoTecnica({
       tecnico_responsavel_id: os.tecnico_responsavel_id || '',
-      diagnostico_tecnico: os.diagnostico_tecnico || '',
+      diagnostico_tecnico: '', // Limpa o campo de inserção, o histórico fica no objeto OS
       prioridade: os.prioridade || 'NORMAL',
       prazo_sla_resolucao: os.prazo_sla_resolucao ? os.prazo_sla_resolucao.substring(0, 16) : '',
       recalcular_sla: false,
@@ -213,8 +206,9 @@ export default function OrdensServicoPage() {
     if (e) e.preventDefault();
     try {
       const res = await api.put(`/os/${osSelecionada.id}/dados-tecnicos`, formEdicaoTecnica);
-      atualizarOsLocal(res.data.data.os); // <-- OTIMIZAÇÃO: Atualiza localmente sem 7 calls de API
-      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros atualizados e salvos!' });
+      atualizarOsLocal(res.data.data.os);
+      setFormEdicaoTecnica(prev => ({...prev, diagnostico_tecnico: ''})); // Limpa o campo para nova entrada
+      setFeedback({ tipo: 'sucesso', msg: 'Registro técnico salvo no diário de bordo!' });
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros.' });
     }
@@ -285,7 +279,7 @@ export default function OrdensServicoPage() {
       const res = await api.post('/os', formOs);
       setModalNovaOs(false);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDadosIniciais(); // Aqui recarregamos porque é uma OS nova no kanban
+      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao abrir OS.' });
     }
@@ -1158,17 +1152,23 @@ export default function OrdensServicoPage() {
 
                   <div className="sm:col-span-3">
                     <label className="block text-slate-400 font-semibold mb-1">
-                      Diagnóstico Preliminar de Campo
-                      {!emExecucaoOuPosterior && osSelecionada.status !== 'CONCLUIDA' && <span className="text-amber-400 font-normal ml-1.5">(Inicie a execução)</span>}
+                      Adicionar Registro / Diagnóstico
                     </label>
                     <textarea
                       rows="2"
                       disabled={(!emExecucaoOuPosterior && osSelecionada.status !== 'CONCLUIDA') || osSelecionada.status === 'CONCLUIDA'}
-                      placeholder={emExecucaoOuPosterior || osSelecionada.status === 'CONCLUIDA' ? "Insira os testes de pressão, tensão elétrica e diagnóstico..." : "Bloqueado até início da execução."}
+                      placeholder={emExecucaoOuPosterior && osSelecionada.status !== 'CONCLUIDA' ? "Descreva o teste, diagnóstico ou andamento..." : "Bloqueado para edição."}
                       value={formEdicaoTecnica.diagnostico_tecnico}
                       onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, diagnostico_tecnico: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
                     />
+
+                    {/* Linha do Tempo de Diário de Bordo */}
+                    {osSelecionada.diagnostico_tecnico && (
+                      <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-800 text-slate-300 text-[11px] whitespace-pre-wrap max-h-32 overflow-y-auto font-mono">
+                        {osSelecionada.diagnostico_tecnico}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1368,112 +1368,6 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Requisitar Peça */}
-      {modalAddPeca && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Package className="h-4 w-4 text-indigo-400" /> Requisitar Peça</h3>
-              <button type="button" onClick={() => setModalAddPeca(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleAdicionarPecaEmAndamento} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-400 mb-1">Item do Catálogo *</label>
-                <select
-                  required
-                  value={novaPeca.item_id}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    const found = itensCatalogo.find(c => c.id === id);
-                    setNovaPeca({
-                      ...novaPeca,
-                      item_id: id,
-                      valor_unitario: found ? parseFloat(found.preco_venda || 0) : 0,
-                    });
-                  }}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
-                >
-                  <option value="">Selecione a Peça...</option>
-                  {itensCatalogo.map(c => <option key={c.id} value={c.id}>{c.nome} (R$ {parseFloat(c.preco_venda || 0).toFixed(2)})</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Quantidade *</label>
-                  <input type="number" step="0.01" min="0.01" required value={novaPeca.quantidade} onChange={(e) => setNovaPeca({ ...novaPeca, quantidade: parseFloat(e.target.value) || 1 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Valor Unitário (R$)</label>
-                  <input type="number" step="0.01" min="0" required value={novaPeca.valor_unitario} onChange={(e) => setNovaPeca({ ...novaPeca, valor_unitario: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalAddPeca(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Requisitar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Conclusão com Canvas de Assinatura Adaptável a Touch */}
-      {modalConcluir && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
-              <h2 className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-2">
-                <PenTool className="h-5 w-5 text-emerald-400 shrink-0" /> Laudo Técnico & Assinatura
-              </h2>
-              <button type="button" onClick={() => setModalConcluir(false)} className="p-1 cursor-pointer"><X className="h-5 w-5 text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleConcluirOs} className="p-4 sm:p-6 space-y-3.5 text-xs sm:text-sm overflow-y-auto">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Laudo Técnico dos Serviços Executados *</label>
-                <textarea required rows="3" placeholder="Descreva os reparos e testes realizados..." value={laudoTecnico} onChange={(e) => setLaudoTecnico(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Nome do Recebedor *</label>
-                  <input type="text" required value={nomeResponsavel} onChange={(e) => setNomeResponsavel(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Documento (CPF / RG)</label>
-                  <input type="text" value={docResponsavel} onChange={(e) => setDocResponsavel(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-xs font-semibold text-slate-400">Assinatura na Tela (Touch ou Mouse) *</label>
-                  <button type="button" onClick={limparCanvas} className="text-[10px] text-rose-400 hover:text-rose-300 cursor-pointer">Limpar Traço</button>
-                </div>
-                <div className="border border-slate-700 bg-white rounded-xl overflow-hidden touch-none">
-                  <canvas
-                    ref={canvasRef}
-                    width={500}
-                    height={150}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
-                    className="w-full cursor-crosshair block"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
-                <button type="button" onClick={() => setModalConcluir(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer">Confirmar & Faturar OS</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Modal Laudo Técnico Oficial para Visualização e Impressão A4 */}
       {modalImprimirLaudo && osSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
@@ -1528,12 +1422,14 @@ export default function OrdensServicoPage() {
                   <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.defeito_reclamado}</p>
                 </div>
                 <div>
-                  <span className="font-bold text-slate-800 block">DIAGNÓSTICO TÉCNICO DE CAMPO:</span>
-                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.diagnostico_tecnico || 'Nenhum diagnóstico preliminar detalhado.'}</p>
+                  <span className="font-bold text-slate-800 block">DIAGNÓSTICO E HISTÓRICO DE CAMPO:</span>
+                  <div className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5 whitespace-pre-wrap font-mono text-[10px]">
+                    {osSelecionada.diagnostico_tecnico || 'Nenhum diagnóstico preliminar detalhado.'}
+                  </div>
                 </div>
                 <div>
                   <span className="font-bold text-slate-800 block">LAUDO TÉCNICO & SERVIÇO EXECUTADO:</span>
-                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.servico_executado || osSelecionada.diagnostico_tecnico || 'Execução técnica em conformidade com as normas.'}</p>
+                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.servico_executado || 'Execução técnica em conformidade com as normas.'}</p>
                 </div>
               </div>
 
