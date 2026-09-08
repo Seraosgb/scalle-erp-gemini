@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
-import { 
-  Wrench, Plus, Search, CheckCircle2, AlertTriangle, 
+import {
+  Wrench, Plus, Search, CheckCircle2, AlertTriangle,
   X, Camera, PenTool, Printer, Clock, User, Building2, Upload,
   Kanban, Calendar, ShieldCheck, Share2, Activity, Gauge, TrendingUp,
   Settings, Edit, ToggleLeft, ToggleRight, Play, Pause, PackageCheck,
@@ -204,14 +204,14 @@ export default function OrdensServicoPage() {
   };
 
   const handleSalvarEdicaoTecnica = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     try {
       const res = await api.put(`/os/${osSelecionada.id}/dados-tecnicos`, formEdicaoTecnica);
       setOsSelecionada(res.data.data.os);
-      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros atualizados!' });
       carregarDadosIniciais();
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros técnicos.' });
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros.' });
     }
   };
 
@@ -235,7 +235,7 @@ export default function OrdensServicoPage() {
       setFormAtivo({ cliente_id: '', descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '', localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10) });
       setFeedback({ tipo: 'sucesso', msg: 'Ativo patrimonial cadastrado com sucesso!' });
     } catch (err) {
-      const msgErro = err.response?.data?.error?.message 
+      const msgErro = err.response?.data?.error?.message
                    || (err.response?.data?.errors ? Object.values(err.response.data.errors).flat().join(', ') : 'Erro ao cadastrar ativo.');
       setFeedback({ tipo: 'erro', msg: msgErro });
     }
@@ -428,9 +428,9 @@ export default function OrdensServicoPage() {
   ];
 
   const emExecucaoOuPosterior = osSelecionada && (
-    osSelecionada.status === 'EM_EXECUCAO' || 
-    osSelecionada.status === 'EM_ANDAMENTO' || 
-    osSelecionada.status === 'AGUARDANDO_PECA' || 
+    osSelecionada.status === 'EM_EXECUCAO' ||
+    osSelecionada.status === 'EM_ANDAMENTO' ||
+    osSelecionada.status === 'AGUARDANDO_PECA' ||
     osSelecionada.status === 'MATERIAL_DISPONIVEL'
   );
 
@@ -583,8 +583,8 @@ export default function OrdensServicoPage() {
           {colunasKanban.map((col) => {
             const ordensColuna = ordens.filter(o => o.status === col.id || (col.id === 'EM_EXECUCAO' && o.status === 'EM_ANDAMENTO'));
             return (
-              <div 
-                key={col.id} 
+              <div
+                key={col.id}
                 className="min-w-[280px] sm:min-w-[300px] lg:min-w-0 flex-1 bg-slate-900/60 border border-slate-800 rounded-2xl p-3 flex flex-col min-h-[480px] snap-start"
               >
                 <div className={`flex justify-between items-center pb-2 mb-2 border-b-2 ${col.cor}`}>
@@ -1097,75 +1097,79 @@ export default function OrdensServicoPage() {
               )}
 
               {/* Parâmetros Técnicos & Ajuste de SLA */}
-              {osSelecionada.status !== 'CONCLUIDA' && (
-                <form onSubmit={handleSalvarEdicaoTecnica} className="bg-slate-950 p-3.5 sm:p-4 rounded-xl border border-indigo-900/50 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
-                    <span className="font-bold text-white flex items-center gap-2">
-                      <Settings className="h-4 w-4 text-indigo-400 shrink-0" /> Parâmetros de Campo & SLA
-                    </span>
+              <div className="bg-slate-950 p-3.5 sm:p-4 rounded-xl border border-indigo-900/50 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                  <span className="font-bold text-white flex items-center gap-2">
+                    <Settings className="h-4 w-4 text-indigo-400 shrink-0" /> Parâmetros de Campo & SLA
+                  </span>
+                  {osSelecionada.status !== 'CONCLUIDA' && (
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={handleSalvarEdicaoTecnica}
                       className="w-full sm:w-auto justify-center px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
                     >
                       <Save className="h-3.5 w-3.5" /> Salvar Alterações
                     </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">Técnico Responsável</label>
+                    <select
+                      disabled={osSelecionada.status === 'CONCLUIDA'}
+                      value={formEdicaoTecnica.tecnico_responsavel_id}
+                      onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, tecnico_responsavel_id: e.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-medium disabled:opacity-50"
+                    >
+                      <option value="">Não atribuído</option>
+                      {tecnicos.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">Técnico Responsável</label>
-                      <select
-                        value={formEdicaoTecnica.tecnico_responsavel_id}
-                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, tecnico_responsavel_id: e.target.value })}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-medium"
-                      >
-                        <option value="">Não atribuído</option>
-                        {tecnicos.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">Prioridade</label>
-                      <select
-                        value={formEdicaoTecnica.prioridade}
-                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, prioridade: e.target.value, recalcular_sla: true })}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-medium"
-                      >
-                        {prioridades.map((p) => (
-                          <option key={p.codigo} value={p.codigo}>{p.nome}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">Prazo Limite SLA</label>
-                      <input
-                        type="datetime-local"
-                        value={formEdicaoTecnica.prazo_sla_resolucao}
-                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, prazo_sla_resolucao: e.target.value, recalcular_sla: false })}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-3">
-                      <label className="block text-slate-400 font-semibold mb-1">
-                        Diagnóstico Preliminar de Campo
-                        {!emExecucaoOuPosterior && <span className="text-amber-400 font-normal ml-1.5">(Inicie a execução)</span>}
-                      </label>
-                      <textarea
-                        rows="2"
-                        disabled={!emExecucaoOuPosterior}
-                        placeholder={emExecucaoOuPosterior ? "Insira os testes de pressão, tensão elétrica e diagnóstico..." : "Bloqueado até início da execução."}
-                        value={formEdicaoTecnica.diagnostico_tecnico}
-                        onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, diagnostico_tecnico: e.target.value })}
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">Prioridade</label>
+                    <select
+                      disabled={osSelecionada.status === 'CONCLUIDA'}
+                      value={formEdicaoTecnica.prioridade}
+                      onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, prioridade: e.target.value, recalcular_sla: true })}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-medium disabled:opacity-50"
+                    >
+                      {prioridades.map((p) => (
+                        <option key={p.codigo} value={p.codigo}>{p.nome}</option>
+                      ))}
+                    </select>
                   </div>
-                </form>
-              )}
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">Prazo Limite SLA</label>
+                    <input
+                      type="datetime-local"
+                      disabled={osSelecionada.status === 'CONCLUIDA'}
+                      value={formEdicaoTecnica.prazo_sla_resolucao}
+                      onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, prazo_sla_resolucao: e.target.value, recalcular_sla: false })}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <label className="block text-slate-400 font-semibold mb-1">
+                      Diagnóstico Preliminar de Campo
+                      {!emExecucaoOuPosterior && osSelecionada.status !== 'CONCLUIDA' && <span className="text-amber-400 font-normal ml-1.5">(Inicie a execução)</span>}
+                    </label>
+                    <textarea
+                      rows="2"
+                      disabled={(!emExecucaoOuPosterior && osSelecionada.status !== 'CONCLUIDA') || osSelecionada.status === 'CONCLUIDA'}
+                      placeholder={emExecucaoOuPosterior || osSelecionada.status === 'CONCLUIDA' ? "Insira os testes de pressão, tensão elétrica e diagnóstico..." : "Bloqueado até início da execução."}
+                      value={formEdicaoTecnica.diagnostico_tecnico}
+                      onChange={(e) => setFormEdicaoTecnica({ ...formEdicaoTecnica, diagnostico_tecnico: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+              </div>
 
               {/* Informações Gerais */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-950 p-3 sm:p-3.5 rounded-xl border border-slate-800 text-[11px]">
@@ -1190,7 +1194,7 @@ export default function OrdensServicoPage() {
                         <div>
                           <span className="text-white font-bold block">{ap.tecnico?.name}</span>
                           <span className="text-[10px] text-slate-400 font-mono">
-                            {new Date(ap.data_hora_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} 
+                            {new Date(ap.data_hora_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                             {ap.data_hora_fim ? ` - ${new Date(ap.data_hora_fim).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ' (Em execução)'}
                           </span>
                         </div>
@@ -1225,7 +1229,7 @@ export default function OrdensServicoPage() {
                     osSelecionada.itens?.map((it) => (
                       <div key={it.id} className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                         <div>
-                          <span className="text-white font-bold block">{it.item?.nome}</span>
+                          <span className="text-white font-bold block">{it.item?.nome || 'Item do Catálogo'}</span>
                           <span className="text-[10px] text-slate-400 font-mono">Qtd: {it.quantidade} | Un: R$ {parseFloat(it.valor_unitario).toFixed(2)}</span>
                         </div>
                         <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
@@ -1234,12 +1238,12 @@ export default function OrdensServicoPage() {
                             it.status_requisicao === 'DISPONIVEL' ? 'bg-purple-950 text-purple-300 border border-purple-800' :
                             'bg-amber-950 text-amber-300 border border-amber-800'
                           }`}>
-                            {it.status_requisicao || 'RETIRADO'}
+                            {it.status_requisicao || 'SOLICITADO'}
                           </span>
 
                           {osSelecionada.status !== 'CONCLUIDA' && (
                             <div className="flex items-center gap-1">
-                              {it.status_requisicao === 'SOLICITADO' && (
+                              {(!it.status_requisicao || it.status_requisicao === 'SOLICITADO') && (
                                 <button
                                   type="button"
                                   onClick={() => handleTratarPecaAlmox(it.id, 'DISPONIVEL')}
@@ -1304,10 +1308,15 @@ export default function OrdensServicoPage() {
                     </div>
                   ) : (
                     osSelecionada.fotos?.map(f => (
-                      <div key={f.id} className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
-                        <img src={f.url_arquivo} alt="Evidência" className="h-24 w-full object-cover" />
-                        <div className="p-1.5 text-[10px] flex justify-between items-center">
-                          <span className={`px-1.5 py-0.5 rounded font-bold ${f.tipo_etapa === 'ANTES' ? 'bg-amber-950 text-amber-300' : 'bg-emerald-950 text-emerald-300'}`}>{f.tipo_etapa}</span>
+                      <div key={f.id} className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden relative">
+                        <img
+                            src={f.url_arquivo}
+                            alt="Evidência"
+                            className="h-24 w-full object-cover"
+                            onError={(e) => { e.target.src = 'https://placehold.co/400x300/1e293b/a8a29e?text=Foto+Indispon%C3%ADvel' }}
+                        />
+                        <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-bold shadow bg-black/70 border border-slate-700">
+                          <span className={f.tipo_etapa === 'ANTES' ? 'text-amber-400' : 'text-emerald-400'}>{f.tipo_etapa}</span>
                         </div>
                       </div>
                     ))
@@ -1438,18 +1447,18 @@ export default function OrdensServicoPage() {
                   <button type="button" onClick={limparCanvas} className="text-[10px] text-rose-400 hover:text-rose-300 cursor-pointer">Limpar Traço</button>
                 </div>
                 <div className="border border-slate-700 bg-white rounded-xl overflow-hidden touch-none">
-                  <canvas 
-                    ref={canvasRef} 
-                    width={500} 
-                    height={150} 
-                    onMouseDown={startDrawing} 
-                    onMouseMove={draw} 
-                    onMouseUp={stopDrawing} 
-                    onMouseLeave={stopDrawing} 
-                    onTouchStart={startDrawing} 
-                    onTouchMove={draw} 
-                    onTouchEnd={stopDrawing} 
-                    className="w-full cursor-crosshair block" 
+                  <canvas
+                    ref={canvasRef}
+                    width={500}
+                    height={150}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                    className="w-full cursor-crosshair block"
                   />
                 </div>
               </div>
@@ -1457,68 +1466,6 @@ export default function OrdensServicoPage() {
               <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
                 <button type="button" onClick={() => setModalConcluir(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
                 <button type="submit" className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer">Confirmar & Faturar OS</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Upload Fotos */}
-      {modalFoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Camera className="h-4 w-4 text-indigo-400" /> Anexar Evidência</h3>
-              <button type="button" onClick={() => setModalFoto(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleUploadFoto} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setTipoEtapaFoto('ANTES')} className={`p-2 rounded-lg border font-bold text-center cursor-pointer ${tipoEtapaFoto === 'ANTES' ? 'bg-indigo-600/20 border-indigo-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>Antes</button>
-                <button type="button" onClick={() => setTipoEtapaFoto('DEPOIS')} className={`p-2 rounded-lg border font-bold text-center cursor-pointer ${tipoEtapaFoto === 'DEPOIS' ? 'bg-indigo-600/20 border-indigo-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>Depois</button>
-              </div>
-              <input type="file" accept="image/*" required onChange={(e) => setArquivoFoto(e.target.files[0])} className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white" />
-              <input type="text" placeholder="Descrição da evidência..." value={descFoto} onChange={(e) => setDescFoto(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalFoto(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Enviar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Prioridades SLA */}
-      {modalPrioridade && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Settings className="h-4 w-4 text-indigo-400" /> {prioridadeEmEdicao ? 'Editar Regra de SLA' : 'Nova Prioridade'}</h3>
-              <button type="button" onClick={() => setModalPrioridade(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleSalvarPrioridade} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-400 mb-1">Nome de Exibição *</label>
-                <input type="text" required placeholder="Ex: Emergência Crítica (4h)" value={formPrioridade.nome} onChange={(e) => setFormPrioridade({ ...formPrioridade, nome: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Código Identificador *</label>
-                  <input type="text" required disabled={!!prioridadeEmEdicao} placeholder="Ex: EMERGENCIA" value={formPrioridade.codigo} onChange={(e) => setFormPrioridade({ ...formPrioridade, codigo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono disabled:opacity-50" />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Prazo SLA (Horas) *</label>
-                  <input type="number" min="1" required placeholder="4" value={formPrioridade.horas_sla} onChange={(e) => setFormPrioridade({ ...formPrioridade, horas_sla: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
-                </div>
-              </div>
-              {prioridadeEmEdicao && (
-                <div className="flex items-center gap-2 pt-1">
-                  <input type="checkbox" id="check_ativo_prio" checked={formPrioridade.is_ativo} onChange={(e) => setFormPrioridade({ ...formPrioridade, is_ativo: e.target.checked })} className="rounded bg-slate-950 border-slate-800" />
-                  <label htmlFor="check_ativo_prio" className="text-slate-300 font-medium">Prioridade Ativa no Sistema</label>
-                </div>
-              )}
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalPrioridade(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Regra</button>
               </div>
             </form>
           </div>
@@ -1588,6 +1535,32 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
 
+              {osSelecionada.apontamentos && osSelecionada.apontamentos.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <span className="font-bold text-slate-800 block">MÃO DE OBRA APLICADA:</span>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border border-slate-200 text-[10px]">
+                      <thead className="bg-slate-100 border-b border-slate-200">
+                        <tr>
+                          <th className="p-1.5">Técnico/Responsável</th>
+                          <th className="p-1.5 text-center">Horas</th>
+                          <th className="p-1.5 text-right">Valor Custo/Hora</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 font-mono">
+                        {osSelecionada.apontamentos.map((ap) => (
+                          <tr key={ap.id}>
+                            <td className="p-1.5 font-sans">{ap.tecnico?.name}</td>
+                            <td className="p-1.5 text-center">{ap.total_horas}h</td>
+                            <td className="p-1.5 text-right">R$ {parseFloat(ap.valor_total).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {osSelecionada.itens && osSelecionada.itens.length > 0 && (
                 <div className="space-y-1.5 pt-1">
                   <span className="font-bold text-slate-800 block">MATERIAIS E PEÇAS APLICADOS:</span>
@@ -1604,7 +1577,7 @@ export default function OrdensServicoPage() {
                       <tbody className="divide-y divide-slate-200 font-mono">
                         {osSelecionada.itens.map((it) => (
                           <tr key={it.id}>
-                            <td className="p-1.5 font-sans">{it.item?.nome}</td>
+                            <td className="p-1.5 font-sans">{it.item?.nome || 'Item do Catálogo'}</td>
                             <td className="p-1.5 text-center">{it.quantidade}</td>
                             <td className="p-1.5 text-right">R$ {parseFloat(it.valor_unitario).toFixed(2)}</td>
                             <td className="p-1.5 text-right font-bold">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
@@ -1619,10 +1592,15 @@ export default function OrdensServicoPage() {
               {osSelecionada.fotos && osSelecionada.fotos.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-200">
                   <span className="font-bold text-slate-800 block">EVIDÊNCIAS FOTOGRÁFICAS:</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {osSelecionada.fotos.map((f) => (
                       <div key={f.id} className="border border-slate-200 rounded p-1 text-center bg-slate-50">
-                        <img src={f.url_arquivo} alt="Evidência" className="h-20 sm:h-24 w-full object-cover rounded" />
+                        <img
+                            src={f.url_arquivo}
+                            alt="Evidência"
+                            className="h-20 sm:h-28 w-full object-cover rounded"
+                            onError={(e) => { e.target.src = 'https://placehold.co/400x300/1e293b/a8a29e?text=Foto+Indispon%C3%ADvel' }}
+                        />
                         <span className="text-[9px] font-bold text-indigo-700 block mt-1">{f.tipo_etapa}</span>
                       </div>
                     ))}

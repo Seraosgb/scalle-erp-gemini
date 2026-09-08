@@ -12,59 +12,70 @@ class PortalClienteController extends Controller
 {
     public function consultarOs(string $token): JsonResponse
     {
-        $os = OrdemServico::withoutGlobalScopes()
-            ->with(['cliente', 'empresa', 'itens.item', 'fotos', 'tecnico', 'apontamentos.tecnico', 'ativo'])
-            ->where('id', $token)
-            ->firstOrFail();
+        try {
+            $os = OrdemServico::withoutGlobalScopes()
+                ->with(['cliente', 'empresa', 'itens.item', 'fotos', 'tecnico', 'apontamentos.tecnico', 'ativo'])
+                ->where('id', $token)
+                ->firstOrFail();
 
-        // Geração do Payload PIX EMV Padrão Banco Central
-        $chavePix = $os->empresa->cnpj ?? '00000000000191';
-        $nomeEmpresa = strtoupper(substr($os->empresa->nome_fantasia ?? 'SCALLE ERP', 0, 25));
-        $cidadeEmpresa = 'BELFORD ROXO';
-        $valorTotalFormatado = number_format((float) $os->valor_total, 2, '.', '');
-        
-        $payloadPix = self::gerarPayloadPix($chavePix, $nomeEmpresa, $cidadeEmpresa, $valorTotalFormatado, "OS{$os->numero_os}");
+            // Fallbacks de segurança para evitar erro 500 se faltar dado da Empresa
+            $chavePix = $os->empresa->cnpj ?? '00000000000191';
+            $chavePixLimpa = preg_replace('/[^0-9]/', '', $chavePix);
+            $nomeEmpresa = strtoupper(substr($os->empresa->nome_fantasia ?? 'SCALLE ERP', 0, 25));
+            $cidadeEmpresa = 'BELFORD ROXO';
+            $valorTotalFormatado = number_format((float) ($os->valor_total ?? 0), 2, '.', '');
 
-        return response()->json([
-            'data' => [
-                'id' => $os->id,
-                'numero_os' => $os->numero_os,
-                'status' => $os->status,
-                'prioridade' => $os->prioridade,
-                'tipo_manutencao' => $os->tipo_manutencao,
-                'equipamento' => $os->equipamento_descricao,
-                'marca_modelo' => $os->equipamento_marca_modelo,
-                'numero_serie' => $os->equipamento_numero_serie,
-                'defeito_reclamado' => $os->defeito_reclamado,
-                'diagnostico_tecnico' => $os->diagnostico_tecnico,
-                'servico_executado' => $os->servico_executado,
-                'valor_servicos' => (float) $os->valor_servicos,
-                'valor_pecas' => (float) $os->valor_pecas,
-                'valor_desconto' => (float) $os->valor_desconto,
-                'valor_total' => (float) $os->valor_total,
-                'nome_responsavel_recebimento' => $os->nome_responsavel_recebimento,
-                'documento_responsavel_recebimento' => $os->documento_responsavel_recebimento,
-                'assinado_em' => $os->assinado_em,
-                'hash_assinatura_sha256' => $os->hash_assinatura_sha256,
-                'assinatura_cliente_base64' => $os->assinatura_cliente_base64,
-                'data_abertura' => $os->data_abertura,
-                'data_conclusao' => $os->data_conclusao,
-                'itens' => $os->itens,
-                'fotos' => $os->fotos,
-                'apontamentos' => $os->apontamentos,
-                'ativo' => $os->ativo,
-                'empresa' => [
-                    'nome' => $os->empresa->nome_fantasia,
-                    'razao_social' => $os->empresa->razao_social,
-                    'documento' => $os->empresa->cnpj,
-                ],
-                'pix' => [
-                    'chave' => $chavePix,
-                    'payload_copia_cola' => $payloadPix,
-                    'qr_code_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($payloadPix),
+            try {
+                $payloadPix = self::gerarPayloadPix($chavePixLimpa, $nomeEmpresa, $cidadeEmpresa, $valorTotalFormatado, "OS{$os->numero_os}");
+            } catch (\Throwable $th) {
+                $payloadPix = "PIX_INDISPONIVEL";
+            }
+
+            return response()->json([
+                'data' => [
+                    'id' => $os->id,
+                    'numero_os' => $os->numero_os,
+                    'status' => $os->status,
+                    'prioridade' => $os->prioridade,
+                    'tipo_manutencao' => $os->tipo_manutencao,
+                    'equipamento' => $os->equipamento_descricao,
+                    'marca_modelo' => $os->equipamento_marca_modelo,
+                    'numero_serie' => $os->equipamento_numero_serie,
+                    'defeito_reclamado' => $os->defeito_reclamado,
+                    'diagnostico_tecnico' => $os->diagnostico_tecnico,
+                    'servico_executado' => $os->servico_executado,
+                    'valor_servicos' => (float) $os->valor_servicos,
+                    'valor_pecas' => (float) $os->valor_pecas,
+                    'valor_desconto' => (float) $os->valor_desconto,
+                    'valor_total' => (float) $os->valor_total,
+                    'nome_responsavel_recebimento' => $os->nome_responsavel_recebimento,
+                    'documento_responsavel_recebimento' => $os->documento_responsavel_recebimento,
+                    'assinado_em' => $os->assinado_em,
+                    'hash_assinatura_sha256' => $os->hash_assinatura_sha256,
+                    'assinatura_cliente_base64' => $os->assinatura_cliente_base64,
+                    'data_abertura' => $os->data_abertura,
+                    'data_conclusao' => $os->data_conclusao,
+                    'itens' => $os->itens,
+                    'fotos' => $os->fotos,
+                    'apontamentos' => $os->apontamentos,
+                    'ativo' => $os->ativo,
+                    'empresa' => [
+                        'nome' => $os->empresa->nome_fantasia ?? 'Scalle Enterprise',
+                        'razao_social' => $os->empresa->razao_social ?? '',
+                        'documento' => $os->empresa->cnpj ?? '',
+                    ],
+                    'pix' => [
+                        'chave' => $chavePixLimpa,
+                        'payload_copia_cola' => $payloadPix,
+                        'qr_code_url' => $payloadPix !== "PIX_INDISPONIVEL"
+                            ? 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($payloadPix)
+                            : null,
+                    ]
                 ]
-            ]
-        ]);
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => ['message' => 'Erro crítico ao carregar portal: ' . $e->getMessage()]], 500);
+        }
     }
 
     public function aprovarOrcamento(Request $request, string $token): JsonResponse
@@ -103,7 +114,6 @@ class PortalClienteController extends Controller
         $ip = $request->ip();
         $agora = now();
 
-        // Hash SHA-256 com os metadados (MP 2.200-2/2001)
         $dadosParaHash = "OS:{$os->numero_os}|NOME:{$validated['nome_responsavel']}|DOC:{$validated['documento_responsavel']}|DATA:{$agora}|IP:{$ip}|LAT:{$validated['latitude']}|LNG:{$validated['longitude']}";
         $hashSha256 = hash('sha256', $dadosParaHash);
 
