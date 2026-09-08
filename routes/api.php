@@ -184,6 +184,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/ordens-servico', [OrdemServicoController::class, 'store']);
 
     Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
+    Route::get('/os/{id}/pdf', [OrdemServicoController::class, 'gerarPdf']); // <-- ADICIONE ESTA LINHA
     Route::get('/ordens-servico/{id}', [OrdemServicoController::class, 'show']);
     Route::post('/os/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
     Route::put('/os/{id}/status', [OrdemServicoController::class, 'atualizarStatus']);

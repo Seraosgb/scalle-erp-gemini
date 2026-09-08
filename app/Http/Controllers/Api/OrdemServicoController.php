@@ -535,4 +535,18 @@ class OrdemServicoController extends Controller
             ]
         ]);
     }
+    public function gerarPdf(Request $request, string $id)
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente', 'empresa', 'tecnico', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ->findOrFail($id);
+
+        // Habilita carregamento de imagens externas (fotos do S3/Hostoo) e base64 (assinatura)
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.os', ['os' => $os])
+            ->setPaper('a4', 'portrait')
+            ->setOption(['isRemoteEnabled' => true]);
+
+        return $pdf->download("Laudo_Tecnico_OS_{$os->numero_os}.pdf");
+    }
     }
