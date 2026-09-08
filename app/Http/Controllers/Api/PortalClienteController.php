@@ -7,16 +7,24 @@ use App\Models\OrdemServico;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App; // <-- Novo Import
 
 class PortalClienteController extends Controller
 {
     public function consultarOs(string $token): JsonResponse
     {
         try {
+            // 1. Busca APENAS a OS usando o token, sem puxar os relacionamentos ainda
             $os = OrdemServico::withoutGlobalScopes()
-                ->with(['cliente', 'empresa', 'itens.item', 'fotos', 'tecnico', 'apontamentos.tecnico', 'ativo'])
                 ->where('id', $token)
                 ->firstOrFail();
+
+            // 2. MÁGICA: Injeta o tenant_id da OS na aplicação.
+            // Isso engana a blindagem arquitetural e permite ler dados com segurança na rota pública.
+            App::instance('current_tenant_id', $os->tenant_id);
+
+            // 3. Agora sim, carrega os relacionamentos blindados
+            $os->load(['cliente', 'empresa', 'itens.item', 'fotos', 'tecnico', 'apontamentos.tecnico', 'ativo']);
 
             // Fallbacks de segurança para evitar erro 500 se faltar dado da Empresa
             $chavePix = $os->empresa->cnpj ?? '00000000000191';
