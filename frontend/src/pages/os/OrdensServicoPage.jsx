@@ -191,7 +191,6 @@ export default function OrdensServicoPage() {
     return () => clearTimeout(delay);
   }, [search]);
 
-  // Atualização atômica local
   const atualizarOsLocal = (osAtualizada) => {
     setOsSelecionada(osAtualizada);
     setOrdens(prev => prev.map(o => o.id === osAtualizada.id ? osAtualizada : o));
@@ -475,7 +474,7 @@ export default function OrdensServicoPage() {
         </div>
       </div>
 
-      {/* Cards de Métricas CMMS Adaptáveis */}
+      {/* Cards de Métricas CMMS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-3.5 rounded-xl sm:rounded-2xl flex items-center justify-between">
           <div>
@@ -636,8 +635,8 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Outras Abas (PMOC, Ativos, SLAs, Lista Analítica) omitidas por brevidade, código original mantido */}
-      {/* ... */}
+      {/* Outras Visualizações Omitidas por Brevidade (Mantêm o funcionamento anterior) */}
+      {/* Visualização 2: PMOC, 3: Ativos, 4: SLAs, 5: Lista */}
 
       {/* Modal Detalhes da OS (Painel de Campo Totalmente Responsivo) */}
       {modalDetalhes && osSelecionada && (
@@ -835,7 +834,7 @@ export default function OrdensServicoPage() {
                   {osSelecionada.status !== 'CONCLUIDA' && emExecucaoOuPosterior && (
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setModalAddPeca(true); }}
+                      onClick={() => setModalAddPeca(true)}
                       className="px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-500/30 text-[11px] font-semibold cursor-pointer flex items-center gap-1"
                     >
                       <Plus className="h-3 w-3" /> Requisitar
@@ -986,7 +985,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Requisitar Peça (z-[60] para sobrepor detalhes) */}
+      {/* Modal Requisitar Peça (z-[60]) */}
       {modalAddPeca && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
@@ -1034,7 +1033,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Conclusão com Canvas (z-[60] para sobrepor detalhes) */}
+      {/* Modal Conclusão com Canvas (z-[60]) */}
       {modalConcluir && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
@@ -1092,7 +1091,7 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Upload Fotos (z-[60] para sobrepor detalhes) */}
+      {/* Modal Upload Fotos (z-[60]) */}
       {modalFoto && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
@@ -1116,10 +1115,11 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Laudo Técnico Oficial (z-[70] para sobrepor tudo) */}
+      {/* Modal Laudo Técnico Oficial (z-[70]) - Padrão Gemini A4 */}
       {modalImprimirLaudo && osSelecionada && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl p-4 sm:p-6 space-y-4 shadow-2xl max-h-[94vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto print:static print:bg-white print:p-0 print:block">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl p-4 sm:p-6 space-y-4 shadow-2xl max-h-[94vh] overflow-y-auto print:shadow-none print:border-none print:max-w-full print:max-h-full print:overflow-visible print:p-0 print:bg-white">
+
             <div className="flex justify-between items-center border-b border-slate-800 pb-3 print:hidden">
               <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
                 <FileText className="h-4 w-4 text-indigo-400 shrink-0" /> Laudo Técnico Oficial: OS #{osSelecionada.numero_os}
@@ -1127,148 +1127,173 @@ export default function OrdensServicoPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    setTimeout(() => window.print(), 100);
+                  }}
                   className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
                 >
                   <Printer className="h-3.5 w-3.5" /> Imprimir (A4)
                 </button>
-                <button type="button" onClick={() => setModalImprimirLaudo(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+                <button type="button" onClick={() => setModalImprimirLaudo(false)} className="p-1 cursor-pointer"><X className="h-5 w-5 text-slate-400" /></button>
               </div>
             </div>
 
-            {/* Documento A4 (Otimizado para Impressão) */}
-            <div id="laudo-oficial-impressao" className="bg-white text-slate-900 p-4 sm:p-8 rounded-xl font-sans text-xs space-y-4 select-text print:fixed print:inset-0 print:z-[9999] print:bg-white print:block print:w-full print:h-full print:m-0 print:p-8">
-              <div className="flex justify-between items-start border-b border-slate-300 pb-4">
-                <div className="space-y-1">
-                  <div className="text-lg sm:text-xl font-black tracking-tight text-indigo-900">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ENTERPRISE'}</div>
-                  <div className="text-[11px] text-slate-600">{osSelecionada.empresa?.razao_social || 'Razão Social'}</div>
-                  <div className="text-[10px] text-slate-500">CNPJ: {osSelecionada.empresa?.cnpj || '00.000.000/0001-91'}</div>
+            {/* Documento A4 (Padrão Gemini Enterprise) */}
+            <div id="laudo-oficial-impressao" className="bg-white text-black p-4 sm:p-8 rounded-xl font-sans text-xs space-y-6 select-text print:block print:w-full print:h-full print:m-0 print:p-4 print:bg-white print:text-black">
+
+              {/* Header Corporativo */}
+              <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4">
+                <div>
+                  <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ENTERPRISE'}</h1>
+                  <p className="text-xs text-slate-600 font-medium">{osSelecionada.empresa?.razao_social || 'Razão Social'}</p>
+                  <p className="text-xs text-slate-500">CNPJ: {osSelecionada.empresa?.cnpj || '00.000.000/0001-91'}</p>
                 </div>
-                <div className="text-right space-y-1 font-mono">
-                  <div className="text-sm sm:text-base font-black text-indigo-600">OS #{osSelecionada.numero_os}</div>
-                  <div className="text-[11px] text-slate-600">Data: {new Date(osSelecionada.data_abertura).toLocaleDateString('pt-BR')}</div>
-                  <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold inline-block border border-slate-200">{osSelecionada.tipo_manutencao}</div>
+                <div className="text-right">
+                  <h2 className="text-xl font-black text-slate-800">LAUDO TÉCNICO OFICIAL</h2>
+                  <p className="text-sm font-bold text-indigo-600 mt-1">OS #{osSelecionada.numero_os}</p>
+                  <p className="text-xs text-slate-600">Emissão: {new Date(osSelecionada.data_abertura).toLocaleDateString('pt-BR')}</p>
+                  <div className="inline-block px-2 py-0.5 mt-1 border border-slate-400 bg-slate-100 text-slate-800 text-[10px] font-bold uppercase rounded">{osSelecionada.tipo_manutencao}</div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px]">
-                <div>
-                  <span className="font-bold text-slate-700 block">CLIENTE:</span>
-                  <div className="font-medium text-slate-900">{osSelecionada.cliente?.nome_razao_social}</div>
-                  <div className="text-slate-500">Documento: {osSelecionada.cliente?.cpf_cnpj}</div>
+              {/* Informações Primárias (Grid) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-3 border border-slate-300 bg-slate-50 rounded-lg">
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Dados do Cliente</span>
+                  <div className="font-bold text-sm text-slate-900">{osSelecionada.cliente?.nome_razao_social}</div>
+                  <div className="text-slate-600 mt-1">Doc: {osSelecionada.cliente?.cpf_cnpj}</div>
+                  <div className="text-slate-600">Contato: {osSelecionada.cliente?.telefone_principal || 'N/A'}</div>
                 </div>
-                <div>
-                  <span className="font-bold text-slate-700 block">EQUIPAMENTO / ATIVO:</span>
-                  <div className="font-medium text-slate-900">{osSelecionada.equipamento_descricao}</div>
-                  <div className="text-slate-500">Marca/Modelo: {osSelecionada.equipamento_marca_modelo || 'N/A'} | Série: {osSelecionada.equipamento_numero_serie || 'N/A'}</div>
+
+                <div className="p-3 border border-slate-300 bg-slate-50 rounded-lg">
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Equipamento / Ativo</span>
+                  <div className="font-bold text-sm text-slate-900">{osSelecionada.equipamento_descricao}</div>
+                  <div className="text-slate-600 mt-1">Marca/Modelo: {osSelecionada.equipamento_marca_modelo || 'N/A'}</div>
+                  <div className="text-slate-600">Série: {osSelecionada.equipamento_numero_serie || 'N/A'}</div>
                 </div>
               </div>
 
-              <div className="space-y-2">
+              {/* Corpo do Laudo */}
+              <div className="space-y-4">
                 <div>
-                  <span className="font-bold text-slate-800 block">DEFEITO RECLAMADO:</span>
-                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.defeito_reclamado}</p>
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Defeito Reclamado pelo Cliente:</span>
+                  <p className="text-slate-800 text-sm">{osSelecionada.defeito_reclamado}</p>
                 </div>
+
                 <div>
-                  <span className="font-bold text-slate-800 block">DIAGNÓSTICO E HISTÓRICO DE CAMPO:</span>
-                  <div className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5 whitespace-pre-wrap font-mono text-[10px]">
-                    {osSelecionada.diagnostico_tecnico || 'Nenhum diagnóstico preliminar detalhado.'}
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Diário de Bordo & Diagnóstico Técnico:</span>
+                  <div className="p-3 bg-slate-50 border border-slate-300 rounded text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
+                    {osSelecionada.diagnostico_tecnico || 'Nenhum registro técnico detalhado durante a execução.'}
                   </div>
                 </div>
+
                 <div>
-                  <span className="font-bold text-slate-800 block">LAUDO TÉCNICO & SERVIÇO EXECUTADO:</span>
-                  <p className="text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-0.5">{osSelecionada.servico_executado || 'Execução técnica em conformidade com as normas.'}</p>
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Parecer Final & Serviço Executado:</span>
+                  <p className="text-slate-800 text-sm">{osSelecionada.servico_executado || 'Execução em conformidade técnica.'}</p>
                 </div>
               </div>
 
-              {osSelecionada.apontamentos && osSelecionada.apontamentos.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <span className="font-bold text-slate-800 block">MÃO DE OBRA APLICADA:</span>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border border-slate-200 text-[10px]">
-                      <thead className="bg-slate-100 border-b border-slate-200">
-                        <tr>
-                          <th className="p-1.5">Técnico/Responsável</th>
-                          <th className="p-1.5 text-center border-l border-slate-200">Horas</th>
-                          <th className="p-1.5 text-right border-l border-slate-200">Valor Custo/Hora</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 font-mono">
-                        {osSelecionada.apontamentos.map((ap) => (
-                          <tr key={ap.id}>
-                            <td className="p-1.5 font-sans">{ap.tecnico?.name}</td>
-                            <td className="p-1.5 text-center border-l border-slate-200">{ap.total_horas}h</td>
-                            <td className="p-1.5 text-right border-l border-slate-200">R$ {parseFloat(ap.valor_total).toFixed(2)}</td>
+              {/* Tabelas de Custos */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
+                {/* Apontamentos */}
+                <div>
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-2">Mão de Obra Aplicada:</span>
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-100 border-y border-slate-300">
+                      <tr>
+                        <th className="py-2 px-2 font-bold text-slate-700 border-x border-slate-300">Técnico</th>
+                        <th className="py-2 px-2 text-center font-bold text-slate-700 border-x border-slate-300">Hrs</th>
+                        <th className="py-2 px-2 text-right font-bold text-slate-700 border-x border-slate-300">Custo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {osSelecionada.apontamentos && osSelecionada.apontamentos.length > 0 ? (
+                        osSelecionada.apontamentos.map((ap, idx) => (
+                          <tr key={ap.id} className={`border-b border-slate-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                            <td className="py-1.5 px-2 border-x border-slate-300 text-slate-800">{ap.tecnico?.name}</td>
+                            <td className="py-1.5 px-2 text-center border-x border-slate-300 font-mono text-slate-600">{ap.total_horas}h</td>
+                            <td className="py-1.5 px-2 text-right border-x border-slate-300 font-mono text-slate-800">R$ {parseFloat(ap.valor_total).toFixed(2)}</td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        ))
+                      ) : (
+                        <tr><td colSpan="3" className="py-2 px-2 text-center text-slate-500 italic border border-slate-300">Sem horas lançadas</td></tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              )}
 
-              {osSelecionada.itens && osSelecionada.itens.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <span className="font-bold text-slate-800 block">MATERIAIS E PEÇAS APLICADOS:</span>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border border-slate-200 text-[10px]">
-                      <thead className="bg-slate-100 border-b border-slate-200">
-                        <tr>
-                          <th className="p-1.5">Item</th>
-                          <th className="p-1.5 text-center border-l border-slate-200">Qtd</th>
-                          <th className="p-1.5 text-right border-l border-slate-200">Valor Unitário</th>
-                          <th className="p-1.5 text-right border-l border-slate-200">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 font-mono">
-                        {osSelecionada.itens.map((it) => (
-                          <tr key={it.id}>
-                            <td className="p-1.5 font-sans">{it.item?.nome || 'Item do Catálogo'}</td>
-                            <td className="p-1.5 text-center border-l border-slate-200">{it.quantidade}</td>
-                            <td className="p-1.5 text-right border-l border-slate-200">R$ {parseFloat(it.valor_unitario).toFixed(2)}</td>
-                            <td className="p-1.5 text-right font-bold border-l border-slate-200">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
+                {/* Peças */}
+                <div>
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-2">Materiais Consumidos:</span>
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-100 border-y border-slate-300">
+                      <tr>
+                        <th className="py-2 px-2 font-bold text-slate-700 border-x border-slate-300">Item</th>
+                        <th className="py-2 px-2 text-center font-bold text-slate-700 border-x border-slate-300">Qtd</th>
+                        <th className="py-2 px-2 text-right font-bold text-slate-700 border-x border-slate-300">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {osSelecionada.itens && osSelecionada.itens.length > 0 ? (
+                        osSelecionada.itens.map((it, idx) => (
+                          <tr key={it.id} className={`border-b border-slate-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                            <td className="py-1.5 px-2 border-x border-slate-300 text-slate-800 truncate max-w-[150px]">{it.item?.nome || 'Item do Catálogo'}</td>
+                            <td className="py-1.5 px-2 text-center border-x border-slate-300 font-mono text-slate-600">{it.quantidade}</td>
+                            <td className="py-1.5 px-2 text-right border-x border-slate-300 font-mono text-slate-800">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        ))
+                      ) : (
+                        <tr><td colSpan="3" className="py-2 px-2 text-center text-slate-500 italic border border-slate-300">Sem peças utilizadas</td></tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              )}
+              </div>
 
+              {/* Fotos (Máximo 3 colunas para caber no A4) */}
               {osSelecionada.fotos && osSelecionada.fotos.length > 0 && (
-                <div className="space-y-1.5 pt-2 border-t border-slate-200">
-                  <span className="font-bold text-slate-800 block">EVIDÊNCIAS FOTOGRÁFICAS:</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="pt-4 print:break-inside-avoid">
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-3 border-b border-slate-300 pb-1">Anexos Fotográficos:</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 print:grid-cols-3">
                     {osSelecionada.fotos.map((f) => (
-                      <div key={f.id} className="border border-slate-200 rounded p-1 text-center bg-slate-50 print:break-inside-avoid">
+                      <div key={f.id} className="border border-slate-300 rounded p-1.5 bg-slate-50 text-center">
                         <img
                             src={f.url_arquivo}
                             alt="Evidência"
-                            className="h-20 sm:h-28 w-full object-cover rounded"
+                            className="h-32 w-full object-cover rounded border border-slate-200"
                             onError={(e) => { e.target.src = 'https://placehold.co/400x300/e2e8f0/475569?text=Foto+Indispon%C3%ADvel' }}
                         />
-                        <span className="text-[9px] font-bold text-indigo-700 block mt-1">{f.tipo_etapa}</span>
+                        <span className="text-[10px] font-black uppercase text-slate-700 block mt-1.5">{f.tipo_etapa}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="border-t border-slate-300 pt-4 mt-6 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 print:break-inside-avoid">
-                <div className="space-y-1 font-mono text-[9px] text-slate-500 max-w-sm">
-                  <div className="font-bold text-slate-700">CONFORMIDADE JURÍDICA MP 2.200-2/2001:</div>
-                  <div className="truncate">Hash SHA-256: {osSelecionada.hash_assinatura_sha256 || 'Assinatura Registrada'}</div>
-                  <div>IP: {osSelecionada.ip_assinatura || '127.0.0.1'} | Data: {osSelecionada.assinado_em ? new Date(osSelecionada.assinado_em).toLocaleString('pt-BR') : 'N/A'}</div>
+              {/* Assinaturas */}
+              <div className="pt-12 mt-8 flex flex-col sm:flex-row justify-between items-end print:flex-row print:break-inside-avoid gap-8">
+                {/* Validação Jurídica */}
+                <div className="space-y-1 font-mono text-[9px] text-slate-500 flex-1">
+                  <div className="font-bold text-slate-800 uppercase border-b border-slate-300 pb-1 inline-block mb-1">Certificação Digital (MP 2.200-2/2001)</div>
+                  <div className="break-all">Hash: {osSelecionada.hash_assinatura_sha256 || 'Aguardando Assinatura'}</div>
+                  <div>IP Registro: {osSelecionada.ip_assinatura || '127.0.0.1'}</div>
+                  <div>Data da Coleta: {osSelecionada.assinado_em ? new Date(osSelecionada.assinado_em).toLocaleString('pt-BR') : 'N/A'}</div>
                 </div>
-                <div className="text-center self-center sm:self-end">
-                  {osSelecionada.assinatura_cliente_base64 && (
-                    <img src={osSelecionada.assinatura_cliente_base64} alt="Assinatura" className="h-10 sm:h-12 mx-auto" />
+
+                {/* Linha de Assinatura */}
+                <div className="text-center w-64 shrink-0">
+                  {osSelecionada.assinatura_cliente_base64 ? (
+                    <img src={osSelecionada.assinatura_cliente_base64} alt="Assinatura" className="h-16 mx-auto mb-1" />
+                  ) : (
+                    <div className="h-16 w-full" />
                   )}
-                  <div className="border-t border-slate-400 w-44 sm:w-48 mt-1 pt-1 font-bold text-[10px] text-slate-800">
+                  <div className="border-t border-slate-800 w-full pt-1.5 font-bold text-xs text-slate-900 uppercase">
                     {osSelecionada.nome_responsavel_recebimento || osSelecionada.cliente?.nome_razao_social}
                   </div>
+                  <div className="text-[10px] text-slate-500 uppercase mt-0.5">Cliente / Recebedor</div>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
