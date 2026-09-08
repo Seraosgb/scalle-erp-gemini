@@ -93,7 +93,7 @@ export default function OrdensServicoPage() {
   // Form Edição Técnica no Modal
   const [formEdicaoTecnica, setFormEdicaoTecnica] = useState({
     tecnico_responsavel_id: '',
-    diagnostico_tecnico: '', // Vai servir apenas para inserir novo log
+    diagnostico_tecnico: '',
     prioridade: 'NORMAL',
     prazo_sla_resolucao: '',
     recalcular_sla: false,
@@ -162,13 +162,19 @@ export default function OrdensServicoPage() {
         api.get('/os/planos-preventivos').catch(() => ({ data: { data: [] } }))
       ]);
 
-      setClientes(resCli.data?.data || []);
-      setTecnicos(resUsers.data?.data?.usuarios || resUsers.data?.data || []);
+      const cliList = resCli.data?.data || [];
+      const userList = resUsers.data?.data?.usuarios || resUsers.data?.data || [];
       const depList = resDeps.data?.data || [];
+      const itList = resItens.data?.data || [];
+      const atList = resAtivos.data?.data || [];
+      const pmList = resPmoc.data?.data || [];
+
+      setClientes(cliList);
+      setTecnicos(userList);
       setDepositos(depList);
-      setItensCatalogo(resItens.data?.data || []);
-      setAtivos(resAtivos.data?.data || []);
-      setPlanosPmoc(resPmoc.data?.data || []);
+      setItensCatalogo(itList);
+      setAtivos(atList);
+      setPlanosPmoc(pmList);
 
       if (depList.length > 0 && !formOs.deposito_saida_id) {
         setFormOs(prev => ({ ...prev, deposito_saida_id: depList[0].id }));
@@ -185,6 +191,7 @@ export default function OrdensServicoPage() {
     return () => clearTimeout(delay);
   }, [search]);
 
+  // Função centralizada para atualizar a OS na lista local sem recarregar tudo do servidor (Otimização Máxima)
   const atualizarOsLocal = (osAtualizada) => {
     setOsSelecionada(osAtualizada);
     setOrdens(prev => prev.map(o => o.id === osAtualizada.id ? osAtualizada : o));
@@ -208,7 +215,7 @@ export default function OrdensServicoPage() {
       const res = await api.put(`/os/${osSelecionada.id}/dados-tecnicos`, formEdicaoTecnica);
       atualizarOsLocal(res.data.data.os);
       setFormEdicaoTecnica(prev => ({...prev, diagnostico_tecnico: ''})); // Limpa o campo para nova entrada
-      setFeedback({ tipo: 'sucesso', msg: 'Registro técnico salvo no diário de bordo!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros atualizados e salvos!' });
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros.' });
     }
