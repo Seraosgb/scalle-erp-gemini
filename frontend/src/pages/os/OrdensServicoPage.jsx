@@ -162,19 +162,13 @@ export default function OrdensServicoPage() {
         api.get('/os/planos-preventivos').catch(() => ({ data: { data: [] } }))
       ]);
 
-      const cliList = resCli.data?.data || [];
-      const userList = resUsers.data?.data?.usuarios || resUsers.data?.data || [];
+      setClientes(resCli.data?.data || []);
+      setTecnicos(resUsers.data?.data?.usuarios || resUsers.data?.data || []);
       const depList = resDeps.data?.data || [];
-      const itList = resItens.data?.data || [];
-      const atList = resAtivos.data?.data || [];
-      const pmList = resPmoc.data?.data || [];
-
-      setClientes(cliList);
-      setTecnicos(userList);
       setDepositos(depList);
-      setItensCatalogo(itList);
-      setAtivos(atList);
-      setPlanosPmoc(pmList);
+      setItensCatalogo(resItens.data?.data || []);
+      setAtivos(resAtivos.data?.data || []);
+      setPlanosPmoc(resPmoc.data?.data || []);
 
       if (depList.length > 0 && !formOs.deposito_saida_id) {
         setFormOs(prev => ({ ...prev, deposito_saida_id: depList[0].id }));
@@ -190,6 +184,12 @@ export default function OrdensServicoPage() {
     }, 300);
     return () => clearTimeout(delay);
   }, [search]);
+
+  // Função centralizada para atualizar a OS na lista local sem recarregar tudo do servidor (Otimização Máxima)
+  const atualizarOsLocal = (osAtualizada) => {
+    setOsSelecionada(osAtualizada);
+    setOrdens(prev => prev.map(o => o.id === osAtualizada.id ? osAtualizada : o));
+  };
 
   const abrirPainelDetalhes = (os) => {
     setOsSelecionada(os);
@@ -207,9 +207,8 @@ export default function OrdensServicoPage() {
     if (e) e.preventDefault();
     try {
       const res = await api.put(`/os/${osSelecionada.id}/dados-tecnicos`, formEdicaoTecnica);
-      setOsSelecionada(res.data.data.os);
-      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros técnicos e SLA atualizados com sucesso!' });
-      carregarDadosIniciais();
+      atualizarOsLocal(res.data.data.os); // <-- OTIMIZAÇÃO: Atualiza localmente sem 7 calls de API
+      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros atualizados e salvos!' });
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros.' });
     }
@@ -235,18 +234,15 @@ export default function OrdensServicoPage() {
       setFormAtivo({ cliente_id: '', descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '', localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10) });
       setFeedback({ tipo: 'sucesso', msg: 'Ativo patrimonial cadastrado com sucesso!' });
     } catch (err) {
-      const msgErro = err.response?.data?.error?.message
-                   || (err.response?.data?.errors ? Object.values(err.response.data.errors).flat().join(', ') : 'Erro ao cadastrar ativo.');
-      setFeedback({ tipo: 'erro', msg: msgErro });
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao cadastrar ativo.' });
     }
   };
 
   const handleMudarStatusOs = async (novoStatus) => {
     try {
       const res = await api.put(`/os/${osSelecionada.id}/status`, { status: novoStatus });
-      setOsSelecionada(res.data.data.os);
+      atualizarOsLocal(res.data.data.os);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao transitar status da OS.' });
     }
@@ -256,11 +252,10 @@ export default function OrdensServicoPage() {
     e.preventDefault();
     try {
       const res = await api.post(`/os/${osSelecionada.id}/pecas`, novaPeca);
-      setOsSelecionada(res.data.data.os);
+      atualizarOsLocal(res.data.data.os);
       setModalAddPeca(false);
       setNovaPeca({ item_id: '', quantidade: 1, valor_unitario: 0 });
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao requisitar peça ao almoxarifado.' });
     }
@@ -269,9 +264,8 @@ export default function OrdensServicoPage() {
   const handleTratarPecaAlmox = async (itemId, novoStatus) => {
     try {
       const res = await api.put(`/os/${osSelecionada.id}/pecas/${itemId}/almoxarifado`, { status_requisicao: novoStatus });
-      setOsSelecionada(res.data.data.os);
+      atualizarOsLocal(res.data.data.os);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao atualizar status da peça no almoxarifado.' });
     }
@@ -283,7 +277,7 @@ export default function OrdensServicoPage() {
       const res = await api.post('/os', formOs);
       setModalNovaOs(false);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDadosIniciais();
+      carregarDadosIniciais(); // Aqui recarregamos porque é uma OS nova no kanban
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao abrir OS.' });
     }
@@ -388,10 +382,10 @@ export default function OrdensServicoPage() {
       };
 
       const res = await api.post(`/os/${osSelecionada.id}/concluir`, payload);
+      atualizarOsLocal(res.data.data.os);
       setModalConcluir(false);
       setModalDetalhes(false);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
-      carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao concluir OS.' });
     }
@@ -413,7 +407,7 @@ export default function OrdensServicoPage() {
       setModalFoto(false);
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
       const resUpdated = await api.get(`/os/${osSelecionada.id}`);
-      setOsSelecionada(resUpdated.data.data);
+      atualizarOsLocal(resUpdated.data.data);
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao enviar foto.' });
     }
@@ -1332,7 +1326,7 @@ export default function OrdensServicoPage() {
                     <div>
                       <span className="text-slate-500 block font-bold">Aceite Jurídico (MP 2.200-2):</span>
                       <div className="text-white font-semibold">{osSelecionada.nome_responsavel_recebimento}</div>
-                      <span className="text-[10px] text-slate-500 font-mono block">Hash SHA-256: {osSelecionada.hash_assinatura_sha256?.substring(0, 24)}...[cite: 2]</span>
+                      <span className="text-[10px] text-slate-500 font-mono block">Hash SHA-256: {osSelecionada.hash_assinatura_sha256?.substring(0, 24)}...</span>
                     </div>
                     {osSelecionada.assinatura_cliente_base64 && <img src={osSelecionada.assinatura_cliente_base64} alt="Assinatura" className="h-12 bg-white rounded p-1" />}
                   </div>
@@ -1366,117 +1360,11 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Modal Requisitar Peça */}
-      {modalAddPeca && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Package className="h-4 w-4 text-indigo-400" /> Requisitar Peça</h3>
-              <button type="button" onClick={() => setModalAddPeca(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleAdicionarPecaEmAndamento} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-400 mb-1">Item do Catálogo *</label>
-                <select
-                  required
-                  value={novaPeca.item_id}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    const found = itensCatalogo.find(c => c.id === id);
-                    setNovaPeca({
-                      ...novaPeca,
-                      item_id: id,
-                      valor_unitario: found ? parseFloat(found.preco_venda || 0) : 0,
-                    });
-                  }}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
-                >
-                  <option value="">Selecione a Peça...</option>
-                  {itensCatalogo.map(c => <option key={c.id} value={c.id}>{c.nome} (R$ {parseFloat(c.preco_venda || 0).toFixed(2)})</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Quantidade *</label>
-                  <input type="number" step="0.01" min="0.01" required value={novaPeca.quantidade} onChange={(e) => setNovaPeca({ ...novaPeca, quantidade: parseFloat(e.target.value) || 1 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Valor Unitário (R$)</label>
-                  <input type="number" step="0.01" min="0" required value={novaPeca.valor_unitario} onChange={(e) => setNovaPeca({ ...novaPeca, valor_unitario: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalAddPeca(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Requisitar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Conclusão com Canvas de Assinatura Adaptável a Touch */}
-      {modalConcluir && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
-              <h2 className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-2">
-                <PenTool className="h-5 w-5 text-emerald-400 shrink-0" /> Laudo Técnico & Assinatura
-              </h2>
-              <button type="button" onClick={() => setModalConcluir(false)} className="p-1 cursor-pointer"><X className="h-5 w-5 text-slate-400" /></button>
-            </div>
-            <form onSubmit={handleConcluirOs} className="p-4 sm:p-6 space-y-3.5 text-xs sm:text-sm overflow-y-auto">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Laudo Técnico dos Serviços Executados *</label>
-                <textarea required rows="3" placeholder="Descreva os reparos e testes realizados..." value={laudoTecnico} onChange={(e) => setLaudoTecnico(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Nome do Recebedor *</label>
-                  <input type="text" required value={nomeResponsavel} onChange={(e) => setNomeResponsavel(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Documento (CPF / RG)</label>
-                  <input type="text" value={docResponsavel} onChange={(e) => setDocResponsavel(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-xs font-semibold text-slate-400">Assinatura na Tela (Touch ou Mouse) *</label>
-                  <button type="button" onClick={limparCanvas} className="text-[10px] text-rose-400 hover:text-rose-300 cursor-pointer">Limpar Traço</button>
-                </div>
-                <div className="border border-slate-700 bg-white rounded-xl overflow-hidden touch-none">
-                  <canvas
-                    ref={canvasRef}
-                    width={500}
-                    height={150}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
-                    className="w-full cursor-crosshair block"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
-                <button type="button" onClick={() => setModalConcluir(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer">Confirmar & Faturar OS</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Modal Laudo Técnico Oficial para Visualização e Impressão A4 */}
       {modalImprimirLaudo && osSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl p-4 sm:p-6 space-y-4 shadow-2xl max-h-[94vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3 print:hidden">
               <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
                 <FileText className="h-4 w-4 text-indigo-400 shrink-0" /> Laudo Técnico Oficial: OS #{osSelecionada.numero_os}
               </h3>
@@ -1492,18 +1380,18 @@ export default function OrdensServicoPage() {
               </div>
             </div>
 
-            {/* Documento A4 */}
-            <div id="laudo-oficial-impressao" className="bg-white text-slate-900 p-4 sm:p-8 rounded-xl font-sans text-xs space-y-4 select-text">
+            {/* Documento A4 (Otimizado para Impressão) */}
+            <div id="laudo-oficial-impressao" className="bg-white text-slate-900 p-4 sm:p-8 rounded-xl font-sans text-xs space-y-4 select-text print:fixed print:inset-0 print:z-[9999] print:bg-white print:block print:w-full print:h-full print:m-0 print:p-8">
               <div className="flex justify-between items-start border-b border-slate-300 pb-4">
                 <div className="space-y-1">
                   <div className="text-lg sm:text-xl font-black tracking-tight text-indigo-900">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ENTERPRISE'}</div>
-                  <div className="text-[11px] text-slate-600">{osSelecionada.empresa?.razao_social || 'Aliados da Manutenção'}</div>
+                  <div className="text-[11px] text-slate-600">{osSelecionada.empresa?.razao_social || 'Razão Social'}</div>
                   <div className="text-[10px] text-slate-500">CNPJ: {osSelecionada.empresa?.cnpj || '00.000.000/0001-91'}</div>
                 </div>
                 <div className="text-right space-y-1 font-mono">
                   <div className="text-sm sm:text-base font-black text-indigo-600">OS #{osSelecionada.numero_os}</div>
                   <div className="text-[11px] text-slate-600">Data: {new Date(osSelecionada.data_abertura).toLocaleDateString('pt-BR')}</div>
-                  <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold">{osSelecionada.tipo_manutencao}</div>
+                  <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold inline-block border border-slate-200">{osSelecionada.tipo_manutencao}</div>
                 </div>
               </div>
 
@@ -1543,16 +1431,16 @@ export default function OrdensServicoPage() {
                       <thead className="bg-slate-100 border-b border-slate-200">
                         <tr>
                           <th className="p-1.5">Técnico/Responsável</th>
-                          <th className="p-1.5 text-center">Horas</th>
-                          <th className="p-1.5 text-right">Valor Custo/Hora</th>
+                          <th className="p-1.5 text-center border-l border-slate-200">Horas</th>
+                          <th className="p-1.5 text-right border-l border-slate-200">Valor Custo/Hora</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 font-mono">
                         {osSelecionada.apontamentos.map((ap) => (
                           <tr key={ap.id}>
                             <td className="p-1.5 font-sans">{ap.tecnico?.name}</td>
-                            <td className="p-1.5 text-center">{ap.total_horas}h</td>
-                            <td className="p-1.5 text-right">R$ {parseFloat(ap.valor_total).toFixed(2)}</td>
+                            <td className="p-1.5 text-center border-l border-slate-200">{ap.total_horas}h</td>
+                            <td className="p-1.5 text-right border-l border-slate-200">R$ {parseFloat(ap.valor_total).toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1569,18 +1457,18 @@ export default function OrdensServicoPage() {
                       <thead className="bg-slate-100 border-b border-slate-200">
                         <tr>
                           <th className="p-1.5">Item</th>
-                          <th className="p-1.5 text-center">Qtd</th>
-                          <th className="p-1.5 text-right">Valor Unitário</th>
-                          <th className="p-1.5 text-right">Total</th>
+                          <th className="p-1.5 text-center border-l border-slate-200">Qtd</th>
+                          <th className="p-1.5 text-right border-l border-slate-200">Valor Unitário</th>
+                          <th className="p-1.5 text-right border-l border-slate-200">Total</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 font-mono">
                         {osSelecionada.itens.map((it) => (
                           <tr key={it.id}>
                             <td className="p-1.5 font-sans">{it.item?.nome || 'Item do Catálogo'}</td>
-                            <td className="p-1.5 text-center">{it.quantidade}</td>
-                            <td className="p-1.5 text-right">R$ {parseFloat(it.valor_unitario).toFixed(2)}</td>
-                            <td className="p-1.5 text-right font-bold">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
+                            <td className="p-1.5 text-center border-l border-slate-200">{it.quantidade}</td>
+                            <td className="p-1.5 text-right border-l border-slate-200">R$ {parseFloat(it.valor_unitario).toFixed(2)}</td>
+                            <td className="p-1.5 text-right font-bold border-l border-slate-200">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1594,12 +1482,12 @@ export default function OrdensServicoPage() {
                   <span className="font-bold text-slate-800 block">EVIDÊNCIAS FOTOGRÁFICAS:</span>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {osSelecionada.fotos.map((f) => (
-                      <div key={f.id} className="border border-slate-200 rounded p-1 text-center bg-slate-50">
+                      <div key={f.id} className="border border-slate-200 rounded p-1 text-center bg-slate-50 print:break-inside-avoid">
                         <img
                             src={f.url_arquivo}
                             alt="Evidência"
                             className="h-20 sm:h-28 w-full object-cover rounded"
-                            onError={(e) => { e.target.src = 'https://placehold.co/400x300/1e293b/a8a29e?text=Foto+Indispon%C3%ADvel' }}
+                            onError={(e) => { e.target.src = 'https://placehold.co/400x300/e2e8f0/475569?text=Foto+Indispon%C3%ADvel' }}
                         />
                         <span className="text-[9px] font-bold text-indigo-700 block mt-1">{f.tipo_etapa}</span>
                       </div>
@@ -1608,10 +1496,10 @@ export default function OrdensServicoPage() {
                 </div>
               )}
 
-              <div className="border-t border-slate-300 pt-4 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3">
+              <div className="border-t border-slate-300 pt-4 mt-6 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 print:break-inside-avoid">
                 <div className="space-y-1 font-mono text-[9px] text-slate-500 max-w-sm">
-                  <div className="font-bold text-slate-700">CONFORMIDADE JURÍDICA MP 2.200-2/2001:[cite: 2]</div>
-                  <div className="truncate">Hash SHA-256: {osSelecionada.hash_assinatura_sha256 || 'Assinatura Registrada'}[cite: 2]</div>
+                  <div className="font-bold text-slate-700">CONFORMIDADE JURÍDICA MP 2.200-2/2001:</div>
+                  <div className="truncate">Hash SHA-256: {osSelecionada.hash_assinatura_sha256 || 'Assinatura Registrada'}</div>
                   <div>IP: {osSelecionada.ip_assinatura || '127.0.0.1'} | Data: {osSelecionada.assinado_em ? new Date(osSelecionada.assinado_em).toLocaleString('pt-BR') : 'N/A'}</div>
                 </div>
                 <div className="text-center self-center sm:self-end">
