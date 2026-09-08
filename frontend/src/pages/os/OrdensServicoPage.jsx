@@ -73,7 +73,6 @@ export default function OrdensServicoPage() {
   const [modalConcluir, setModalConcluir] = useState(false);
   const [modalFoto, setModalFoto] = useState(false);
   const [modalAddPeca, setModalAddPeca] = useState(false);
-  const [modalImprimirLaudo, setModalImprimirLaudo] = useState(false);
   const [osSelecionada, setOsSelecionada] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
@@ -421,6 +420,30 @@ export default function OrdensServicoPage() {
     }
   };
 
+  // -----------------------------------------------------
+  // NOVA FUNÇÃO: Dispara a rota de PDF e inicia o Download
+  // -----------------------------------------------------
+  const handleBaixarPdf = async () => {
+    try {
+      setFeedback({ tipo: 'sucesso', msg: 'Gerando PDF Oficial, aguarde...' });
+      const response = await api.get(`/os/${osSelecionada.id}/pdf`, {
+        responseType: 'blob' // Importante para arquivos binários
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Laudo_Tecnico_OS_${osSelecionada.numero_os}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setFeedback({ tipo: 'sucesso', msg: 'PDF baixado com sucesso!' });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao gerar o PDF. Verifique o console.' });
+    }
+  };
+
   const colunasKanban = [
     { id: 'ABERTA', titulo: 'Triagem / Novas', cor: 'border-blue-500' },
     { id: 'EM_EXECUCAO', titulo: 'Em Execução / Campo', cor: 'border-indigo-500' },
@@ -635,8 +658,397 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* Outras Visualizações Omitidas por Brevidade (Mantêm o funcionamento anterior) */}
-      {/* Visualização 2: PMOC, 3: Ativos, 4: SLAs, 5: Lista */}
+      {/* Visualização 2: PMOC */}
+      {abaAtiva === 'pmoc' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+          <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[650px]">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-[10px] sm:text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-3 sm:px-4">PLANO PMOC</th>
+                <th className="py-3 px-3 sm:px-4">CLIENTE / LOCAL</th>
+                <th className="py-3 px-3 sm:px-4">ATIVO</th>
+                <th className="py-3 px-3 sm:px-4">FREQUÊNCIA</th>
+                <th className="py-3 px-3 sm:px-4">PRÓXIMA EXECUÇÃO</th>
+                <th className="py-3 px-3 sm:px-4 text-center">STATUS</th>
+                <th className="py-3 px-3 sm:px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {planosPmoc.length === 0 ? (
+                <tr><td colSpan="7" className="text-center py-10 text-slate-500">Nenhum cronograma PMOC cadastrado.</td></tr>
+              ) : (
+                planosPmoc.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-3 sm:px-4 font-bold text-white">{p.titulo_plano}</td>
+                    <td className="py-3 px-3 sm:px-4 text-slate-300">{p.cliente?.nome_razao_social}</td>
+                    <td className="py-3 px-3 sm:px-4 text-indigo-400">{p.ativo?.descricao || 'Geral'}</td>
+                    <td className="py-3 px-3 sm:px-4 font-mono font-bold text-slate-300">{p.frequencia}</td>
+                    <td className="py-3 px-3 sm:px-4 font-mono text-emerald-400 font-bold">{new Date(p.proxima_execucao).toLocaleDateString('pt-BR')}</td>
+                    <td className="py-3 px-3 sm:px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.is_ativo ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-slate-800 text-slate-400'}`}>
+                        {p.is_ativo ? 'ATIVO' : 'INATIVO'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 sm:px-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormPmoc({
+                              id: p.id,
+                              cliente_id: p.cliente_id,
+                              ativo_id: p.ativo_id || '',
+                              tecnico_padrao_id: p.tecnico_padrao_id || '',
+                              titulo_plano: p.titulo_plano,
+                              frequencia: p.frequencia,
+                              proxima_execucao: p.proxima_execucao ? p.proxima_execucao.substring(0, 10) : '',
+                              instrucoes_tecnicas: p.instrucoes_tecnicas || ''
+                            });
+                            setModalNovoPmoc(true);
+                          }}
+                          className="p-1.5 text-indigo-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatusPmoc(p.id)}
+                          className={`p-1.5 rounded-lg hover:bg-slate-800 cursor-pointer ${p.is_ativo ? 'text-amber-400' : 'text-emerald-400'}`}
+                        >
+                          {p.is_ativo ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Visualização 3: Ativos */}
+      {abaAtiva === 'ativos' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+          <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[650px]">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-[10px] sm:text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-3 sm:px-4">TAG / PATRIMÔNIO</th>
+                <th className="py-3 px-3 sm:px-4">DESCRIÇÃO</th>
+                <th className="py-3 px-3 sm:px-4">PROPRIETÁRIO</th>
+                <th className="py-3 px-3 sm:px-4">MARCA / MODELO</th>
+                <th className="py-3 px-3 sm:px-4">SÉRIE</th>
+                <th className="py-3 px-3 sm:px-4">LOCALIZAÇÃO</th>
+                <th className="py-3 px-3 sm:px-4 text-center">STATUS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {ativos.length === 0 ? (
+                <tr><td colSpan="7" className="text-center py-10 text-slate-500">Nenhum ativo cadastrado.</td></tr>
+              ) : (
+                ativos.map((a) => (
+                  <tr key={a.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-3 sm:px-4 font-bold text-indigo-400 font-mono">{a.codigo_patrimonio}</td>
+                    <td className="py-3 px-3 sm:px-4 font-medium text-white">{a.descricao}</td>
+                    <td className="py-3 px-3 sm:px-4 text-indigo-300 font-semibold">{a.cliente?.nome_razao_social || 'Próprio'}</td>
+                    <td className="py-3 px-3 sm:px-4 text-slate-300">{a.marca_modelo || '-'}</td>
+                    <td className="py-3 px-3 sm:px-4 font-mono text-slate-400">{a.numero_serie || '-'}</td>
+                    <td className="py-3 px-3 sm:px-4 text-slate-300">{a.localizacao_fisica || '-'}</td>
+                    <td className="py-3 px-3 sm:px-4 text-center">
+                      <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">ATIVO</span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Visualização 4: SLAs */}
+      {abaAtiva === 'slas' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+          <div className="p-3 sm:p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/60">
+            <div>
+              <h2 className="text-xs sm:text-sm font-bold text-white">Prioridades e Prazos SLA</h2>
+              <p className="text-[10px] sm:text-xs text-slate-400">Configuração de prazos de resolução por criticidade</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPrioridadeEmEdicao(null);
+                setFormPrioridade({ nome: '', codigo: '', cor_hex: '#3b82f6', horas_sla: 24, ordem_exibicao: prioridades.length + 1, is_ativo: true });
+                setModalPrioridade(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" /> Nova
+            </button>
+          </div>
+          <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[500px]">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-[10px] sm:text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-3 sm:px-4">PRIORIDADE</th>
+                <th className="py-3 px-3 sm:px-4">CÓDIGO</th>
+                <th className="py-3 px-3 sm:px-4">PRAZO (HORAS)</th>
+                <th className="py-3 px-3 sm:px-4 text-center">STATUS</th>
+                <th className="py-3 px-3 sm:px-4 text-center">AÇÃO</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {prioridades.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-3 sm:px-4 font-bold text-white flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.cor_hex || '#3b82f6' }}></span>
+                    {p.nome}
+                  </td>
+                  <td className="py-3 px-3 sm:px-4 font-mono text-slate-400">{p.codigo}</td>
+                  <td className="py-3 px-3 sm:px-4 font-mono font-bold text-emerald-400">{p.metadados?.horas_sla || 24}h</td>
+                  <td className="py-3 px-3 sm:px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.is_ativo ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-slate-800 text-slate-400'}`}>
+                      {p.is_ativo ? 'ATIVO' : 'INATIVO'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3 sm:px-4 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrioridadeEmEdicao(p);
+                        setFormPrioridade({
+                          nome: p.nome,
+                          codigo: p.codigo,
+                          cor_hex: p.cor_hex || '#3b82f6',
+                          horas_sla: p.metadados?.horas_sla || 24,
+                          ordem_exibicao: p.ordem_exibicao || 1,
+                          is_ativo: p.is_ativo ?? true,
+                        });
+                        setModalPrioridade(true);
+                      }}
+                      className="px-2 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-indigo-400 font-semibold cursor-pointer"
+                    >
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Visualização 5: Lista Analítica */}
+      {abaAtiva === 'lista' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+          <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[650px]">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-[10px] sm:text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-3 sm:px-4">Nº OS</th>
+                <th className="py-3 px-3 sm:px-4">CLIENTE</th>
+                <th className="py-3 px-3 sm:px-4">EQUIPAMENTO</th>
+                <th className="py-3 px-3 sm:px-4">TÉCNICO</th>
+                <th className="py-3 px-3 sm:px-4">PRIORIDADE</th>
+                <th className="py-3 px-3 sm:px-4 text-center">STATUS</th>
+                <th className="py-3 px-3 sm:px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {ordens.map((os) => (
+                <tr key={os.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-3 sm:px-4 text-indigo-400 font-semibold font-mono">#{os.numero_os}</td>
+                  <td className="py-3 px-3 sm:px-4 text-white font-medium">{os.cliente?.nome_razao_social}</td>
+                  <td className="py-3 px-3 sm:px-4 text-slate-300">{os.equipamento_descricao}</td>
+                  <td className="py-3 px-3 sm:px-4 text-slate-300">{os.tecnico?.name || '-'}</td>
+                  <td className="py-3 px-3 sm:px-4">{os.prioridade}</td>
+                  <td className="py-3 px-3 sm:px-4 text-center">{os.status}</td>
+                  <td className="py-3 px-3 sm:px-4 text-center">
+                    <button type="button" onClick={() => abrirPainelDetalhes(os)} className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
+                      Ver Painel
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal Abertura de OS */}
+      {modalNovaOs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
+              <h2 className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-2">
+                <Wrench className="h-5 w-5 text-indigo-400 shrink-0" /> Abertura de Ordem de Serviço
+              </h2>
+              <button type="button" onClick={() => setModalNovaOs(false)} className="p-1 cursor-pointer"><X className="h-5 w-5 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarOs} className="p-4 sm:p-6 space-y-3.5 text-xs sm:text-sm overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Cliente *</label>
+                  <select required value={formOs.cliente_id} onChange={(e) => setFormOs({ ...formOs, cliente_id: e.target.value, ativo_id: '' })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Selecione o Cliente...</option>
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Ativo Tombado / Máquina</label>
+                  <select value={formOs.ativo_id} onChange={(e) => {
+                    const ativo = ativos.find(a => a.id === e.target.value);
+                    if (ativo) {
+                      setFormOs({ ...formOs, ativo_id: ativo.id, equipamento_descricao: ativo.descricao, equipamento_marca_modelo: ativo.marca_modelo || '', equipamento_numero_serie: ativo.numero_serie || '' });
+                    } else {
+                      setFormOs({ ...formOs, ativo_id: '' });
+                    }
+                  }} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Nenhum Ativo Selecionado (Digitar Manualmente)</option>
+                    {ativos.filter(a => !formOs.cliente_id || !a.cliente_id || a.cliente_id === formOs.cliente_id).map(a => (
+                      <option key={a.id} value={a.id}>{a.descricao} — Patr: {a.codigo_patrimonio}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Descrição do Equipamento *</label>
+                  <input type="text" required placeholder="Ex: Ar Condicionado Chiller 50TR" value={formOs.equipamento_descricao} onChange={(e) => setFormOs({ ...formOs, equipamento_descricao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Prioridade (SLA)</label>
+                  <select value={formOs.prioridade} onChange={(e) => setFormOs({ ...formOs, prioridade: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    {prioridades.map(p => <option key={p.codigo} value={p.codigo}>{p.nome}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Tipo de Manutenção</label>
+                  <select value={formOs.tipo_manutencao} onChange={(e) => setFormOs({ ...formOs, tipo_manutencao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="CORRETIVA">Corretiva</option>
+                    <option value="PREVENTIVA">Preventiva (PMOC)</option>
+                    <option value="INSTALACAO">Instalação</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Defeito Reclamado pelo Cliente *</label>
+                  <textarea required rows="3" value={formOs.defeito_reclamado} onChange={(e) => setFormOs({ ...formOs, defeito_reclamado: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovaOs(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Registrar Chamado</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cadastro de Ativo */}
+      {modalNovoAtivo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Wrench className="h-4 w-4 text-indigo-400" /> Cadastrar Ativo Patrimonial</h3>
+              <button type="button" onClick={() => setModalNovoAtivo(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarAtivo} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-400 mb-1">Cliente / Proprietário</label>
+                  <select value={formAtivo.cliente_id} onChange={(e) => setFormAtivo({ ...formAtivo, cliente_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Equipamento Próprio</option>
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-400 mb-1">Descrição do Ativo *</label>
+                  <input type="text" required placeholder="Ex: Ar Condicionado Chiller 50TR" value={formAtivo.descricao} onChange={(e) => setFormAtivo({ ...formAtivo, descricao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Código / TAG *</label>
+                  <input type="text" required placeholder="Ex: CH-001" value={formAtivo.codigo_patrimonio} onChange={(e) => setFormAtivo({ ...formAtivo, codigo_patrimonio: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Marca / Modelo</label>
+                  <input type="text" placeholder="Ex: Daikin 50TR" value={formAtivo.marca_modelo} onChange={(e) => setFormAtivo({ ...formAtivo, marca_modelo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Número de Série</label>
+                  <input type="text" placeholder="Ex: SN-123456" value={formAtivo.numero_serie} onChange={(e) => setFormAtivo({ ...formAtivo, numero_serie: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Localização Física / Sala</label>
+                  <input type="text" placeholder="Ex: Casa de Máquinas Bloco A" value={formAtivo.localizacao_fisica} onChange={(e) => setFormAtivo({ ...formAtivo, localizacao_fisica: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoAtivo(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Ativo</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cadastro/Edição PMOC */}
+      {modalNovoPmoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-auto p-4 sm:p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2"><Calendar className="h-5 w-5 text-indigo-400" /> {formPmoc.id ? 'Editar Plano PMOC' : 'Novo Plano PMOC'}</h3>
+              <button type="button" onClick={() => setModalNovoPmoc(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarPmoc} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Título do Plano PMOC *</label>
+                <input type="text" required placeholder="Ex: PMOC Mensal Central Bloco A" value={formPmoc.titulo_plano} onChange={(e) => setFormPmoc({ ...formPmoc, titulo_plano: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Cliente *</label>
+                  <select required value={formPmoc.cliente_id} onChange={(e) => setFormPmoc({ ...formPmoc, cliente_id: e.target.value, ativo_id: '' })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Selecione o Cliente...</option>
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Ativo Vinculado</label>
+                  <select value={formPmoc.ativo_id} onChange={(e) => setFormPmoc({ ...formPmoc, ativo_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Geral</option>
+                    {ativos.filter(a => !formPmoc.cliente_id || !a.cliente_id || a.cliente_id === formPmoc.cliente_id).map(a => <option key={a.id} value={a.id}>{a.descricao} ({a.codigo_patrimonio})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Frequência *</label>
+                  <select value={formPmoc.frequencia} onChange={(e) => setFormPmoc({ ...formPmoc, frequencia: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="MENSAL">Mensal</option>
+                    <option value="BIMESTRAL">Bimestral</option>
+                    <option value="TRIMESTRAL">Trimestral</option>
+                    <option value="SEMESTRAL">Semestral</option>
+                    <option value="ANUAL">Anual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Próxima Execução *</label>
+                  <input type="date" required value={formPmoc.proxima_execucao} onChange={(e) => setFormPmoc({ ...formPmoc, proxima_execucao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Instruções Técnicas</label>
+                <textarea rows="2" placeholder="Parâmetros de conformidade..." value={formPmoc.instrucoes_tecnicas} onChange={(e) => setFormPmoc({ ...formPmoc, instrucoes_tecnicas: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoPmoc(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Cronograma</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Detalhes da OS (Painel de Campo Totalmente Responsivo) */}
       {modalDetalhes && osSelecionada && (
@@ -975,8 +1387,12 @@ export default function OrdensServicoPage() {
                   <PenTool className="h-4 w-4" /> Concluir OS & Coletar Assinatura
                 </button>
               ) : (
-                <button type="button" onClick={() => setModalImprimirLaudo(true)} className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md">
-                  <Printer className="h-4 w-4" /> Imprimir Laudo Oficial
+                <button
+                  type="button"
+                  onClick={handleBaixarPdf}
+                  className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md"
+                >
+                  <Printer className="h-4 w-4" /> Baixar PDF Oficial (A4)
                 </button>
               )}
               <button type="button" onClick={() => setModalDetalhes(false)} className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium text-xs cursor-pointer">Fechar</button>
@@ -1111,190 +1527,6 @@ export default function OrdensServicoPage() {
                 <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer">Enviar</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Laudo Técnico Oficial (z-[70]) - Padrão Gemini A4 */}
-      {modalImprimirLaudo && osSelecionada && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto print:static print:bg-white print:p-0 print:block">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl p-4 sm:p-6 space-y-4 shadow-2xl max-h-[94vh] overflow-y-auto print:shadow-none print:border-none print:max-w-full print:max-h-full print:overflow-visible print:p-0 print:bg-white">
-
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3 print:hidden">
-              <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                <FileText className="h-4 w-4 text-indigo-400 shrink-0" /> Laudo Técnico Oficial: OS #{osSelecionada.numero_os}
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTimeout(() => window.print(), 100);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
-                >
-                  <Printer className="h-3.5 w-3.5" /> Imprimir (A4)
-                </button>
-                <button type="button" onClick={() => setModalImprimirLaudo(false)} className="p-1 cursor-pointer"><X className="h-5 w-5 text-slate-400" /></button>
-              </div>
-            </div>
-
-            {/* Documento A4 (Padrão Gemini Enterprise) */}
-            <div id="laudo-oficial-impressao" className="bg-white text-black p-4 sm:p-8 rounded-xl font-sans text-xs space-y-6 select-text print:block print:w-full print:h-full print:m-0 print:p-4 print:bg-white print:text-black">
-
-              {/* Header Corporativo */}
-              <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4">
-                <div>
-                  <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">{osSelecionada.empresa?.nome_fantasia || 'SCALLE ENTERPRISE'}</h1>
-                  <p className="text-xs text-slate-600 font-medium">{osSelecionada.empresa?.razao_social || 'Razão Social'}</p>
-                  <p className="text-xs text-slate-500">CNPJ: {osSelecionada.empresa?.cnpj || '00.000.000/0001-91'}</p>
-                </div>
-                <div className="text-right">
-                  <h2 className="text-xl font-black text-slate-800">LAUDO TÉCNICO OFICIAL</h2>
-                  <p className="text-sm font-bold text-indigo-600 mt-1">OS #{osSelecionada.numero_os}</p>
-                  <p className="text-xs text-slate-600">Emissão: {new Date(osSelecionada.data_abertura).toLocaleDateString('pt-BR')}</p>
-                  <div className="inline-block px-2 py-0.5 mt-1 border border-slate-400 bg-slate-100 text-slate-800 text-[10px] font-bold uppercase rounded">{osSelecionada.tipo_manutencao}</div>
-                </div>
-              </div>
-
-              {/* Informações Primárias (Grid) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-3 border border-slate-300 bg-slate-50 rounded-lg">
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Dados do Cliente</span>
-                  <div className="font-bold text-sm text-slate-900">{osSelecionada.cliente?.nome_razao_social}</div>
-                  <div className="text-slate-600 mt-1">Doc: {osSelecionada.cliente?.cpf_cnpj}</div>
-                  <div className="text-slate-600">Contato: {osSelecionada.cliente?.telefone_principal || 'N/A'}</div>
-                </div>
-
-                <div className="p-3 border border-slate-300 bg-slate-50 rounded-lg">
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Equipamento / Ativo</span>
-                  <div className="font-bold text-sm text-slate-900">{osSelecionada.equipamento_descricao}</div>
-                  <div className="text-slate-600 mt-1">Marca/Modelo: {osSelecionada.equipamento_marca_modelo || 'N/A'}</div>
-                  <div className="text-slate-600">Série: {osSelecionada.equipamento_numero_serie || 'N/A'}</div>
-                </div>
-              </div>
-
-              {/* Corpo do Laudo */}
-              <div className="space-y-4">
-                <div>
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Defeito Reclamado pelo Cliente:</span>
-                  <p className="text-slate-800 text-sm">{osSelecionada.defeito_reclamado}</p>
-                </div>
-
-                <div>
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Diário de Bordo & Diagnóstico Técnico:</span>
-                  <div className="p-3 bg-slate-50 border border-slate-300 rounded text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
-                    {osSelecionada.diagnostico_tecnico || 'Nenhum registro técnico detalhado durante a execução.'}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-1">Parecer Final & Serviço Executado:</span>
-                  <p className="text-slate-800 text-sm">{osSelecionada.servico_executado || 'Execução em conformidade técnica.'}</p>
-                </div>
-              </div>
-
-              {/* Tabelas de Custos */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2">
-                {/* Apontamentos */}
-                <div>
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-2">Mão de Obra Aplicada:</span>
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-100 border-y border-slate-300">
-                      <tr>
-                        <th className="py-2 px-2 font-bold text-slate-700 border-x border-slate-300">Técnico</th>
-                        <th className="py-2 px-2 text-center font-bold text-slate-700 border-x border-slate-300">Hrs</th>
-                        <th className="py-2 px-2 text-right font-bold text-slate-700 border-x border-slate-300">Custo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {osSelecionada.apontamentos && osSelecionada.apontamentos.length > 0 ? (
-                        osSelecionada.apontamentos.map((ap, idx) => (
-                          <tr key={ap.id} className={`border-b border-slate-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                            <td className="py-1.5 px-2 border-x border-slate-300 text-slate-800">{ap.tecnico?.name}</td>
-                            <td className="py-1.5 px-2 text-center border-x border-slate-300 font-mono text-slate-600">{ap.total_horas}h</td>
-                            <td className="py-1.5 px-2 text-right border-x border-slate-300 font-mono text-slate-800">R$ {parseFloat(ap.valor_total).toFixed(2)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr><td colSpan="3" className="py-2 px-2 text-center text-slate-500 italic border border-slate-300">Sem horas lançadas</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Peças */}
-                <div>
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-2">Materiais Consumidos:</span>
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-100 border-y border-slate-300">
-                      <tr>
-                        <th className="py-2 px-2 font-bold text-slate-700 border-x border-slate-300">Item</th>
-                        <th className="py-2 px-2 text-center font-bold text-slate-700 border-x border-slate-300">Qtd</th>
-                        <th className="py-2 px-2 text-right font-bold text-slate-700 border-x border-slate-300">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {osSelecionada.itens && osSelecionada.itens.length > 0 ? (
-                        osSelecionada.itens.map((it, idx) => (
-                          <tr key={it.id} className={`border-b border-slate-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                            <td className="py-1.5 px-2 border-x border-slate-300 text-slate-800 truncate max-w-[150px]">{it.item?.nome || 'Item do Catálogo'}</td>
-                            <td className="py-1.5 px-2 text-center border-x border-slate-300 font-mono text-slate-600">{it.quantidade}</td>
-                            <td className="py-1.5 px-2 text-right border-x border-slate-300 font-mono text-slate-800">R$ {parseFloat(it.valor_total).toFixed(2)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr><td colSpan="3" className="py-2 px-2 text-center text-slate-500 italic border border-slate-300">Sem peças utilizadas</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Fotos (Máximo 3 colunas para caber no A4) */}
-              {osSelecionada.fotos && osSelecionada.fotos.length > 0 && (
-                <div className="pt-4 print:break-inside-avoid">
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider block mb-3 border-b border-slate-300 pb-1">Anexos Fotográficos:</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 print:grid-cols-3">
-                    {osSelecionada.fotos.map((f) => (
-                      <div key={f.id} className="border border-slate-300 rounded p-1.5 bg-slate-50 text-center">
-                        <img
-                            src={f.url_arquivo}
-                            alt="Evidência"
-                            className="h-32 w-full object-cover rounded border border-slate-200"
-                            onError={(e) => { e.target.src = 'https://placehold.co/400x300/e2e8f0/475569?text=Foto+Indispon%C3%ADvel' }}
-                        />
-                        <span className="text-[10px] font-black uppercase text-slate-700 block mt-1.5">{f.tipo_etapa}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Assinaturas */}
-              <div className="pt-12 mt-8 flex flex-col sm:flex-row justify-between items-end print:flex-row print:break-inside-avoid gap-8">
-                {/* Validação Jurídica */}
-                <div className="space-y-1 font-mono text-[9px] text-slate-500 flex-1">
-                  <div className="font-bold text-slate-800 uppercase border-b border-slate-300 pb-1 inline-block mb-1">Certificação Digital (MP 2.200-2/2001)</div>
-                  <div className="break-all">Hash: {osSelecionada.hash_assinatura_sha256 || 'Aguardando Assinatura'}</div>
-                  <div>IP Registro: {osSelecionada.ip_assinatura || '127.0.0.1'}</div>
-                  <div>Data da Coleta: {osSelecionada.assinado_em ? new Date(osSelecionada.assinado_em).toLocaleString('pt-BR') : 'N/A'}</div>
-                </div>
-
-                {/* Linha de Assinatura */}
-                <div className="text-center w-64 shrink-0">
-                  {osSelecionada.assinatura_cliente_base64 ? (
-                    <img src={osSelecionada.assinatura_cliente_base64} alt="Assinatura" className="h-16 mx-auto mb-1" />
-                  ) : (
-                    <div className="h-16 w-full" />
-                  )}
-                  <div className="border-t border-slate-800 w-full pt-1.5 font-bold text-xs text-slate-900 uppercase">
-                    {osSelecionada.nome_responsavel_recebimento || osSelecionada.cliente?.nome_razao_social}
-                  </div>
-                  <div className="text-[10px] text-slate-500 uppercase mt-0.5">Cliente / Recebedor</div>
-                </div>
-              </div>
-
-            </div>
           </div>
         </div>
       )}
