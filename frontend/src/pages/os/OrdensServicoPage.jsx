@@ -208,7 +208,7 @@ export default function OrdensServicoPage() {
     try {
       const res = await api.put(`/os/${osSelecionada.id}/dados-tecnicos`, formEdicaoTecnica);
       setOsSelecionada(res.data.data.os);
-      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros atualizados!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros técnicos e SLA atualizados com sucesso!' });
       carregarDadosIniciais();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros.' });
