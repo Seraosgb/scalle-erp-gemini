@@ -36,7 +36,7 @@ import PainelCobrancaView from './pages/billing/PainelCobrancaView';
 import AuditoriaE2EView from './pages/master/AuditoriaE2EView';
 
 //RH
-import PontoEletronicoPage from './pages/RH/PontoEletronicoPage';
+import PontoEletronicoPage from './pages/rh/PontoEletronicoPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
