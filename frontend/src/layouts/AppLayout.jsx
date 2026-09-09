@@ -96,7 +96,8 @@ export default function AppLayout() {
     { name: 'PDV Balcão', path: '/app/pdv', icon: ShoppingBag },
     { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
-    { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint }, // <-- Atualizado aqui com rota e ícone novos
+    { name: 'Gestão de RH', path: '/app/colaboradores', icon: Users },
+    { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint },
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },

@@ -30,6 +30,7 @@ use App\Http\Middleware\CheckSubscriptionStatus;
 use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\PontoController;
+use App\Http\Controllers\Api\ColaboradorController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -278,4 +279,10 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // Recursos Humanos & Ponto Eletrônico
     Route::post('/rh/ponto/registrar', [PontoController::class, 'registrar']);
     Route::get('/rh/ponto/hoje', [PontoController::class, 'historicoHoje']);
+
+    // Gestão de RH
+    Route::get('/rh/colaboradores', [ColaboradorController::class, 'index']);
+    Route::post('/rh/colaboradores', [ColaboradorController::class, 'store']);
+    Route::put('/rh/colaboradores/{id}', [ColaboradorController::class, 'update']);
+    Route::get('/rh/colaboradores/{id}/espelho', [ColaboradorController::class, 'espelhoPonto']);
 });
