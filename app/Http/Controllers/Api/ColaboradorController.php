@@ -29,14 +29,13 @@ class ColaboradorController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Fallback blindado para garantir que não dê erro de empresa_id nulo no banco
         $empresaId = $request->user()->empresa_padrao_id
                   ?? Empresa::where('tenant_id', $tenantId)->first()?->id
                   ?? Empresa::first()?->id;
 
         $validated = $request->validate([
             'pessoa_id' => 'required|uuid|exists:pes_pessoas,id',
-            'usuario_id' => 'nullable|string', // Permite string para barrar a string vazia manualmente
+            'usuario_id' => 'nullable|string',
             'matricula' => 'required|string|max:50',
             'cargo' => 'required|string|max:150',
             'departamento' => 'nullable|string|max:100',
@@ -45,7 +44,6 @@ class ColaboradorController extends Controller
             'tipo_contrato' => 'required|string|in:CLT,PJ,ESTAGIO,TEMPORARIO',
         ]);
 
-        // Impede que a mesma pessoa tenha duas fichas ativas
         $jaExiste = Colaborador::where('tenant_id', $tenantId)
             ->where('pessoa_id', $validated['pessoa_id'])
             ->where('status', 'ATIVO')
@@ -55,10 +53,9 @@ class ColaboradorController extends Controller
             return response()->json(['error' => ['message' => 'Esta pessoa já possui uma ficha de colaborador ativa.']], 422);
         }
 
-        // LIMPEZA CIRÚRGICA: Se vier vazio, o banco vai chiar.
-        // Usuário vira null. Departamento vira "Geral" para não quebrar a constraint de Not Null do banco.
+        // Sem chumbamento de dados estáticos! Passa null se estiver vazio.
         $usuarioIdLimpo = !empty($validated['usuario_id']) ? $validated['usuario_id'] : null;
-        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : 'Geral';
+        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : null;
 
         $colaborador = Colaborador::create([
             'id' => (string) Str::uuid(),
@@ -96,12 +93,11 @@ class ColaboradorController extends Controller
             'data_demissao' => 'nullable|date',
         ]);
 
-        // Aplica a mesma trava de segurança aqui na edição
-        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : 'Geral';
+        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : null;
 
         $colaborador->update([
             'cargo' => $validated['cargo'],
-            'departamento' => $departamentoLimpo,
+            'departamento' => $departamentoLimpo ?? $colaborador->departamento,
             'salario_base' => (float) $validated['salario_base'],
             'status' => $validated['status'],
             'data_demissao' => $validated['status'] === 'DESLIGADO' ? ($validated['data_demissao'] ?? now()) : null,
@@ -129,7 +125,6 @@ class ColaboradorController extends Controller
             ->orderBy('data_hora_registro')
             ->get();
 
-        // Agrupamento por dia para facilitar a tabela do front-end
         $espelho = [];
         foreach ($pontos as $p) {
             $dia = \Carbon\Carbon::parse($p->data_hora_registro)->format('Y-m-d');
