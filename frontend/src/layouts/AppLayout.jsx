@@ -102,7 +102,7 @@ export default function AppLayout() {
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: '/app/fiscal', icon: FileText },
-    { name: 'Governança & Equipe', path: '/app/usuarios', icon: Users },
+    { name: 'Governança & Equipe', path: '/app/usuarios', icon: UserCheck },
     ...(usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin ? [
       { name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }
     ] : []),
@@ -145,7 +145,7 @@ export default function AppLayout() {
           </button>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin">
           {menu.map((item) => {
             const Icon = item.icon;
             return (
