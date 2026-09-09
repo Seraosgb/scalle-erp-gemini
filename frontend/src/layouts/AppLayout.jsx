@@ -96,13 +96,14 @@ export default function AppLayout() {
     { name: 'PDV Balcão', path: '/app/pdv', icon: ShoppingBag },
     { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
-    { name: 'Gestão de RH', path: '/app/colaboradores', icon: Users },
-    { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint },
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: '/app/fiscal', icon: FileText },
     { name: 'Governança & Equipe', path: '/app/usuarios', icon: UserCheck },
+    { name: 'Gestão de Pessoas (Contatos)', path: '/app/pessoas', icon: Users },
+    { name: 'Gestão de RH', path: '/app/colaboradores', icon: Users },
+    { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint },
     ...(usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin ? [
       { name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }
     ] : []),

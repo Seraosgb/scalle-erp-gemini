@@ -38,6 +38,7 @@ import AuditoriaE2EView from './pages/master/AuditoriaE2EView';
 //RH
 import PontoEletronicoPage from './pages/rh/PontoEletronicoPage';
 import ColaboradoresPage from './pages/RH/ColaboradoresPage';
+import PessoasPage from './pages/Cadastros/PessoasPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -102,6 +103,7 @@ export default function App() {
             <Route path="billing" element={<PainelCobrancaView />} />
             <Route path="ponto" element={<PontoEletronicoPage />} />
             <Route path="colaboradores" element={<ColaboradoresPage />} />
+            <Route path="pessoas" element={<PessoasPage />} />
 
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
