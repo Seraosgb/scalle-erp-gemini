@@ -55,9 +55,10 @@ class ColaboradorController extends Controller
             return response()->json(['error' => ['message' => 'Esta pessoa já possui uma ficha de colaborador ativa.']], 422);
         }
 
-        // LIMPEZA CIRÚRGICA: Se a string vier vazia, força para null para o banco não dar erro 500 no UUID
+        // LIMPEZA CIRÚRGICA: Se vier vazio, o banco vai chiar.
+        // Usuário vira null. Departamento vira "Geral" para não quebrar a constraint de Not Null do banco.
         $usuarioIdLimpo = !empty($validated['usuario_id']) ? $validated['usuario_id'] : null;
-        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : null;
+        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : 'Geral';
 
         $colaborador = Colaborador::create([
             'id' => (string) Str::uuid(),
@@ -95,11 +96,12 @@ class ColaboradorController extends Controller
             'data_demissao' => 'nullable|date',
         ]);
 
-        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : null;
+        // Aplica a mesma trava de segurança aqui na edição
+        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : 'Geral';
 
         $colaborador->update([
             'cargo' => $validated['cargo'],
-            'departamento' => $departamentoLimpo ?? $colaborador->departamento,
+            'departamento' => $departamentoLimpo,
             'salario_base' => (float) $validated['salario_base'],
             'status' => $validated['status'],
             'data_demissao' => $validated['status'] === 'DESLIGADO' ? ($validated['data_demissao'] ?? now()) : null,
