@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import {
   Users, Plus, Search, CheckCircle2, AlertTriangle,
-  X, Briefcase, CalendarClock, Download, FileText, ChevronRight
+  X, Briefcase, CalendarClock, Download, ShieldCheck, MapPin
 } from 'lucide-react';
 
 export default function ColaboradoresPage() {
