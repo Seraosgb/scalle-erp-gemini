@@ -99,7 +99,7 @@ export default function App() {
             {/* Governança, Equipe & Billing */}
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="billing" element={<PainelCobrancaView />} />
-            <Route path="/ponto" element={<PontoEletronicoPage />} />
+            <Route path="ponto" element={<PontoEletronicoPage />} />
 
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
