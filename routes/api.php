@@ -285,4 +285,9 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/rh/colaboradores', [ColaboradorController::class, 'store']);
     Route::put('/rh/colaboradores/{id}', [ColaboradorController::class, 'update']);
     Route::get('/rh/colaboradores/{id}/espelho', [ColaboradorController::class, 'espelhoPonto']);
+
+    // Tabela de Domínio Dinâmica para o RH
+    Route::get('/rh/departamentos', [ColaboradorController::class, 'departamentos']);
+    Route::post('/rh/departamentos', [ColaboradorController::class, 'storeDepartamento']);
+    Route::delete('/rh/departamentos/{id}', [ColaboradorController::class, 'destroyDepartamento']);
 });

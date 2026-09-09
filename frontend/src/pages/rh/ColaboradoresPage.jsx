@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import {
   Users, Plus, Search, CheckCircle2, AlertTriangle,
-  X, Briefcase, CalendarClock, Download, ShieldCheck, MapPin
+  X, Briefcase, CalendarClock, Download, ShieldCheck, MapPin, Trash2, Settings
 } from 'lucide-react';
 
 export default function ColaboradoresPage() {
   const [colaboradores, setColaboradores] = useState([]);
   const [pessoas, setPessoas] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [departamentos, setDepartamentos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [feedback, setFeedback] = useState(null);
@@ -16,8 +17,10 @@ export default function ColaboradoresPage() {
   // Modais
   const [modalNovo, setModalNovo] = useState(false);
   const [modalPonto, setModalPonto] = useState(false);
+  const [modalDepartamentos, setModalDepartamentos] = useState(false);
   const [colaboradorSelecionado, setColaboradorSelecionado] = useState(null);
   const [espelhoPonto, setEspelhoPonto] = useState({});
+  const [novoDepartamentoNome, setNovoDepartamentoNome] = useState('');
 
   const [form, setForm] = useState({
     pessoa_id: '', usuario_id: '', matricula: '', cargo: '', departamento: '',
@@ -27,14 +30,16 @@ export default function ColaboradoresPage() {
   const carregarDados = async () => {
     setLoading(true);
     try {
-      const [resColab, resPess, resUsers] = await Promise.all([
+      const [resColab, resPess, resUsers, resDepts] = await Promise.all([
         api.get('/rh/colaboradores'),
-        api.get('/pessoas'), // Busca pessoas para vincular (física)
-        api.get('/usuarios') // Busca usuários para vincular (login)
+        api.get('/pessoas'),
+        api.get('/usuarios'),
+        api.get('/rh/departamentos')
       ]);
       setColaboradores(resColab.data.data || []);
       setPessoas(resPess.data.data || resPess.data || []);
       setUsuarios(resUsers.data?.data?.usuarios || resUsers.data?.data || []);
+      setDepartamentos(resDepts.data?.data || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -56,6 +61,28 @@ export default function ColaboradoresPage() {
     }
   };
 
+  const handleAddDepartamento = async (e) => {
+    e.preventDefault();
+    if (!novoDepartamentoNome) return;
+    try {
+      await api.post('/rh/departamentos', { nome: novoDepartamentoNome });
+      setNovoDepartamentoNome('');
+      carregarDados();
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Erro ao cadastrar departamento');
+    }
+  };
+
+  const handleRemoverDepartamento = async (id) => {
+    if (!window.confirm('Excluir este departamento?')) return;
+    try {
+      await api.delete(`/rh/departamentos/${id}`);
+      carregarDados();
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Erro ao remover.');
+    }
+  };
+
   const abrirEspelhoPonto = async (colaborador) => {
     setColaboradorSelecionado(colaborador);
     setEspelhoPonto({});
@@ -68,8 +95,6 @@ export default function ColaboradoresPage() {
       console.error('Erro ao carregar espelho', err);
     }
   };
-
-  const formatarMoeda = (valor) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
 
   const filtroBusca = colaboradores.filter(c =>
     c.pessoa?.nome_razao_social?.toLowerCase().includes(search.toLowerCase()) ||
@@ -86,12 +111,20 @@ export default function ColaboradoresPage() {
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">Fichas funcionais e relatórios de jornada</p>
         </div>
-        <button
-          onClick={() => setModalNovo(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-500/30"
-        >
-          <Plus className="h-4 w-4" /> Nova Admissão
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setModalDepartamentos(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-sm transition"
+          >
+            <Settings className="h-4 w-4" /> Setores
+          </button>
+          <button
+            onClick={() => setModalNovo(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-500/30"
+          >
+            <Plus className="h-4 w-4" /> Nova Admissão
+          </button>
+        </div>
       </div>
 
       {feedback && (
@@ -145,7 +178,7 @@ export default function ColaboradoresPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="font-medium text-slate-200">{c.cargo}</div>
-                      <div className="text-[11px] text-slate-500">{c.departamento || 'Geral'}</div>
+                      <div className="text-[11px] text-slate-500">{c.departamento || 'Não alocado'}</div>
                     </td>
                     <td className="px-6 py-4 text-center font-mono text-xs font-semibold">{c.tipo_contrato}</td>
                     <td className="px-6 py-4 text-center">
@@ -184,11 +217,9 @@ export default function ColaboradoresPage() {
               <button onClick={() => setModalNovo(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={handleSalvar} className="p-6 space-y-4 text-sm">
-
-              {/* Alerta de Desacoplamento */}
               <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-xl p-3 flex gap-3 text-xs text-indigo-200">
                 <ShieldCheck className="h-5 w-5 text-indigo-400 shrink-0" />
-                <p><strong>Padrão Arquitetural:</strong> A ficha de funcionário apenas <em>conecta</em> o cadastro da Pessoa (para folha) ao Usuário (para login). O RH não gera senhas de acesso.</p>
+                <p><strong>Padrão Arquitetural:</strong> A ficha de funcionário apenas <em>conecta</em> o cadastro da Pessoa ao Usuário. O RH não gera senhas de acesso.</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -220,9 +251,17 @@ export default function ColaboradoresPage() {
                   <label className="block text-xs font-bold text-slate-400 mb-1">Cargo *</label>
                   <input type="text" required value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white" />
                 </div>
+
+                {/* LISTA SUSPENSA DINÂMICA DE DOMÍNIO */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-1">Departamento</label>
-                  <input type="text" value={form.departamento} onChange={(e) => setForm({ ...form, departamento: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white" />
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-bold text-slate-400">Departamento</label>
+                    <button type="button" onClick={() => setModalDepartamentos(true)} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold">+ Gerenciar</button>
+                  </div>
+                  <select value={form.departamento} onChange={(e) => setForm({ ...form, departamento: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white">
+                    <option value="">Selecione o setor...</option>
+                    {departamentos.map(d => <option key={d.id} value={d.nome}>{d.nome}</option>)}
+                  </select>
                 </div>
 
                 <div>
@@ -249,9 +288,48 @@ export default function ColaboradoresPage() {
         </div>
       )}
 
+      {/* MODAL GERENCIAR DEPARTAMENTOS */}
+      {modalDepartamentos && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Settings className="h-4 w-4 text-indigo-400" /> Tabela de Domínio: Departamentos
+              </h2>
+              <button onClick={() => setModalDepartamentos(false)} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              <form onSubmit={handleAddDepartamento} className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="Novo departamento..."
+                  value={novoDepartamentoNome}
+                  onChange={(e) => setNovoDepartamentoNome(e.target.value)}
+                  className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white"
+                />
+                <button type="submit" className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-sm">Add</button>
+              </form>
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {departamentos.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">Nenhum departamento cadastrado.</p>
+                ) : (
+                  departamentos.map(d => (
+                    <div key={d.id} className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800">
+                      <span className="text-sm text-white font-medium">{d.nome}</span>
+                      <button onClick={() => handleRemoverDepartamento(d.id)} className="p-1.5 text-rose-400 hover:bg-rose-950 rounded-lg transition"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL ESPELHO DE PONTO */}
       {modalPonto && colaboradorSelecionado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl shadow-2xl my-auto">
             <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50">
               <div>
@@ -284,7 +362,6 @@ export default function ColaboradoresPage() {
                             <span className="text-[9px] font-bold uppercase text-slate-500 block mb-1">{p.tipo_registro.replace('_', ' ')}</span>
                             <span className="text-lg font-black font-mono text-white">{new Date(p.data_hora_registro).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
 
-                            {/* Tooltip Hover MTP 671 */}
                             <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-[9px] text-left text-slate-300 rounded shadow-xl border border-slate-700 z-10">
                               <div className="font-bold text-white mb-1">Auditoria (Hash)</div>
                               <div className="truncate font-mono text-indigo-300">{p.hash_registro}</div>

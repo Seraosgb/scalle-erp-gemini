@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Colaborador;
 use App\Models\Empresa;
 use App\Models\PontoRegistro;
+use App\Models\TabelaDominio;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -53,7 +54,6 @@ class ColaboradorController extends Controller
             return response()->json(['error' => ['message' => 'Esta pessoa já possui uma ficha de colaborador ativa.']], 422);
         }
 
-        // Sem chumbamento de dados estáticos! Passa null se estiver vazio.
         $usuarioIdLimpo = !empty($validated['usuario_id']) ? $validated['usuario_id'] : null;
         $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : null;
 
@@ -141,5 +141,68 @@ class ColaboradorController extends Controller
                 'espelho_diario' => $espelho,
             ]
         ]);
+    }
+
+    // --- GESTÃO DINÂMICA DE DEPARTAMENTOS (TABELA DE DOMÍNIO) ---
+
+    public function departamentos(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $departamentos = TabelaDominio::where('tenant_id', $tenantId)
+            ->where('tipo_lista', 'DEPARTAMENTO_RH')
+            ->where('is_ativo', true)
+            ->orderBy('ordem_exibicao')
+            ->orderBy('nome')
+            ->get();
+
+        return response()->json(['data' => $departamentos]);
+    }
+
+    public function storeDepartamento(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+        ]);
+
+        $maxOrdem = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'DEPARTAMENTO_RH')->max('ordem_exibicao') ?? 0;
+
+        $departamento = TabelaDominio::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'tipo_lista' => 'DEPARTAMENTO_RH',
+            'codigo' => strtoupper(Str::slug($validated['nome'], '_')),
+            'nome' => $validated['nome'],
+            'cor_hex' => '#4f46e5',
+            'ordem_exibicao' => $maxOrdem + 1,
+            'is_ativo' => true,
+            'is_sistema' => false,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Departamento cadastrado com sucesso!',
+                'departamento' => $departamento,
+            ]
+        ], 201);
+    }
+
+    public function destroyDepartamento(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $departamento = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'DEPARTAMENTO_RH')->findOrFail($id);
+
+        // Verifica se o departamento está em uso
+        $emUso = Colaborador::where('tenant_id', $tenantId)->where('departamento', $departamento->nome)->exists();
+
+        if ($emUso) {
+            return response()->json(['error' => ['message' => 'Este departamento não pode ser excluído pois está em uso por colaboradores.']], 422);
+        }
+
+        $departamento->delete();
+
+        return response()->json(['data' => ['message' => 'Departamento removido.']]);
     }
 }
