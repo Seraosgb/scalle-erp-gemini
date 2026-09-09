@@ -29,6 +29,7 @@ use App\Http\Middleware\CheckMaster;
 use App\Http\Middleware\CheckSubscriptionStatus;
 use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\PontoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -273,4 +274,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // --- GESTÃO DE ASSINATURA (PORTAL DO INQUILINO) ---
     Route::get('/billing/minha-assinatura', [TenantBillingController::class, 'minhaAssinatura']);
     Route::get('/billing/historico-faturas', [TenantBillingController::class, 'historicoFaturas']);
+
+    // Recursos Humanos & Ponto Eletrônico
+    Route::post('/rh/ponto/registrar', [PontoController::class, 'registrar']);
+    Route::get('/rh/ponto/hoje', [PontoController::class, 'historicoHoje']);
 });
