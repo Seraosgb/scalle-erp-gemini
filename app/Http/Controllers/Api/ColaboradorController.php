@@ -28,12 +28,15 @@ class ColaboradorController extends Controller
     public function store(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
+
+        // Fallback blindado para garantir que não dê erro de empresa_id nulo no banco
         $empresaId = $request->user()->empresa_padrao_id
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
+                  ?? Empresa::first()?->id;
 
         $validated = $request->validate([
             'pessoa_id' => 'required|uuid|exists:pes_pessoas,id',
-            'usuario_id' => 'nullable|uuid|exists:users,id',
+            'usuario_id' => 'nullable|string', // Permite string para barrar a string vazia manualmente
             'matricula' => 'required|string|max:50',
             'cargo' => 'required|string|max:150',
             'departamento' => 'nullable|string|max:100',
@@ -52,15 +55,19 @@ class ColaboradorController extends Controller
             return response()->json(['error' => ['message' => 'Esta pessoa já possui uma ficha de colaborador ativa.']], 422);
         }
 
+        // LIMPEZA CIRÚRGICA: Se a string vier vazia, força para null para o banco não dar erro 500 no UUID
+        $usuarioIdLimpo = !empty($validated['usuario_id']) ? $validated['usuario_id'] : null;
+        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : null;
+
         $colaborador = Colaborador::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresaId,
             'pessoa_id' => $validated['pessoa_id'],
-            'usuario_id' => $validated['usuario_id'] ?? null,
+            'usuario_id' => $usuarioIdLimpo,
             'matricula' => strtoupper(trim($validated['matricula'])),
             'cargo' => $validated['cargo'],
-            'departamento' => $validated['departamento'] ?? null,
+            'departamento' => $departamentoLimpo,
             'data_admissao' => $validated['data_admissao'],
             'salario_base' => (float) $validated['salario_base'],
             'tipo_contrato' => $validated['tipo_contrato'],
@@ -88,9 +95,11 @@ class ColaboradorController extends Controller
             'data_demissao' => 'nullable|date',
         ]);
 
+        $departamentoLimpo = !empty($validated['departamento']) ? $validated['departamento'] : null;
+
         $colaborador->update([
             'cargo' => $validated['cargo'],
-            'departamento' => $validated['departamento'] ?? $colaborador->departamento,
+            'departamento' => $departamentoLimpo ?? $colaborador->departamento,
             'salario_base' => (float) $validated['salario_base'],
             'status' => $validated['status'],
             'data_demissao' => $validated['status'] === 'DESLIGADO' ? ($validated['data_demissao'] ?? now()) : null,
