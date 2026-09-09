@@ -5,7 +5,7 @@ import {
   DollarSign, FileText, Users, LogOut, Menu, X,
   Building2, ShieldAlert, Factory, FileSpreadsheet,
   Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings,
-  CreditCard, FileCheck
+  CreditCard, FileCheck, Fingerprint
 } from 'lucide-react';
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
@@ -96,7 +96,7 @@ export default function AppLayout() {
     { name: 'PDV Balcão', path: '/app/pdv', icon: ShoppingBag },
     { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
-    { name: 'RH & Ponto REP-P', path: '/app/rh', icon: UserCheck },
+    { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint }, // <-- Atualizado aqui com rota e ícone novos
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
