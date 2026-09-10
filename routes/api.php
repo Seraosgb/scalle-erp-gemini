@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\PontoController;
 use App\Http\Controllers\Api\ColaboradorController;
 use App\Http\Controllers\Api\EscalaTrabalhoController;
+use App\Http\Controllers\Api\HoleriteController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -296,4 +297,9 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/rh/escalas', [EscalaTrabalhoController::class, 'index']);
     Route::post('/rh/escalas', [EscalaTrabalhoController::class, 'store']);
     Route::delete('/rh/escalas/{id}', [EscalaTrabalhoController::class, 'destroy']);
+
+    // Rotas do RH
+    Route::get('/rh/holerites', [HoleriteController::class, 'index']);
+    Route::get('/rh/holerites/{id}', [HoleriteController::class, 'show']);
+    Route::post('/rh/holerites', [HoleriteController::class, 'store']);
 });
