@@ -104,6 +104,7 @@ export default function AppLayout() {
     { name: 'Gestão de Pessoas (Contatos)', path: '/app/pessoas', icon: Users },
     { name: 'Gestão de RH', path: '/app/colaboradores', icon: Users },
     { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint },
+    { name: 'Folha & Holerites', path: '/app/holerites', icon: FileText },
     ...(usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin ? [
       { name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }
     ] : []),

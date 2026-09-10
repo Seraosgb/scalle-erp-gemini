@@ -39,6 +39,7 @@ import AuditoriaE2EView from './pages/master/AuditoriaE2EView';
 import PontoEletronicoPage from './pages/rh/PontoEletronicoPage';
 import ColaboradoresPage from './pages/RH/ColaboradoresPage';
 import PessoasPage from './pages/Cadastros/PessoasPage';
+import HoleritesPage from './pages/RH/HoleritesPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -104,6 +105,7 @@ export default function App() {
             <Route path="ponto" element={<PontoEletronicoPage />} />
             <Route path="colaboradores" element={<ColaboradoresPage />} />
             <Route path="pessoas" element={<PessoasPage />} />
+            <Route path="holerites" element={<HoleritesPage />} />
 
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
