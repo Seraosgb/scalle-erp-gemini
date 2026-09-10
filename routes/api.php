@@ -31,6 +31,7 @@ use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\PontoController;
 use App\Http\Controllers\Api\ColaboradorController;
+use App\Http\Controllers\Api\EscalaTrabalhoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -290,4 +291,9 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/rh/departamentos', [ColaboradorController::class, 'departamentos']);
     Route::post('/rh/departamentos', [ColaboradorController::class, 'storeDepartamento']);
     Route::delete('/rh/departamentos/{id}', [ColaboradorController::class, 'destroyDepartamento']);
+
+    // Gestão de Escalas de Trabalho
+    Route::get('/rh/escalas', [EscalaTrabalhoController::class, 'index']);
+    Route::post('/rh/escalas', [EscalaTrabalhoController::class, 'store']);
+    Route::delete('/rh/escalas/{id}', [EscalaTrabalhoController::class, 'destroy']);
 });
