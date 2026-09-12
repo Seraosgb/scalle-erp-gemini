@@ -189,7 +189,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/ordens-servico', [OrdemServicoController::class, 'store']);
 
     Route::get('/os/{id}', [OrdemServicoController::class, 'show']);
-    Route::get('/os/{id}/pdf', [OrdemServicoController::class, 'gerarPdf']); // <-- ADICIONE ESTA LINHA
+    Route::get('/os/{id}/pdf', [OrdemServicoController::class, 'gerarPdf']);
     Route::get('/ordens-servico/{id}', [OrdemServicoController::class, 'show']);
     Route::post('/os/{id}/fotos', [OrdemServicoController::class, 'uploadFoto']);
     Route::put('/os/{id}/status', [OrdemServicoController::class, 'atualizarStatus']);
@@ -307,7 +307,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // Rotas do Recrutamento
     Route::get('/rh/vagas', [RecrutamentoController::class, 'indexVagas']);
     Route::post('/rh/vagas', [RecrutamentoController::class, 'storeVaga']);
-    Route::get('/rh/vagas/{Id}/kanban', [RecrutamentoController::class, 'boardKanban']);
+    Route::get('/rh/vagas/{vagaId}/kanban', [RecrutamentoController::class, 'boardKanban']);
     Route::post('/rh/candidatos', [RecrutamentoController::class, 'storeCandidato']);
     Route::put('/rh/candidatos/{id}/mover', [RecrutamentoController::class, 'moverCandidato']);
 });
