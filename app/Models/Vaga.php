@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,12 +11,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Vaga extends Model
 {
-    use HasUuids, SoftDeletes, BelongsToTenant;
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
 
     protected $table = 'rh_vagas';
 
+    // O SEGREDO ESTÁ AQUI: empresa_id liberado para gravação
     protected $fillable = [
-        'tenant_id', 'titulo', 'departamento', 'status', 'descricao'
+        'tenant_id', 'empresa_id', 'titulo', 'departamento', 'status', 'descricao'
     ];
 
     public function candidatos(): HasMany
