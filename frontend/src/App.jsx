@@ -40,6 +40,7 @@ import PontoEletronicoPage from './pages/rh/PontoEletronicoPage';
 import ColaboradoresPage from './pages/RH/ColaboradoresPage';
 import PessoasPage from './pages/Cadastros/PessoasPage';
 import HoleritesPage from './pages/RH/HoleritesPage';
+import RecrutamentoPage from './pages/RH/RecrutamentoPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -102,10 +103,13 @@ export default function App() {
             {/* Governança, Equipe & Billing */}
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="billing" element={<PainelCobrancaView />} />
+
+            {/*RH & Gestão de Pessoas*/}
             <Route path="ponto" element={<PontoEletronicoPage />} />
             <Route path="colaboradores" element={<ColaboradoresPage />} />
             <Route path="pessoas" element={<PessoasPage />} />
             <Route path="holerites" element={<HoleritesPage />} />
+            <Route path="recrutamento" element={<RecrutamentoPage />} />
 
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
