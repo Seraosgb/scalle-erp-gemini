@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import {
-  FileText, Plus, Search, CheckCircle2, AlertTriangle,
+import { 
+  FileText, Plus, Search, CheckCircle2, AlertTriangle, 
   X, DollarSign, TrendingUp, TrendingDown, Trash2, Printer
 } from 'lucide-react';
 
@@ -92,7 +92,7 @@ export default function HoleritesPage() {
 
       const payload = { ...form, competencia: comp };
       await api.post('/rh/holerites', payload);
-
+      
       setModalNovo(false);
       setFeedback({ tipo: 'sucesso', msg: 'Holerite gerado com sucesso!' });
       carregarDados();
@@ -103,7 +103,7 @@ export default function HoleritesPage() {
 
   const formatarMoeda = (valor) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
-  const filtroBusca = Array.isArray(holerites) ? holerites.filter(h =>
+  const filtroBusca = Array.isArray(holerites) ? holerites.filter(h => 
     h.colaborador?.pessoa?.nome_razao_social?.toLowerCase().includes(search.toLowerCase()) ||
     h.competencia.includes(search)
   ) : [];
@@ -205,7 +205,7 @@ export default function HoleritesPage() {
               </h2>
               <button onClick={() => setModalNovo(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
             </div>
-
+            
             <form onSubmit={handleSalvar} className="p-6 space-y-6 text-sm">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2">
@@ -230,7 +230,7 @@ export default function HoleritesPage() {
                     <button type="button" onClick={() => adicionarItem('DESCONTO')} className="px-2 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white rounded text-[10px] font-bold transition flex items-center gap-1"><Plus className="h-3 w-3" /> Desconto</button>
                   </div>
                 </div>
-
+                
                 {form.itens.length === 0 ? (
                   <div className="p-6 text-center text-slate-500 italic text-xs">Nenhum lançamento adicionado.</div>
                 ) : (
@@ -255,7 +255,7 @@ export default function HoleritesPage() {
                     ))}
                   </div>
                 )}
-
+                
                 {/* Resumo Rodapé da Tabela */}
                 <div className="bg-slate-900 p-4 border-t border-slate-800 grid grid-cols-3 gap-4 text-center">
                   <div>
