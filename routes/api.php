@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\PontoController;
 use App\Http\Controllers\Api\ColaboradorController;
 use App\Http\Controllers\Api\EscalaTrabalhoController;
 use App\Http\Controllers\Api\HoleriteController;
+use App\Http\Controllers\Api\RecrutamentoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -302,4 +303,11 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/rh/holerites', [HoleriteController::class, 'index']);
     Route::get('/rh/holerites/{id}', [HoleriteController::class, 'show']);
     Route::post('/rh/holerites', [HoleriteController::class, 'store']);
+
+    // Rotas do Recrutamento
+    Route::get('/rh/vagas', [RecrutamentoController::class, 'indexVagas']);
+    Route::post('/rh/vagas', [RecrutamentoController::class, 'storeVaga']);
+    Route::get('/rh/vagas/{Id}/kanban', [RecrutamentoController::class, 'boardKanban']);
+    Route::post('/rh/candidatos', [RecrutamentoController::class, 'storeCandidato']);
+    Route::put('/rh/candidatos/{id}/mover', [RecrutamentoController::class, 'moverCandidato']);
 });
