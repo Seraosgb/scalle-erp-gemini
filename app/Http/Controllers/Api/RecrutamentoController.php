@@ -35,8 +35,8 @@ class RecrutamentoController extends Controller
         $tenantId = $request->user()->tenant_id;
 
         $empresaId = $request->user()->empresa_padrao_id
-                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id
-                  ?? \App\Models\Empresa::first()?->id;
+                  ?? \App\Models\Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->first()?->id
+                  ?? \App\Models\Empresa::withoutGlobalScopes()->first()?->id;
 
         $validated = $request->validate([
             'titulo' => 'required|string|max:150',
@@ -44,7 +44,7 @@ class RecrutamentoController extends Controller
             'descricao' => 'nullable|string',
         ]);
 
-        $vaga = Vaga::create([
+        $vaga = Vaga::withoutGlobalScopes()->create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresaId,
