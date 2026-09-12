@@ -15,7 +15,9 @@ class RecrutamentoController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        $vagas = Vaga::where('tenant_id', $tenantId)
+        // Usamos withoutGlobalScopes ou consulta direta com o tenant_id para blindar contra registros órfãos de empresa_id
+        $vagas = Vaga::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
             ->withCount('candidatos')
             ->orderByDesc('created_at')
             ->get();
