@@ -7,6 +7,7 @@ use App\Models\Candidato;
 use App\Models\Vaga;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Str;
 
 class RecrutamentoController extends Controller
@@ -15,13 +16,12 @@ class RecrutamentoController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Consulta pura e blindada, contando os candidatos manualmente para evitar conflito de joins do Eloquent
         $vagas = Vaga::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->orderByDesc('created_at')
             ->get()
             ->map(function ($vaga) {
-                $vaga->candidatos_count = \App\Models\Candidato::withoutGlobalScopes()
+                $vaga->candidatos_count = Candidato::withoutGlobalScopes()
                     ->where('vaga_id', $vaga->id)
                     ->count();
                 return $vaga;
@@ -38,13 +38,17 @@ class RecrutamentoController extends Controller
                   ?? \App\Models\Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->first()?->id
                   ?? \App\Models\Empresa::withoutGlobalScopes()->first()?->id;
 
+        // MÁGICA DA BLINDAGEM: Injetar os IDs no App Container para que os Traits não quebrem o request
+        App::instance('current_tenant_id', $tenantId);
+        App::instance('current_empresa_id', $empresaId);
+
         $validated = $request->validate([
             'titulo' => 'required|string|max:150',
             'departamento' => 'required|string|max:100',
             'descricao' => 'nullable|string',
         ]);
 
-        $vaga = Vaga::withoutGlobalScopes()->create([
+        $vaga = Vaga::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresaId,
@@ -61,9 +65,10 @@ class RecrutamentoController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        $vaga = Vaga::where('tenant_id', $tenantId)->findOrFail($vagaId);
+        $vaga = Vaga::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($vagaId);
 
-        $candidatos = Candidato::where('vaga_id', $vaga->id)
+        $candidatos = Candidato::withoutGlobalScopes()
+            ->where('vaga_id', $vaga->id)
             ->orderByDesc('created_at')
             ->get()
             ->groupBy('etapa_kanban');
@@ -79,6 +84,7 @@ class RecrutamentoController extends Controller
     public function storeCandidato(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
+        App::instance('current_tenant_id', $tenantId);
 
         $validated = $request->validate([
             'vaga_id' => 'required|uuid|exists:rh_vagas,id',
@@ -103,7 +109,9 @@ class RecrutamentoController extends Controller
     public function moverCandidato(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $candidato = Candidato::where('tenant_id', $tenantId)->findOrFail($id);
+        App::instance('current_tenant_id', $tenantId);
+
+        $candidato = Candidato::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($id);
 
         $validated = $request->validate([
             'nova_etapa' => 'required|string|in:NOVO,TRIAGEM,ENTREVISTA,TESTE,PROPOSTA,CONTRATADO,REPROVADO',
