@@ -15,12 +15,17 @@ class RecrutamentoController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Usamos withoutGlobalScopes ou consulta direta com o tenant_id para blindar contra registros órfãos de empresa_id
+        // Consulta pura e blindada, contando os candidatos manualmente para evitar conflito de joins do Eloquent
         $vagas = Vaga::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
-            ->withCount('candidatos')
             ->orderByDesc('created_at')
-            ->get();
+            ->get()
+            ->map(function ($vaga) {
+                $vaga->candidatos_count = \App\Models\Candidato::withoutGlobalScopes()
+                    ->where('vaga_id', $vaga->id)
+                    ->count();
+                return $vaga;
+            });
 
         return response()->json(['data' => $vagas]);
     }
