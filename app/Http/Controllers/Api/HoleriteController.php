@@ -23,12 +23,19 @@ class HoleriteController extends Controller
     {
         try {
             $tenantId = $request->user()->tenant_id;
+
+            // Busca o colaborador vinculado ao usuário logado
             $colaborador = Colaborador::where('tenant_id', $tenantId)
                 ->where('usuario_id', $request->user()->id)
                 ->first();
 
             if (!$colaborador) {
-                return response()->json(['data' => []]);
+                return response()->json([
+                    'error' => [
+                        'code' => 'COLABORADOR_NAO_VINCULADO',
+                        'message' => 'Este usuário do sistema não possui uma ficha de colaborador vinculada no RH. Cadastre o colaborador e vincule o usuário.'
+                    ]
+                ], 422);
             }
 
             $holerites = Holerite::where('colaborador_id', $colaborador->id)
@@ -48,24 +55,35 @@ class HoleriteController extends Controller
 
             $colaborador = Colaborador::where('tenant_id', $tenantId)
                 ->where('usuario_id', $request->user()->id)
-                ->firstOrFail();
+                ->first();
+
+            if (!$colaborador) {
+                return response()->json([
+                    'error' => ['message' => 'Usuário sem vínculo de colaborador ativo para emissão de PDF.']
+                ], 422);
+            }
 
             $holerite = Holerite::where('colaborador_id', $colaborador->id)
                 ->with(['colaborador.pessoa', 'itens'])
                 ->findOrFail($id);
 
-            // Geração do PDF com caminho absoluto para evitar erro de classe não encontrada
+            // Garante que a view Blade do PDF existe
+            if (!view()->exists('pdfs.holerite')) {
+                return response()->json([
+                    'error' => ['message' => 'Template de PDF do holerite (resources/views/pdfs/holerite.blade.php) não encontrado no servidor.']
+                ], 500);
+            }
+
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.holerite', ['holerite' => $holerite])
                 ->setPaper('a4', 'portrait');
 
             return $pdf->download("Holerite_{$holerite->competencia}.pdf");
 
         } catch (Exception $e) {
-            // Se capotar, não vai dar 500 cego, vai devolver o erro mastigado
             return response()->json([
                 'error' => [
                     'code' => 'PDF_GENERATION_ERROR',
-                    'message' => 'Erro na geração do PDF: ' . $e->getMessage() . ' | Linha: ' . $e->getLine()
+                    'message' => 'Erro ao gerar PDF: ' . $e->getMessage()
                 ]
             ], 500);
         }
