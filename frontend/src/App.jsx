@@ -115,10 +115,6 @@ export default function App() {
             <Route path="holerites" element={<HoleritesPage />} />
             <Route path="recrutamento" element={<RecrutamentoPage />} />
             <Route path="desempenho-clima" element={<DesempenhoClimaPage />} />
-            <Route path="desempenho-clima/enps" element={<EnpsPage />} />
-            <Route path="desempenho-clima/ninebox" element={<NineBoxPage />} />
-            <Route path="desempenho-clima/pdi" element={<PdiPage />} />
-
 
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
