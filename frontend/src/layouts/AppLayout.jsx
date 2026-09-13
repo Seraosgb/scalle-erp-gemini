@@ -86,6 +86,7 @@ export default function AppLayout() {
   const menu = [
     ...(usuario?.is_master ? [{ name: 'Painel Master SaaS', path: '/app/master', icon: ShieldAlert, isMaster: true }] : []),
     { name: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard },
+    { name: 'Portal do Colaborador', path: '/app/portal-colaborador', icon: UserSquare },
     { name: 'CRM & Funil', path: '/app/crm', icon: Kanban, end: true },
     { name: 'Parametrização CRM', path: '/app/crm/configuracoes', icon: Settings },
     { name: 'WMS & Estoque', path: '/app/wms', icon: Boxes },

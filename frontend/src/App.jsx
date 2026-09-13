@@ -42,6 +42,9 @@ import PessoasPage from './pages/Cadastros/PessoasPage';
 import HoleritesPage from './pages/RH/HoleritesPage';
 import RecrutamentoPage from './pages/RH/RecrutamentoPage';
 import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
+
+// Portal Colaborador
+import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
 //import EnpsPage from './pages/RH/EnpsPage';
 //import NineBoxPage from './pages/RH/NineBoxPage';
 //import PdiPage from './pages/RH/PdiPage';
@@ -77,6 +80,9 @@ export default function App() {
 
             {/* Dashboard */}
             <Route path="dashboard" element={<DashboardPage />} />
+
+            // Portal Colaborador
+            <Route path="/portal-colaborador" element={<PortalColaboradorPage />} />
 
             {/* CRM & Vendas */}
             <Route path="crm" element={<BoardCrm />} />
