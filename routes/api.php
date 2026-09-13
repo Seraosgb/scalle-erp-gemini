@@ -310,4 +310,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/rh/vagas/{vagaId}/kanban', [RecrutamentoController::class, 'boardKanban']);
     Route::post('/rh/candidatos', [RecrutamentoController::class, 'storeCandidato']);
     Route::put('/rh/candidatos/{id}/mover', [RecrutamentoController::class, 'moverCandidato']);
+
+    Route::get('/rh/etapas', [RecrutamentoController::class, 'indexEtapas']);
+    Route::post('/rh/etapas', [RecrutamentoController::class, 'storeEtapa']);
+    Route::delete('/rh/etapas/{id}', [RecrutamentoController::class, 'destroyEtapa']);
 });
