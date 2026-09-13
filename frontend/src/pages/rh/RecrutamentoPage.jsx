@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import {
   Briefcase, Plus, Users, CheckCircle2, AlertTriangle,
-  X, GripVertical, ChevronRight
+  X, GripVertical, Settings
 } from 'lucide-react';
 
 export default function RecrutamentoPage() {
   const [vagas, setVagas] = useState([]);
   const [vagaSelecionada, setVagaSelecionada] = useState(null);
+  const [etapas, setEtapas] = useState([]); // Agora vem do banco!
   const [kanban, setKanban] = useState({});
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState(null);
@@ -15,21 +16,12 @@ export default function RecrutamentoPage() {
   // Modais
   const [modalVaga, setModalVaga] = useState(false);
   const [modalCandidato, setModalCandidato] = useState(false);
+  const [modalEtapa, setModalEtapa] = useState(false);
 
   // Formulários
   const [formVaga, setFormVaga] = useState({ titulo: '', departamento: '', descricao: '' });
   const [formCandidato, setFormCandidato] = useState({ nome: '', email: '', telefone: '' });
-
-  // Definição das colunas (Poderá vir da tabela de domínio no futuro)
-  const colunasKanban = [
-    { id: 'NOVO', titulo: 'Novos', cor: 'border-slate-500' },
-    { id: 'TRIAGEM', titulo: 'Triagem', cor: 'border-indigo-500' },
-    { id: 'ENTREVISTA', titulo: 'Entrevista', cor: 'border-purple-500' },
-    { id: 'TESTE', titulo: 'Teste Técnico', cor: 'border-amber-500' },
-    { id: 'PROPOSTA', titulo: 'Proposta', cor: 'border-blue-500' },
-    { id: 'CONTRATADO', titulo: 'Contratado', cor: 'border-emerald-500' },
-    { id: 'REPROVADO', titulo: 'Reprovado', cor: 'border-rose-500' }
-  ];
+  const [formEtapa, setFormEtapa] = useState({ nome: '', cor: 'border-slate-500', ordem: 0 });
 
   const carregarVagas = async () => {
     setLoading(true);
@@ -47,6 +39,7 @@ export default function RecrutamentoPage() {
     try {
       const res = await api.get(`/rh/vagas/${vagaId}/kanban`);
       setVagaSelecionada(res.data?.data?.vaga);
+      setEtapas(res.data?.data?.etapas || []); // Puxa do BD
       setKanban(res.data?.data?.kanban || {});
     } catch (err) {
       console.error(err);
@@ -81,6 +74,19 @@ export default function RecrutamentoPage() {
     }
   };
 
+  const handleSalvarEtapa = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/rh/etapas', formEtapa);
+      setModalEtapa(false);
+      setFormEtapa({ nome: '', cor: 'border-slate-500', ordem: 0 });
+      setFeedback({ tipo: 'sucesso', msg: 'Nova etapa adicionada ao funil!' });
+      if (vagaSelecionada) carregarKanban(vagaSelecionada.id);
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Erro ao criar etapa.');
+    }
+  };
+
   // --- Lógica Drag & Drop (Arrastar e Soltar) ---
   const onDragStart = (e, candidatoId, etapaOrigem) => {
     e.dataTransfer.setData('candidatoId', candidatoId);
@@ -88,7 +94,7 @@ export default function RecrutamentoPage() {
   };
 
   const onDragOver = (e) => {
-    e.preventDefault(); // Necessário para permitir o Drop
+    e.preventDefault();
   };
 
   const onDrop = async (e, etapaDestino) => {
@@ -97,20 +103,20 @@ export default function RecrutamentoPage() {
 
     if (etapaOrigem === etapaDestino) return;
 
-    // Atualização Otimista na UI (Move o card antes da API responder para ficar fluido)
+    // Atualização Otimista na UI
     const novosDados = { ...kanban };
     const candidato = novosDados[etapaOrigem].find(c => c.id === candidatoId);
     novosDados[etapaOrigem] = novosDados[etapaOrigem].filter(c => c.id !== candidatoId);
     if (!novosDados[etapaDestino]) novosDados[etapaDestino] = [];
-    novosDados[etapaDestino].push({ ...candidato, etapa_kanban: etapaDestino });
+    novosDados[etapaDestino].push({ ...candidato, etapa_id: etapaDestino });
     setKanban(novosDados);
 
     try {
-      await api.put(`/rh/candidatos/${candidatoId}/mover`, { nova_etapa: etapaDestino });
+      await api.put(`/rh/candidatos/${candidatoId}/mover`, { nova_etapa_id: etapaDestino });
     } catch (err) {
       console.error(err);
       carregarKanban(vagaSelecionada.id); // Reverte se der erro no servidor
-      alert('Erro ao mover candidato.');
+      alert(err.response?.data?.error?.message || 'Erro ao mover candidato no backend.');
     }
   };
 
@@ -123,7 +129,7 @@ export default function RecrutamentoPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
             <Users className="h-6 w-6 text-indigo-500" /> Recrutamento & Seleção
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">Funil de talentos e vagas</p>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">Funil de talentos dinâmico</p>
         </div>
         <button
           onClick={() => setModalVaga(true)}
@@ -143,10 +149,10 @@ export default function RecrutamentoPage() {
         </div>
       )}
 
-      {/* Grid Principal: Lista de Vagas vs Kanban */}
+      {/* Grid Principal */}
       <div className="flex gap-6 flex-1 overflow-hidden">
 
-        {/* Painel Esquerdo: Lista de Vagas */}
+        {/* Painel Esquerdo: Vagas */}
         <div className="w-1/4 min-w-[250px] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shrink-0 shadow-sm">
           <div className="p-4 border-b border-slate-800 bg-slate-950/50 font-bold text-slate-300 flex items-center gap-2">
             <Briefcase className="h-4 w-4" /> Vagas Abertas
@@ -174,7 +180,7 @@ export default function RecrutamentoPage() {
           </div>
         </div>
 
-        {/* Painel Direito: Board Kanban */}
+        {/* Painel Direito: Board Dinâmico */}
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shadow-sm">
           {!vagaSelecionada ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
@@ -188,52 +194,68 @@ export default function RecrutamentoPage() {
                   <h2 className="font-bold text-white text-lg">{vagaSelecionada.titulo}</h2>
                   <p className="text-xs text-slate-400">Departamento: {vagaSelecionada.departamento}</p>
                 </div>
-                <button
-                  onClick={() => setModalCandidato(true)}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg border border-slate-700 transition flex items-center gap-1.5"
-                >
-                  <Plus className="h-3 w-3" /> Adicionar Candidato
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setFormEtapa({ ...formEtapa, ordem: (etapas.length + 1) * 10 });
+                      setModalEtapa(true);
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg border border-slate-700 transition flex items-center gap-1.5"
+                  >
+                    <Settings className="h-3 w-3" /> Nova Etapa
+                  </button>
+                  <button
+                    onClick={() => setModalCandidato(true)}
+                    className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white text-xs font-bold rounded-lg border border-indigo-900/50 transition flex items-center gap-1.5"
+                  >
+                    <Plus className="h-3 w-3" /> Adicionar Candidato
+                  </button>
+                </div>
               </div>
 
-              {/* Colunas do Kanban */}
+              {/* Colunas do Kanban Renderizadas do Banco */}
               <div className="flex-1 overflow-x-auto overflow-y-hidden p-4 flex gap-4 items-start">
-                {colunasKanban.map(coluna => (
-                  <div
-                    key={coluna.id}
-                    className={`w-72 shrink-0 flex flex-col max-h-full bg-slate-950/50 rounded-xl border-t-4 ${coluna.cor} border-x border-b border-x-slate-800 border-b-slate-800 shadow-sm`}
-                    onDragOver={onDragOver}
-                    onDrop={(e) => onDrop(e, coluna.id)}
-                  >
-                    <div className="p-3 border-b border-slate-800/60 font-bold text-xs uppercase text-slate-300 flex justify-between items-center shrink-0">
-                      {coluna.titulo}
-                      <span className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-[10px]">
-                        {kanban[coluna.id]?.length || 0}
-                      </span>
-                    </div>
-
-                    {/* Lista de Cards (Arrastáveis) */}
-                    <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[150px]">
-                      {(kanban[coluna.id] || []).map(c => (
-                        <div
-                          key={c.id}
-                          draggable
-                          onDragStart={(e) => onDragStart(e, c.id, coluna.id)}
-                          className="bg-slate-900 border border-slate-700 hover:border-indigo-500/50 p-3 rounded-lg shadow-sm cursor-grab active:cursor-grabbing group transition"
-                        >
-                          <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-bold text-white text-sm leading-tight">{c.nome}</h3>
-                            <GripVertical className="h-4 w-4 text-slate-600 group-hover:text-slate-400 shrink-0" />
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono space-y-1">
-                            {c.telefone && <div>📞 {c.telefone}</div>}
-                            {c.email && <div className="truncate">✉️ {c.email}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                {etapas.length === 0 ? (
+                  <div className="w-full text-center text-slate-500 text-sm mt-10">
+                    Nenhuma etapa cadastrada no funil. Clique em "Nova Etapa" para começar.
                   </div>
-                ))}
+                ) : (
+                  etapas.map(coluna => (
+                    <div
+                      key={coluna.id}
+                      className={`w-72 shrink-0 flex flex-col max-h-full bg-slate-950/50 rounded-xl border-t-4 ${coluna.cor} border-x border-b border-x-slate-800 border-b-slate-800 shadow-sm`}
+                      onDragOver={onDragOver}
+                      onDrop={(e) => onDrop(e, coluna.id)}
+                    >
+                      <div className="p-3 border-b border-slate-800/60 font-bold text-xs uppercase text-slate-300 flex justify-between items-center shrink-0">
+                        {coluna.nome}
+                        <span className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-[10px]">
+                          {kanban[coluna.id]?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[150px]">
+                        {(kanban[coluna.id] || []).map(c => (
+                          <div
+                            key={c.id}
+                            draggable
+                            onDragStart={(e) => onDragStart(e, c.id, coluna.id)}
+                            className="bg-slate-900 border border-slate-700 hover:border-indigo-500/50 p-3 rounded-lg shadow-sm cursor-grab active:cursor-grabbing group transition"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <h3 className="font-bold text-white text-sm leading-tight">{c.nome}</h3>
+                              <GripVertical className="h-4 w-4 text-slate-600 group-hover:text-slate-400 shrink-0" />
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono space-y-1">
+                              {c.telefone && <div>📞 {c.telefone}</div>}
+                              {c.email && <div className="truncate">✉️ {c.email}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </>
           )}
@@ -251,18 +273,50 @@ export default function RecrutamentoPage() {
             <form onSubmit={handleSalvarVaga} className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1">Título da Vaga *</label>
-                <input type="text" required value={formVaga.titulo} onChange={e => setFormVaga({...formVaga, titulo: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm" placeholder="Ex: Desenvolvedor Senior" />
+                <input type="text" required value={formVaga.titulo} onChange={e => setFormVaga({...formVaga, titulo: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1">Departamento *</label>
-                <input type="text" required value={formVaga.departamento} onChange={e => setFormVaga({...formVaga, departamento: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm" placeholder="Ex: Engenharia" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1">Descrição</label>
-                <textarea rows="3" value={formVaga.descricao} onChange={e => setFormVaga({...formVaga, descricao: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm" />
+                <input type="text" required value={formVaga.departamento} onChange={e => setFormVaga({...formVaga, departamento: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm" />
               </div>
               <div className="flex justify-end pt-2">
                 <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm">Abrir Vaga</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOVA ETAPA (DINÂMICA) */}
+      {modalEtapa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="font-bold text-white flex items-center gap-2"><Settings className="h-4 w-4 text-indigo-400"/> Nova Etapa</h2>
+              <button onClick={() => setModalEtapa(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={handleSalvarEtapa} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1">Nome da Fase *</label>
+                <input type="text" required value={formEtapa.nome} onChange={e => setFormEtapa({...formEtapa, nome: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm" placeholder="Ex: Dinâmica de Grupo" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1">Cor</label>
+                <select value={formEtapa.cor} onChange={e => setFormEtapa({...formEtapa, cor: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm">
+                  <option value="border-slate-500">Cinza (Neutro)</option>
+                  <option value="border-indigo-500">Índigo (Novo/Triagem)</option>
+                  <option value="border-purple-500">Roxo (Entrevista)</option>
+                  <option value="border-amber-500">Amarelo (Teste)</option>
+                  <option value="border-emerald-500">Verde (Contratado)</option>
+                  <option value="border-rose-500">Vermelho (Reprovado)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1">Ordem de Exibição</label>
+                <input type="number" required value={formEtapa.ordem} onChange={e => setFormEtapa({...formEtapa, ordem: parseInt(e.target.value)})} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm font-mono" />
+              </div>
+              <div className="flex justify-end pt-2">
+                <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold text-sm">Salvar Coluna</button>
               </div>
             </form>
           </div>

@@ -74,7 +74,79 @@ class RecrutamentoController extends Controller
         }
     }
 
-    // --- MÉTODOS DE ETAPAS E KANBAN ---
+    public function boardKanban(Request $request, string $vagaId): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+
+            $vaga = Vaga::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($vagaId);
+
+            $candidatos = Candidato::withoutGlobalScopes()
+                ->where('vaga_id', $vaga->id)
+                ->orderByDesc('created_at')
+                ->get()
+                ->groupBy('etapa_kanban');
+
+            return response()->json([
+                'data' => [
+                    'vaga' => $vaga,
+                    'kanban' => $candidatos
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao carregar Kanban: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function storeCandidato(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            App::instance('current_tenant_id', $tenantId);
+
+            $validated = $request->validate([
+                'vaga_id' => 'required|uuid|exists:rh_vagas,id',
+                'nome' => 'required|string|max:150',
+                'email' => 'nullable|email|max:150',
+                'telefone' => 'nullable|string|max:30',
+            ]);
+
+            $candidato = Candidato::withoutGlobalScopes()->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'vaga_id' => $validated['vaga_id'],
+                'nome' => $validated['nome'],
+                'email' => $validated['email'] ?? null,
+                'telefone' => $validated['telefone'] ?? null,
+                'etapa_kanban' => 'NOVO',
+            ]);
+
+            return response()->json(['data' => $candidato], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Candidato: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function moverCandidato(Request $request, string $id): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            App::instance('current_tenant_id', $tenantId);
+
+            $candidato = Candidato::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($id);
+
+            $validated = $request->validate([
+                'nova_etapa' => 'required|string|in:NOVO,TRIAGEM,ENTREVISTA,TESTE,PROPOSTA,CONTRATADO,REPROVADO',
+            ]);
+
+            $candidato->update(['etapa_kanban' => $validated['nova_etapa']]);
+
+            return response()->json(['data' => ['message' => 'Candidato movido com sucesso!', 'candidato' => $candidato]]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Mover: ' . $e->getMessage()]], 500);
+        }
+    }
+    // --- NOVOS MÉTODOS DE ETAPAS ---
     public function indexEtapas(Request $request): JsonResponse
     {
         $etapas = RecrutamentoEtapa::where('tenant_id', $request->user()->tenant_id)
@@ -108,6 +180,7 @@ class RecrutamentoController extends Controller
         return response()->json(['message' => 'Etapa removida com sucesso.']);
     }
 
+    // --- MÉTODOS ATUALIZADOS PARA O KANBAN DINÂMICO ---
     public function boardKanban(Request $request, string $vagaId): JsonResponse
     {
         try {
@@ -120,12 +193,12 @@ class RecrutamentoController extends Controller
                 ->where('vaga_id', $vaga->id)
                 ->orderByDesc('created_at')
                 ->get()
-                ->groupBy('etapa_id');
+                ->groupBy('etapa_id'); // Agora agrupa pelo ID da Etapa
 
             return response()->json([
                 'data' => [
                     'vaga' => $vaga,
-                    'etapas' => $etapas,
+                    'etapas' => $etapas, // Frontend vai ler as colunas daqui
                     'kanban' => $candidatos
                 ]
             ]);
@@ -147,6 +220,7 @@ class RecrutamentoController extends Controller
                 'telefone' => 'nullable|string|max:30',
             ]);
 
+            // Busca a primeira etapa para jogar o candidato nela
             $primeiraEtapa = RecrutamentoEtapa::where('tenant_id', $tenantId)->orderBy('ordem')->first();
 
             $candidato = Candidato::withoutGlobalScopes()->create([
