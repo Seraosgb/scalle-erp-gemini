@@ -82,7 +82,7 @@ export default function App() {
             <Route path="dashboard" element={<DashboardPage />} />
 
             // Portal Colaborador
-            <Route path="/portal-colaborador" element={<PortalColaboradorPage />} />
+            <Route path="portal-colaborador" element={<PortalColaboradorPage />} />
 
             {/* CRM & Vendas */}
             <Route path="crm" element={<BoardCrm />} />
