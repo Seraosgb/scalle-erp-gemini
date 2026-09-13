@@ -11,10 +11,70 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Exception;
 
 class HoleriteController extends Controller
 {
+    // ==========================================
+    // PORTAL DO COLABORADOR
+    // ==========================================
+
+    public function meusHolerites(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $colaborador = Colaborador::where('tenant_id', $tenantId)
+                ->where('usuario_id', $request->user()->id)
+                ->first();
+
+            if (!$colaborador) {
+                return response()->json(['data' => []]);
+            }
+
+            $holerites = Holerite::where('colaborador_id', $colaborador->id)
+                ->orderByDesc('competencia')
+                ->get();
+
+            return response()->json(['data' => $holerites]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao listar meus holerites: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function baixarMeuPdf(Request $request, string $id)
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+
+            $colaborador = Colaborador::where('tenant_id', $tenantId)
+                ->where('usuario_id', $request->user()->id)
+                ->firstOrFail();
+
+            $holerite = Holerite::where('colaborador_id', $colaborador->id)
+                ->with(['colaborador.pessoa', 'itens'])
+                ->findOrFail($id);
+
+            // Geração do PDF com caminho absoluto para evitar erro de classe não encontrada
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.holerite', ['holerite' => $holerite])
+                ->setPaper('a4', 'portrait');
+
+            return $pdf->download("Holerite_{$holerite->competencia}.pdf");
+
+        } catch (Exception $e) {
+            // Se capotar, não vai dar 500 cego, vai devolver o erro mastigado
+            return response()->json([
+                'error' => [
+                    'code' => 'PDF_GENERATION_ERROR',
+                    'message' => 'Erro na geração do PDF: ' . $e->getMessage() . ' | Linha: ' . $e->getLine()
+                ]
+            ], 500);
+        }
+    }
+
+    // ==========================================
+    // GESTÃO DE RH (ADMIN)
+    // ==========================================
+
     public function index(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -47,7 +107,7 @@ class HoleriteController extends Controller
 
         $validated = $request->validate([
             'colaborador_id' => 'required|uuid|exists:rh_colaboradores,id',
-            'competencia' => 'required|string|size:7', // Ex: 09/2026
+            'competencia' => 'required|string|size:7',
             'data_emissao' => 'required|date',
             'observacoes' => 'nullable|string',
             'itens' => 'required|array|min:1',
@@ -110,44 +170,5 @@ class HoleriteController extends Controller
                 'holerite' => $holeriteGerado->load(['itens', 'colaborador.pessoa']),
             ]
         ], 201);
-    }
-    // --- PORTAL DO COLABORADOR ---
-
-    public function meusHolerites(Request $request): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $colaborador = Colaborador::where('tenant_id', $tenantId)
-            ->where('usuario_id', $request->user()->id)
-            ->first();
-
-        if (!$colaborador) {
-            return response()->json(['data' => []]);
-        }
-
-        // Traz APENAS os holerites deste colaborador
-        $holerites = Holerite::where('colaborador_id', $colaborador->id)
-            ->orderByDesc('competencia')
-            ->get();
-
-        return response()->json(['data' => $holerites]);
-    }
-
-    public function baixarMeuPdf(Request $request, string $id)
-    {
-        $tenantId = $request->user()->tenant_id;
-
-        $colaborador = Colaborador::where('tenant_id', $tenantId)
-            ->where('usuario_id', $request->user()->id)
-            ->firstOrFail();
-
-        // Garante que o holerite pertence ao colaborador logado
-        $holerite = Holerite::where('colaborador_id', $colaborador->id)
-            ->with(['colaborador.pessoa', 'itens'])
-            ->findOrFail($id);
-
-        $pdf = Pdf::loadView('pdfs.holerite', ['holerite' => $holerite])
-            ->setPaper('a4', 'portrait');
-
-        return $pdf->download("Holerite_{$holerite->competencia}.pdf");
     }
 }
