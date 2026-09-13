@@ -27,11 +27,11 @@ export default function PortalColaboradorPage() {
         const res = await api.get('/rh/ponto/hoje');
         setBatidasHoje(res.data?.data || []);
       } else if (activeTab === 'holerites') {
-        const res = await api.get('/rh/holerites');
+        // Rota blindada: Traz APENAS os holerites deste usuário logado
+        const res = await api.get('/rh/holerites/meus');
         setHolerites(res.data?.data || res.data || []);
       } else if (activeTab === 'enps') {
         const res = await api.get('/rh/enps/campanhas');
-        // Filtra apenas ativas para o colaborador responder
         const ativas = (res.data?.data || []).filter(c => c.status === 'ATIVA');
         setCampanhas(ativas);
       }
@@ -43,6 +43,28 @@ export default function PortalColaboradorPage() {
   };
 
   useEffect(() => { carregarDados(); }, [activeTab]);
+
+  // --- LÓGICA DE DOWNLOAD DO PDF ---
+  const handleBaixarHolerite = async (holeriteId, competencia) => {
+    try {
+      setFeedback({ tipo: 'sucesso', msg: 'Gerando PDF, aguarde...' });
+
+      // O responseType 'blob' é obrigatório para o navegador entender que é um arquivo físico
+      const res = await api.get(`/rh/holerites/meus/${holeriteId}/pdf`, { responseType: 'blob' });
+
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Holerite_${competencia.replace('/', '_')}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setFeedback(null);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao fazer download do PDF.' });
+    }
+  };
 
   // --- LÓGICA DO PONTO COM GPS ---
   const registrarPonto = () => {
@@ -173,7 +195,10 @@ export default function PortalColaboradorPage() {
                   <h3 className="font-bold text-white text-lg">Competência: {holerite.competencia}</h3>
                   <p className="text-sm text-slate-400">Líquido a receber: <span className="font-mono text-emerald-400 font-bold">R$ {parseFloat(holerite.valor_liquido).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></p>
                 </div>
-                <button className="flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition">
+                <button
+                  onClick={() => handleBaixarHolerite(holerite.id, holerite.competencia)}
+                  className="flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition"
+                >
                   <Download className="h-4 w-4" /> Baixar PDF
                 </button>
               </div>
