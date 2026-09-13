@@ -41,6 +41,10 @@ import ColaboradoresPage from './pages/RH/ColaboradoresPage';
 import PessoasPage from './pages/Cadastros/PessoasPage';
 import HoleritesPage from './pages/RH/HoleritesPage';
 import RecrutamentoPage from './pages/RH/RecrutamentoPage';
+import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
+//import EnpsPage from './pages/RH/EnpsPage';
+//import NineBoxPage from './pages/RH/NineBoxPage';
+//import PdiPage from './pages/RH/PdiPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -110,6 +114,11 @@ export default function App() {
             <Route path="pessoas" element={<PessoasPage />} />
             <Route path="holerites" element={<HoleritesPage />} />
             <Route path="recrutamento" element={<RecrutamentoPage />} />
+            <Route path="desempenho-clima" element={<DesempenhoClimaPage />} />
+            <Route path="desempenho-clima/enps" element={<EnpsPage />} />
+            <Route path="desempenho-clima/ninebox" element={<NineBoxPage />} />
+            <Route path="desempenho-clima/pdi" element={<PdiPage />} />
+
 
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />

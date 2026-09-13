@@ -106,6 +106,10 @@ export default function AppLayout() {
     { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint },
     { name: 'Folha & Holerites', path: '/app/holerites', icon: FileText },
     { name: 'Recrutamento & Candidatos', path: '/app/recrutamento', icon: Users },
+    { name: 'Desempenho & Clima Organizacional', path: '/app/desempenho-clima', icon: UserCheck, end: true },
+    //{ name: 'eNPS & Pesquisa de Clima', path: '/app/desempenho-clima/enps', icon: UserCheck },
+    //{ name: 'Nine-Box & Avaliação de Desempenho', path: '/app/desempenho-clima/ninebox', icon: UserCheck },
+    //{ name: 'PDI & Planos de Desenvolvimento Individual', path: '/app/desempenho-clima/pdi', icon: UserCheck },
     ...(usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin ? [
       { name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }
     ] : []),
