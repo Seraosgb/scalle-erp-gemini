@@ -322,5 +322,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/rh/enps/campanhas/{campanhaId}/responder', [DesempenhoClimaController::class, 'responderEnps']);
     Route::get('/rh/enps/campanhas/{campanhaId}/resultados', [DesempenhoClimaController::class, 'resultadosEnps']);
 
+    // RH Estratégico - Nine-Box & PDI
     Route::post('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'storeEixo']);
+    Route::get('/rh/enps/campanhas', [DesempenhoClimaController::class, 'indexCampanhas']);
+    Route::get('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'indexEixos']);
 });

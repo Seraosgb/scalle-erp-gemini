@@ -148,4 +148,25 @@ class DesempenhoClimaController extends Controller
             return response()->json(['error' => ['message' => 'Erro Backend Eixo: ' . $e->getMessage()]], 500);
         }
     }
+    public function indexCampanhas(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $campanhas = EnpsCampanha::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $campanhas]);
+    }
+
+    public function indexEixos(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $eixos = NineboxEixo::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->orderBy('tipo')
+            ->get();
+
+        return response()->json(['data' => $eixos]);
+    }
 }
