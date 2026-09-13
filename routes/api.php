@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\ColaboradorController;
 use App\Http\Controllers\Api\EscalaTrabalhoController;
 use App\Http\Controllers\Api\HoleriteController;
 use App\Http\Controllers\Api\RecrutamentoController;
+use App\Http\Controllers\Api\DesempenhoClimaController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -311,7 +312,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/rh/candidatos', [RecrutamentoController::class, 'storeCandidato']);
     Route::put('/rh/candidatos/{id}/mover', [RecrutamentoController::class, 'moverCandidato']);
 
+    // Rotas do Recrutamento - Etapas
     Route::get('/rh/etapas', [RecrutamentoController::class, 'indexEtapas']);
     Route::post('/rh/etapas', [RecrutamentoController::class, 'storeEtapa']);
     Route::delete('/rh/etapas/{id}', [RecrutamentoController::class, 'destroyEtapa']);
+
+    // RH Estratégico - eNPS e Avaliação
+    Route::post('/rh/enps/campanhas', [DesempenhoClimaController::class, 'storeCampanha']);
+    Route::post('/rh/enps/campanhas/{campanhaId}/responder', [DesempenhoClimaController::class, 'responderEnps']);
+    Route::get('/rh/enps/campanhas/{campanhaId}/resultados', [DesempenhoClimaController::class, 'resultadosEnps']);
+
+    Route::post('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'storeEixo']);
 });
