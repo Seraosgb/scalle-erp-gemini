@@ -5,7 +5,7 @@ import {
   DollarSign, FileText, Users, LogOut, Menu, X,
   Building2, ShieldAlert, Factory, FileSpreadsheet,
   Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings,
-  CreditCard, FileCheck, Fingerprint
+  CreditCard, FileCheck, Fingerprint, UserSquare
 } from 'lucide-react';
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
