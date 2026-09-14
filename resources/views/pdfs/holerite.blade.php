@@ -58,7 +58,7 @@
         </tr>
         <tr>
             <td class="bold">Total Descontos:</td>
-            <td class="text-right text-red-500">R$ {{ number_format($holerite->total_descontos, 2, ',', '.') }}</td>
+            <td class="text-right" style="color: #ef4444;">R$ {{ number_format($holerite->total_descontos, 2, ',', '.') }}</td>
         </tr>
         <tr>
             <td class="bold" style="background-color: #f3f4f6;">Líquido a Receber:</td>
