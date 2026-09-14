@@ -13,33 +13,55 @@ class SefazNfeDriver implements FiscalDriverInterface
 
     public function __construct(string $certificadoPfx, string $senha, string $uf)
     {
-        // O certificado será carregado do banco (CertificadoA1) pelo container de injeção de dependência
-        $certificado = Certificate::readPfx($certificadoPfx, $senha);
+        // Tratamento para evitar que o NFePHP quebre caso o dummy file não exista no dev local ainda
+        if (!file_exists($certificadoPfx)) {
+            $certificadoPfx = file_get_contents(__DIR__ . '/dummy.pfx') ?: '';
+            // Mock temporário. No fluxo real, passaremos o binário descriptografado do banco
+            $certificado = Certificate::readPfx($certificadoPfx, $senha);
+        } else {
+            $certificado = Certificate::readPfx(file_get_contents($certificadoPfx), $senha);
+        }
 
-        // Aqui entrará o JSON de configuração da SEFAZ (tpAmb = 2 para homologação)
+        // Configuração padrão estrutural para Homologação (tpAmb = 2)
         $configJson = json_encode([
-            "atualizacao" => date('Y-m-d h:i:s'),
-            "tpAmb" => 2, // 2 = Homologação, 1 = Produção
-            "razaosocial" => "Empresa Teste",
-            "cnpj" => "00000000000000",
+            "atualizacao" => date('Y-m-d H:i:s'),
+            "tpAmb" => 2,
+            "razaosocial" => "Scalle Teste e Homologação",
             "siglaUF" => $uf,
+            "cnpj" => "00000000000000",
             "schemes" => "PL_009_V4",
             "versao" => "4.00"
         ]);
 
         $this->tools = new Tools($configJson, $certificado);
+        $this->tools->model('55'); // Define NFe (Modelo 55) por padrão
     }
 
     public function emitir(array $dadosEmissao): DocumentoFiscal
     {
-        // Lógica de montagem da tag <NFe> usando o NFePHP (Make) virá aqui
-        // Lógica de assinatura: $this->tools->signNFe($xml);
-        // Lógica de transmissão: $this->tools->sefazEnviaLote([$xmlAssinado], 1);
+        // TODO: Mapear os dadosEmissao para a classe Make do NFePHP
+        // TODO: Assinar XML -> $this->tools->signNFe($xml);
+        // TODO: Transmitir Lote -> $this->tools->sefazEnviaLote([$xmlAssinado], 1);
 
+        // Retorna um DocumentoFiscal temporário para manter o contrato até a implementação das tags
         return new DocumentoFiscal();
     }
 
-    public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
-    public function consultar(string $chaveAcesso): array { return []; }
-    public function corrigir(string $chaveAcesso, string $correcao): bool { return true; }
+    public function cancelar(string $chaveAcesso, string $justificativa): bool
+    {
+        // TODO: Implementar envio do evento de cancelamento
+        return true;
+    }
+
+    public function consultar(string $chaveAcesso): array
+    {
+        // TODO: Implementar consulta de recibo/chave
+        return [];
+    }
+
+    public function corrigir(string $chaveAcesso, string $correcao): bool
+    {
+        // TODO: Implementar envio de evento CC-e
+        return true;
+    }
 }
