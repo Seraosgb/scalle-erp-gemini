@@ -10,7 +10,8 @@
         "barryvdh/laravel-dompdf": "^3.1",
         "laravel/framework": "^12.0 || ^13.0",
         "laravel/sanctum": "^4.0",
-        "laravel/tinker": "^3.0"
+        "laravel/tinker": "^3.0",
+        "nfephp-org/sped-nfe": "^5.2"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
