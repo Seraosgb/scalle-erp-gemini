@@ -2,102 +2,64 @@
 
 namespace App\Services;
 
+use App\Interfaces\FiscalDriverInterface;
+use App\Models\CertificadoA1;
 use App\Models\DocumentoFiscal;
 use App\Models\Empresa;
 use App\Models\Pessoa;
-use App\Models\RegraTributaria;
+use Illuminate\Support\Facades\Crypt;
 use Exception;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class MotorFiscalService
 {
     /**
-     * Calcula impostos vigentes e prepara o documento fiscal oficial para transmissão
+     * Prepara os dados, carrega o certificado e orquestra a emissão via Driver.
      */
-    public static function emitirDocumento(
-        Empresa $empresa,
-        Pessoa $destinatario,
-        string $modeloDocumento,
-        array $itens,
-        ?string $origemTipo = null,
-        ?string $origemId = null
-    ): DocumentoFiscal {
-        return DB::transaction(function () use ($empresa, $destinatario, $modeloDocumento, $itens, $origemTipo, $origemId) {
-            $totalProdutos = 0.00;
-            $totalServicos = 0.00;
-            $totalIcms = 0.00;
-            $totalPis = 0.00;
-            $totalCofins = 0.00;
-            $totalIssqn = 0.00;
-            $totalIbs = 0.00;
-            $totalCbs = 0.00;
+    public static function emitirDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens, string $origem = 'manual'): DocumentoFiscal
+    {
+        // 1. Busca o Certificado A1 Ativo da Empresa/Tenant
+        $certificado = CertificadoA1::where('tenant_id', $empresa->tenant_id)
+            ->where('empresa_id', $empresa->id)
+            ->where('is_ativo', true)
+            ->first();
 
-            foreach ($itens as $item) {
-                $valor = (float) $item['valor_total'];
-                $cfop = $item['cfop'] ?? '5102';
+        if (!$certificado) {
+            throw new Exception("Nenhum Certificado Digital A1 ativo encontrado para esta empresa. Vá em Configurações > Fiscal e importe o certificado.");
+        }
 
-                // Busca regra tributária cadastrada
-                $regra = RegraTributaria::where('empresa_id', $empresa->id)
-                    ->where('cfop', $cfop)
-                    ->first();
+        if ($certificado->valido_ate && now()->isAfter($certificado->valido_ate)) {
+            throw new Exception("O Certificado Digital A1 expirou em " . date('d/m/Y', strtotime($certificado->valido_ate)) . ".");
+        }
 
-                if ($item['tipo_item'] === 'SERVICO') {
-                    $totalServicos += $valor;
-                    $aliqIss = $regra ? (float) $regra->aliquota_issqn : 5.00;
-                    $totalIssqn += ($valor * ($aliqIss / 100));
-                } else {
-                    $totalProdutos += $valor;
-                    
-                    if ($regra) {
-                        $totalIcms += ($valor * ((float) $regra->aliquota_icms / 100));
-                        $totalPis += ($valor * ((float) $regra->aliquota_pis / 100));
-                        $totalCofins += ($valor * ((float) $regra->aliquota_cofins / 100));
-                        // Reforma Tributária
-                        $totalIbs += ($valor * ((float) $regra->aliquota_ibs / 100));
-                        $totalCbs += ($valor * ((float) $regra->aliquota_cbs / 100));
-                    }
-                }
-            }
+        // 2. Descriptografa o cofre (AES-256)
+        try {
+            $pfxBinario = Crypt::decrypt($certificado->arquivo_binario_criptografado);
+            $senhaPfx = Crypt::decrypt($certificado->senha_criptografada);
+        } catch (Exception $e) {
+            throw new Exception("Falha de segurança ao descriptografar o certificado. A chave de criptografia do sistema foi alterada?");
+        }
 
-            $valorTotalDocumento = $totalProdutos + $totalServicos;
+        // 3. Monta o DTO padronizado para a Interface Fiscal
+        $dadosEmissao = [
+            'empresa' => $empresa->toArray(),
+            'destinatario' => $destinatario->toArray(),
+            'modelo' => $modelo,
+            'itens' => $itens,
+            'origem' => $origem,
+            'numero_nota' => 0, // No futuro, buscaremos da tabela de série/numeração
+        ];
 
-            // Próximo número sequencial para o modelo/série
-            $ultimoNumero = DocumentoFiscal::where('empresa_id', $empresa->id)
-                ->where('modelo_documento', $modeloDocumento)
-                ->max('numero_documento') ?? 0;
-            $proximoNumero = $ultimoNumero + 1;
+        // 4. Resolve o Driver pelo container, configura dinamicamente e emite
+        $driver = app(FiscalDriverInterface::class);
 
-            // Gerar chave de acesso de 44 dígitos (Mock SEFAZ)
-            $chaveAcesso = '33' . date('ym') . preg_replace('/[^0-9]/', '', $empresa->cnpj) . $modeloDocumento . '001' . str_pad($proximoNumero, 9, '0', STR_PAD_LEFT) . '1' . str_pad(mt_rand(1, 99999999), 8, '0', STR_PAD_LEFT) . '0';
+        $ambiente = $certificado->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
+        // Pega a UF do endereço da matriz (mockado para 'RJ' se não existir no payload)
+        $ufEmpresa = $empresa->endereco_padrao->uf ?? 'RJ';
 
-            return DocumentoFiscal::create([
-                'id' => (string) Str::uuid(),
-                'empresa_id' => $empresa->id,
-                'destinatario_id' => $destinatario->id,
-                'origem_tipo' => $origemTipo,
-                'origem_id' => $origemId,
-                'modelo_documento' => $modeloDocumento,
-                'serie' => 1,
-                'numero_documento' => $proximoNumero,
-                'chave_acesso' => $chaveAcesso,
-                'ambiente' => 'HOMOLOGACAO',
-                'status' => 'AUTORIZADO',
-                'protocolo_autorizacao' => '13326' . mt_rand(100000000, 999999999),
-                'codigo_status_sefaz' => '100',
-                'motivo_status_sefaz' => 'Autorizado o uso da NF-e',
-                'valor_total_produtos' => $totalProdutos,
-                'valor_total_servicos' => $totalServicos,
-                'valor_total_documento' => $valorTotalDocumento,
-                'valor_icms' => $totalIcms,
-                'valor_pis' => $totalPis,
-                'valor_cofins' => $totalCofins,
-                'valor_issqn' => $totalIssqn,
-                'valor_ibs' => $totalIbs,
-                'valor_cbs' => $totalCbs,
-                'data_emissao' => now(),
-                'data_autorizacao' => now(),
-            ]);
-        });
+        $driver->configurar($pfxBinario, $senhaPfx, $ufEmpresa, $ambiente);
+
+        // Retorna a promessa do DocumentoFiscal gerado pelo Driver
+        return $driver->emitir($dadosEmissao);
     }
 }
