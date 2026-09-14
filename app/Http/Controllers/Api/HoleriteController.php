@@ -76,10 +76,12 @@ class HoleriteController extends Controller
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.holerite', ['holerite' => $holerite])
                 ->setPaper('a4', 'portrait');
 
-            return $pdf->download("Holerite_{$holerite->competencia}.pdf");
+            // A MÁGICA AQUI: Troca a barra (/) por traço (-) para o sistema operacional aceitar o nome do arquivo
+            $competenciaLimpa = str_replace('/', '-', $holerite->competencia);
 
-        } catch (Exception $e) {
-            // GRAVA O ERRO REAL NO ARQUIVO LARAVEL.LOG
+            return $pdf->download("Holerite_{$competenciaLimpa}.pdf");
+
+        } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('FALHA PDF DOMPDF: ' . $e->getMessage(), ['linha' => $e->getLine(), 'arquivo' => $e->getFile()]);
 
             return response()->json([
