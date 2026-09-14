@@ -49,7 +49,6 @@ export default function PortalColaboradorPage() {
     try {
       setFeedback({ tipo: 'sucesso', msg: 'Gerando PDF, aguarde...' });
 
-      // O responseType 'blob' é obrigatório para o navegador entender que é um arquivo físico
       const res = await api.get(`/rh/holerites/meus/${holeriteId}/pdf`, { responseType: 'blob' });
 
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -62,7 +61,18 @@ export default function PortalColaboradorPage() {
 
       setFeedback(null);
     } catch (err) {
-      setFeedback({ tipo: 'erro', msg: 'Erro ao fazer download do PDF.' });
+      // MÁGICA: Se o erro vier em formato de arquivo (Blob), ele converte de volta para texto para lermos!
+      if (err.response && err.response.data instanceof Blob) {
+        const textError = await err.response.data.text();
+        try {
+          const jsonError = JSON.parse(textError);
+          setFeedback({ tipo: 'erro', msg: jsonError.error?.message || 'Erro ao gerar o arquivo PDF.' });
+        } catch (e) {
+          setFeedback({ tipo: 'erro', msg: 'Erro fatal no servidor ao gerar o PDF.' });
+        }
+      } else {
+        setFeedback({ tipo: 'erro', msg: 'Falha na comunicação ao tentar baixar o PDF.' });
+      }
     }
   };
 

@@ -67,7 +67,6 @@ class HoleriteController extends Controller
                 ->with(['colaborador.pessoa', 'itens'])
                 ->findOrFail($id);
 
-            // Garante que a view Blade do PDF existe
             if (!view()->exists('pdfs.holerite')) {
                 return response()->json([
                     'error' => ['message' => 'Template de PDF do holerite (resources/views/pdfs/holerite.blade.php) não encontrado no servidor.']
@@ -80,10 +79,13 @@ class HoleriteController extends Controller
             return $pdf->download("Holerite_{$holerite->competencia}.pdf");
 
         } catch (Exception $e) {
+            // GRAVA O ERRO REAL NO ARQUIVO LARAVEL.LOG
+            \Illuminate\Support\Facades\Log::error('FALHA PDF DOMPDF: ' . $e->getMessage(), ['linha' => $e->getLine(), 'arquivo' => $e->getFile()]);
+
             return response()->json([
                 'error' => [
                     'code' => 'PDF_GENERATION_ERROR',
-                    'message' => 'Erro ao gerar PDF: ' . $e->getMessage()
+                    'message' => 'Erro interno na conversão do PDF: ' . $e->getMessage()
                 ]
             ], 500);
         }
