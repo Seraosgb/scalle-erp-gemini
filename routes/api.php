@@ -300,14 +300,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/rh/escalas', [EscalaTrabalhoController::class, 'store']);
     Route::delete('/rh/escalas/{id}', [EscalaTrabalhoController::class, 'destroy']);
 
-    // 1º AS ROTAS ESPECÍFICAS DO PORTAL DO COLABORADOR
+    // ==========================================
+    // Rotas de Holerites
+    // ==========================================
     Route::get('/rh/holerites/meus', [App\Http\Controllers\Api\HoleriteController::class, 'meusHolerites']);
-    Route::get('/rh/holerites/meus/{id}/pdf', [App\Http\Controllers\Api\HoleriteController::class, 'baixarMeuPdf']);
+    Route::get('/rh/holerites/meus/{id}/pdf', [App\Http\Controllers\Api\HoleriteController::class, 'baixarMeuPdf'])->whereUuid('id');
 
-    // Rotas do RH
-    Route::get('/rh/holerites', [HoleriteController::class, 'index']);
-    Route::get('/rh/holerites/{id}', [HoleriteController::class, 'show']);
-    Route::post('/rh/holerites', [HoleriteController::class, 'store']);
+    Route::get('/rh/holerites', [App\Http\Controllers\Api\HoleriteController::class, 'index']);
+    Route::post('/rh/holerites', [App\Http\Controllers\Api\HoleriteController::class, 'store']);
+    Route::get('/rh/holerites/{id}', [App\Http\Controllers\Api\HoleriteController::class, 'show'])->whereUuid('id');
 
     // Rotas do Recrutamento
     Route::get('/rh/vagas', [RecrutamentoController::class, 'indexVagas']);
