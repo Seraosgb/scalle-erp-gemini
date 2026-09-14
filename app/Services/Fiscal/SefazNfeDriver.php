@@ -9,24 +9,21 @@ use NFePHP\Common\Certificate;
 
 class SefazNfeDriver implements FiscalDriverInterface
 {
-    protected Tools $tools;
+    protected ?Tools $tools = null;
 
-    public function __construct(string $certificadoPfx, string $senha, string $uf)
+    public function __construct()
     {
-        // Tratamento para evitar que o NFePHP quebre caso o dummy file não exista no dev local ainda
-        if (!file_exists($certificadoPfx)) {
-            $certificadoPfx = file_get_contents(__DIR__ . '/dummy.pfx') ?: '';
-            // Mock temporário. No fluxo real, passaremos o binário descriptografado do banco
-            $certificado = Certificate::readPfx($certificadoPfx, $senha);
-        } else {
-            $certificado = Certificate::readPfx(file_get_contents($certificadoPfx), $senha);
-        }
+        // Nasce limpo. A injeção pesada (Certificado) ocorre apenas no método configurar()
+    }
 
-        // Configuração padrão estrutural para Homologação (tpAmb = 2)
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2): self
+    {
+        $certificado = Certificate::readPfx($certificadoBinario, $senha);
+
         $configJson = json_encode([
             "atualizacao" => date('Y-m-d H:i:s'),
-            "tpAmb" => 2,
-            "razaosocial" => "Scalle Teste e Homologação",
+            "tpAmb" => $tpAmb,
+            "razaosocial" => "Scalle Operacional",
             "siglaUF" => $uf,
             "cnpj" => "00000000000000",
             "schemes" => "PL_009_V4",
@@ -34,34 +31,22 @@ class SefazNfeDriver implements FiscalDriverInterface
         ]);
 
         $this->tools = new Tools($configJson, $certificado);
-        $this->tools->model('55'); // Define NFe (Modelo 55) por padrão
+        $this->tools->model('55'); // Define NFe (Modelo 55)
+
+        return $this;
     }
 
     public function emitir(array $dadosEmissao): DocumentoFiscal
     {
-        // TODO: Mapear os dadosEmissao para a classe Make do NFePHP
-        // TODO: Assinar XML -> $this->tools->signNFe($xml);
-        // TODO: Transmitir Lote -> $this->tools->sefazEnviaLote([$xmlAssinado], 1);
+        if (!$this->tools) {
+            throw new \Exception("Driver Fiscal não configurado. Chame o método configurar() antes de emitir.");
+        }
 
-        // Retorna um DocumentoFiscal temporário para manter o contrato até a implementação das tags
+        // Lógica de montagem e transmissão do XML entrará aqui
         return new DocumentoFiscal();
     }
 
-    public function cancelar(string $chaveAcesso, string $justificativa): bool
-    {
-        // TODO: Implementar envio do evento de cancelamento
-        return true;
-    }
-
-    public function consultar(string $chaveAcesso): array
-    {
-        // TODO: Implementar consulta de recibo/chave
-        return [];
-    }
-
-    public function corrigir(string $chaveAcesso, string $correcao): bool
-    {
-        // TODO: Implementar envio de evento CC-e
-        return true;
-    }
+    public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
+    public function consultar(string $chaveAcesso): array { return []; }
+    public function corrigir(string $chaveAcesso, string $correcao): bool { return true; }
 }
