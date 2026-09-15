@@ -101,6 +101,7 @@ export default function AppLayout() {
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: '/app/fiscal', icon: FileText },
+    { name: 'Teste Fiscal', path: '/app/fiscal/test', icon: FileText },
     { name: 'Governança & Equipe', path: '/app/usuarios', icon: UserCheck },
     { name: 'Gestão de Pessoas (Contatos)', path: '/app/pessoas', icon: Users },
     { name: 'Gestão de RH', path: '/app/colaboradores', icon: Users },

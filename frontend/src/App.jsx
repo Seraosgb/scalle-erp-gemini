@@ -23,6 +23,7 @@ import CotacoesComprasPage from './pages/compras/CotacoesComprasPage';
 import FinanceiroPage from './pages/financeiro/FinanceiroPage';
 import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
+import FiscalTestScreen from './pages/fiscal/FiscalTestScreen';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
 
 // CRM & Funil
@@ -109,7 +110,8 @@ export default function App() {
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
-
+            <Route path="fiscal/test" element={<FiscalTestScreen />} />
+            <Route path="FiscalTestScreen" element={<FiscalTestScreen />} />
             {/* Governança, Equipe & Billing */}
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="billing" element={<PainelCobrancaView />} />
