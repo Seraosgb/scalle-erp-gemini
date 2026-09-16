@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\EscalaTrabalhoController;
 use App\Http\Controllers\Api\HoleriteController;
 use App\Http\Controllers\Api\RecrutamentoController;
 use App\Http\Controllers\Api\DesempenhoClimaController;
+use App\Http\Controllers\Api\FrotaVeiculoController;
 use App\Http\Controllers\Api\FrotaOperacaoController;
 
 // ==========================================
