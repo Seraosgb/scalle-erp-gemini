@@ -335,4 +335,19 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'storeEixo']);
     Route::get('/rh/enps/campanhas', [DesempenhoClimaController::class, 'indexCampanhas']);
     Route::get('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'indexEixos']);
+
+    // ==========================================
+    // MÓDULO DE FROTAS & TELEMETRIA
+    // ==========================================
+    Route::prefix('frota')->group(function () {
+        // Listas dinâmicas de apoio (Status, Combustível)
+        Route::get('/dominios', [FrotaVeiculoController::class, 'dominios']);
+
+        // Gestão de Veículos
+        Route::get('/veiculos', [FrotaVeiculoController::class, 'index']);
+        Route::post('/veiculos', [FrotaVeiculoController::class, 'store']);
+        Route::get('/veiculos/{id}', [FrotaVeiculoController::class, 'show']);
+        Route::put('/veiculos/{id}', [FrotaVeiculoController::class, 'update']);
+        Route::delete('/veiculos/{id}', [FrotaVeiculoController::class, 'destroy']);
+    });
 });
