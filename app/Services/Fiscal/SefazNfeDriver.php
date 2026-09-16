@@ -194,7 +194,7 @@ class SefazNfeDriver implements FiscalDriverInterface
 
         // Gera o XML String
         if (!$nfe->montaNFe()) {
-            throw new Exception("Erro ao gerar XML da NFe: " . $nfe->getErrors());
+            throw new \Exception("Erro ao gerar XML da NFe: " . json_encode($nfe->getErrors()));
         }
         $xmlNãoAssinado = $nfe->getXML();
 

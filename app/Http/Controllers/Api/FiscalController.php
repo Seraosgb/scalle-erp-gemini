@@ -81,11 +81,13 @@ class FiscalController extends Controller
                     'documento' => $docFiscal,
                 ]
             ], 201);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'error' => [
                     'code' => 'FISCAL_EMISSION_ERROR',
                     'message' => $e->getMessage(),
+                    'file' => $e->getFile(), // Retorna o arquivo exato do erro no React
+                    'line' => $e->getLine()  // Retorna a linha exata
                 ]
             ], 422);
         }

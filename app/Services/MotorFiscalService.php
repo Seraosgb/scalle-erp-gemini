@@ -55,7 +55,7 @@ class MotorFiscalService
 
         $ambiente = $certificado->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
         // Pega a UF do endereço da matriz (mockado para 'RJ' se não existir no payload)
-        $ufEmpresa = $empresa->endereco_padrao->uf ?? 'RJ';
+        $ufEmpresa = $empresa->endereco_padrao?->uf ?? 'RJ';
 
         $driver->configurar($pfxBinario, $senhaPfx, $ufEmpresa, $ambiente);
 
