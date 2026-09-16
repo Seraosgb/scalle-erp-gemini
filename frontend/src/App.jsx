@@ -97,7 +97,7 @@ export default function App() {
             <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
 
             {/* Frota & Operações */}
-            <Route path="frota" element={<FrotaPage />} />
+            <Route path="frotas" element={<FrotaPage />} />
 
             {/* Indústria & PCP */}
             <Route path="pcp" element={<PcpPage />} />
