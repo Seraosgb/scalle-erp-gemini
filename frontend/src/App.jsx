@@ -46,10 +46,7 @@ import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
 
 // Portal Colaborador
 import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
-//import EnpsPage from './pages/RH/EnpsPage';
-//import NineBoxPage from './pages/RH/NineBoxPage';
-//import PdiPage from './pages/RH/PdiPage';
-import frota from './pages/frota/FrotaDashboard';
+import FrotaPage from './pages/frota/FrotaDashboard';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -100,7 +97,7 @@ export default function App() {
             <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
 
             {/* Frota & Operações */}
-            <Route path="frotas" element={<frota />} />
+            <Route path="frota" element={<FrotaPage />} />
 
             {/* Indústria & PCP */}
             <Route path="pcp" element={<PcpPage />} />
