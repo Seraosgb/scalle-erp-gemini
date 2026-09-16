@@ -211,13 +211,17 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/exportacoes/metricas', [ExportacaoContabilController::class, 'metricas']);
     Route::get('/exportacoes/download', [ExportacaoContabilController::class, 'download']);
 
+    // ==========================================
     // Motor Fiscal & Certificado A1
-    Route::get('/fiscal', [FiscalController::class, 'index']);
-    Route::get('/fiscal/documentos', [FiscalController::class, 'index']);
-    Route::get('/fiscal/regras', [FiscalController::class, 'regras']);
-    Route::post('/fiscal/emitir', [FiscalController::class, 'emitir']);
-    Route::get('/fiscal/certificado', [CertificadoFiscalController::class, 'show']);
-    Route::post('/fiscal/certificado', [CertificadoFiscalController::class, 'upload']);
+    // ==========================================
+    Route::prefix('fiscal')->group(function () {
+        Route::get('/', [FiscalController::class, 'index']);
+        Route::get('/documentos', [FiscalController::class, 'index']);
+        Route::get('/regras', [FiscalController::class, 'regras']);
+        Route::post('/emitir', [FiscalController::class, 'emitir']);
+        Route::get('/certificado', [CertificadoFiscalController::class, 'show']);
+        Route::post('/certificado/upload', [CertificadoFiscalController::class, 'upload']);
+    });
 
     // Indústria & PCP (Planejamento e Controle da Produção)
     Route::get('/pcp/metricas', [PcpController::class, 'metricasKpi']);
