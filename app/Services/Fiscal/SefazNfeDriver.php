@@ -46,7 +46,17 @@ class SefazNfeDriver implements FiscalDriverInterface
 
         $nfe = new Make();
 
-        // 1. Tag <infNFe> e <ide> (Identificação)
+        // ========================================================
+        // CORREÇÃO: Inicializa a tag raiz <infNFe> PRIMEIRO (Evita Fatal Error no PHP 8)
+        // ========================================================
+        $stdInfNFe = new \stdClass();
+        $stdInfNFe->versao = '4.00';
+        $stdInfNFe->Id = ''; // Deixando vazio, o NFePHP gera os 44 dígitos automaticamente
+        $stdInfNFe->pk_nItem = null;
+        $nfe->taginfNFe($stdInfNFe);
+        // ========================================================
+
+        // 1. Tag <ide> (Identificação)
         $stdIde = new \stdClass();
         $stdIde->cUF = 33; // RJ
         $stdIde->cNF = rand(11111111, 99999999);
