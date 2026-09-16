@@ -36,7 +36,7 @@ import MasterPage from './pages/master/MasterPage';
 import PainelCobrancaView from './pages/billing/PainelCobrancaView';
 import AuditoriaE2EView from './pages/master/AuditoriaE2EView';
 
-//RH
+// RH
 import PontoEletronicoPage from './pages/rh/PontoEletronicoPage';
 import ColaboradoresPage from './pages/RH/ColaboradoresPage';
 import PessoasPage from './pages/Cadastros/PessoasPage';
@@ -65,7 +65,6 @@ export default function App() {
         <Routes>
           {/* Rotas Públicas */}
           <Route path="/login" element={<Login />} />
-          <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
           <Route path="/crm" element={<LandingCrm />} />
 
@@ -80,7 +79,7 @@ export default function App() {
             {/* Dashboard */}
             <Route path="dashboard" element={<DashboardPage />} />
 
-            // Portal Colaborador
+            {/* Portal Colaborador */}
             <Route path="portal-colaborador" element={<PortalColaboradorPage />} />
 
             {/* CRM & Vendas */}
@@ -113,11 +112,12 @@ export default function App() {
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="fiscal/test" element={<FiscalTestScreen />} />
             <Route path="FiscalTestScreen" element={<FiscalTestScreen />} />
+
             {/* Governança, Equipe & Billing */}
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="billing" element={<PainelCobrancaView />} />
 
-            {/*RH & Gestão de Pessoas*/}
+            {/* RH & Gestão de Pessoas */}
             <Route path="ponto" element={<PontoEletronicoPage />} />
             <Route path="colaboradores" element={<ColaboradoresPage />} />
             <Route path="pessoas" element={<PessoasPage />} />
