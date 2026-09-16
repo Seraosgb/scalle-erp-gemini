@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\EscalaTrabalhoController;
 use App\Http\Controllers\Api\HoleriteController;
 use App\Http\Controllers\Api\RecrutamentoController;
 use App\Http\Controllers\Api\DesempenhoClimaController;
+use App\Http\Controllers\Api\FrotaOperacaoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -349,5 +350,6 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/veiculos/{id}', [FrotaVeiculoController::class, 'show']);
         Route::put('/veiculos/{id}', [FrotaVeiculoController::class, 'update']);
         Route::delete('/veiculos/{id}', [FrotaVeiculoController::class, 'destroy']);
+        Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
 });
