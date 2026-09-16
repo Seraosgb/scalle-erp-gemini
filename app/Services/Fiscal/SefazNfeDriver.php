@@ -103,9 +103,7 @@ class SefazNfeDriver implements FiscalDriverInterface
         $stdDest->indIEDest = 1; // 1=Contribuinte ICMS
         $stdDest->IE = '98765432';
 
-        // ========================================================
-        // CORREÇÃO: Blindagem de CPF/CNPJ para aceitar apenas 11 ou 14
-        // ========================================================
+        // Blindagem de CPF/CNPJ para aceitar apenas 11 ou 14
         $doc = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
         if (strlen($doc) === 14) {
             $stdDest->CNPJ = $doc;
@@ -194,9 +192,7 @@ class SefazNfeDriver implements FiscalDriverInterface
         $stdTot->vNF = $vTotalProdutos;
         $nfe->tagICMSTot($stdTot);
 
-        // ========================================================
-        // CORREÇÃO: Inclusão da Tag <transp> antes do Pagamento
-        // ========================================================
+        // Inclusão da Tag <transp> antes do Pagamento
         $stdTransp = new \stdClass();
         $stdTransp->modFrete = 9; // 9 = Sem Ocorrência de Transporte
         $nfe->tagtransp($stdTransp);
@@ -217,14 +213,47 @@ class SefazNfeDriver implements FiscalDriverInterface
         }
         $xmlNãoAssinado = $nfe->getXML();
 
-        // A Mágica Final: Assinatura Criptográfica
+        // Assinatura Criptográfica
         $xmlAssinado = $this->tools->signNFe($xmlNãoAssinado);
 
-        $documentoFiscal = new DocumentoFiscal();
-        $documentoFiscal->xml_assinado = $xmlAssinado;
-        $documentoFiscal->status = 'PROCESSANDO_ASSINATURA_OK';
+        // ========================================================
+        // TRANSMISSÃO PARA A SEFAZ (Síncrono)
+        // ========================================================
+        try {
+            // Envia o lote contendo 1 nota. O 3º parâmetro '1' força o processamento síncrono
+            $respostaSefaz = $this->tools->sefazEnviaLote([$xmlAssinado], $stdIde->nNF, 1);
 
-        return $documentoFiscal;
+            // Padroniza o retorno XML da SEFAZ para um Objeto PHP legível
+            $stdRetorno = (new \NFePHP\NFe\Common\Standardize())->toStd($respostaSefaz);
+
+            $documentoFiscal = new DocumentoFiscal();
+            $documentoFiscal->xml_assinado = $xmlAssinado;
+            $documentoFiscal->status = 'REJEITADO'; // Status conservador por padrão
+
+            // cStat 104 = Lote processado. Precisamos olhar o cStat interno do protocolo da nota
+            if (isset($stdRetorno->protNFe->infProt)) {
+                $infProt = $stdRetorno->protNFe->infProt;
+
+                if ($infProt->cStat == 100) { // 100 = Autorizado o uso da NF-e
+                    $documentoFiscal->status = 'AUTORIZADO';
+                    $documentoFiscal->protocolo_autorizacao = $infProt->nProt;
+                    // MÁGICA: Anexa o protocolo da SEFAZ no final do nosso XML assinado
+                    $documentoFiscal->xml_autorizado = \NFePHP\NFe\Complements::toAuthorize($xmlAssinado, $respostaSefaz);
+                } else {
+                    // Rejeição mapeada pela SEFAZ
+                    throw new Exception("SEFAZ Rejeitou [cStat {$infProt->cStat}]: {$infProt->xMotivo}");
+                }
+            } else {
+                // Erro no lote inteiro
+                throw new Exception("Erro de Lote SEFAZ [cStat {$stdRetorno->cStat}]: {$stdRetorno->xMotivo}");
+            }
+
+            return $documentoFiscal;
+
+        } catch (\Exception $e) {
+            // Em caso de falha de conexão ou rejeição, devolve o erro mastigado
+            throw new Exception("Falha na Transmissão: " . $e->getMessage());
+        }
     }
 
     public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
