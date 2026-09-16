@@ -1,27 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import ModalAbastecimento from './ModalAbastecimento';
+import ModalNovoVeiculo from './ModalNovoVeiculo';
 
 export default function FrotaDashboard() {
     const [veiculos, setVeiculos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    // 👇 O ESTADO FICA AQUI EM CIMA!
+    const [isModalNovoOpen, setIsModalNovoOpen] = useState(false);
     const [veiculoSelecionado, setVeiculoSelecionado] = useState(null);
 
     const carregarVeiculos = async () => {
         try {
             setLoading(true);
-            // O Axios já injeta o token automaticamente via interceptor
             const response = await api.get('/frota/veiculos');
-
-            // O Laravel retorna paginação (data.data) ou array direto (data)
             const lista = response.data?.data?.data || response.data?.data || [];
-
-            // Blindagem: Garante que a lista seja sempre um Array
             setVeiculos(Array.isArray(lista) ? lista : []);
         } catch (error) {
             console.error('Erro ao buscar frota:', error);
-            setVeiculos([]); // Previne o erro ".map is not a function"
+            setVeiculos([]);
         } finally {
             setLoading(false);
         }
@@ -42,7 +40,11 @@ export default function FrotaDashboard() {
         <div className="p-2 sm:p-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                 <h1 className="text-2xl font-bold text-slate-100">Gestão de Frotas</h1>
-                <button className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition font-medium">
+                {/* 👇 O BOTÃO AGORA CHAMA O MODAL NOVO! */}
+                <button
+                    onClick={() => setIsModalNovoOpen(true)}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition font-medium cursor-pointer"
+                >
                     + Novo Veículo
                 </button>
             </div>
@@ -87,6 +89,14 @@ export default function FrotaDashboard() {
                 <ModalAbastecimento
                     veiculo={veiculoSelecionado}
                     onClose={() => setIsModalOpen(false)}
+                    onSuccess={carregarVeiculos}
+                />
+            )}
+
+            {/* 👇 O COMPONENTE DO MODAL FICA RENDERIZADO AQUI! */}
+            {isModalNovoOpen && (
+                <ModalNovoVeiculo
+                    onClose={() => setIsModalNovoOpen(false)}
                     onSuccess={carregarVeiculos}
                 />
             )}
