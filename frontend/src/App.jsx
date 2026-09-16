@@ -49,6 +49,7 @@ import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
 //import EnpsPage from './pages/RH/EnpsPage';
 //import NineBoxPage from './pages/RH/NineBoxPage';
 //import PdiPage from './pages/RH/PdiPage';
+import frota from './pages/frota/FrotaDashboard';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -97,6 +98,9 @@ export default function App() {
             <Route path="estoque" element={<Navigate to="/app/wms" replace />} />
             <Route path="compras" element={<ComprasPage />} />
             <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
+
+            {/* Frota & Operações */}
+            <Route path="frotas" element={<frota />} />
 
             {/* Indústria & PCP */}
             <Route path="pcp" element={<PcpPage />} />
