@@ -71,4 +71,11 @@ class DocumentoFiscal extends Model
     {
         return $this->belongsTo(Pessoa::class, 'destinatario_id');
     }
+    /**
+     * Relação com os itens da nota fiscal
+     */
+    public function itens()
+    {
+        return $this->hasMany(DocumentoFiscalItem::class, 'documento_fiscal_id');
+    }
 }
