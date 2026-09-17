@@ -5,22 +5,64 @@ namespace App\Services;
 use App\Interfaces\FiscalDriverInterface;
 use App\Models\CertificadoA1;
 use App\Models\DocumentoFiscal;
+use App\Models\DocumentoFiscalItem;
 use App\Models\Empresa;
 use App\Models\Pessoa;
 use Illuminate\Support\Facades\Crypt;
-use Exception;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Exception;
 
 class MotorFiscalService
 {
     /**
+     * FASE 1 (SÍNCRONA): Grava o espelho da nota no banco e libera o PDV rapidamente.
+     */
+    public static function prepararDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens): DocumentoFiscal
+    {
+        return DB::transaction(function () use ($empresa, $destinatario, $modelo, $itens) {
+            $valorTotal = 0;
+            foreach ($itens as $item) {
+                $valorTotal += (float) $item['valor_total'];
+            }
+
+            $documento = DocumentoFiscal::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $empresa->tenant_id,
+                'empresa_id' => $empresa->id,
+                'destinatario_id' => $destinatario->id,
+                'modelo_documento' => $modelo,
+                'status' => 'PROCESSANDO', // Status blindado para a Fila assumir
+                'data_emissao' => now(),
+                'valor_total' => $valorTotal,
+            ]);
+
+            foreach ($itens as $item) {
+                DocumentoFiscalItem::create([
+                    'id' => (string) Str::uuid(),
+                    'documento_fiscal_id' => $documento->id,
+                    'tipo_item' => $item['tipo_item'],
+                    'cfop' => $item['cfop'],
+                    'valor_total' => $item['valor_total'],
+                ]);
+            }
+
+            return $documento;
+        });
+    }
+
+    /**
+     * FASE 2 (ASSÍNCRONA): Motor Pesado executado em Background pelo Job.
      * Prepara os dados, carrega o certificado e orquestra a emissão via Driver.
      */
-    public static function emitirDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens, string $origem = 'manual'): DocumentoFiscal
+    public static function processarTransmissaoSefaz(DocumentoFiscal $documento): void
     {
+        $empresa = Empresa::find($documento->empresa_id);
+        $destinatario = Pessoa::find($documento->destinatario_id);
+
         // 1. Busca o Certificado A1 Ativo da Empresa/Tenant
-        $certificado = CertificadoA1::where('tenant_id', $empresa->tenant_id)
-            ->where('empresa_id', $empresa->id)
+        $certificado = CertificadoA1::where('tenant_id', $documento->tenant_id)
+            ->where('empresa_id', $documento->empresa_id)
             ->where('is_ativo', true)
             ->first();
 
@@ -40,26 +82,47 @@ class MotorFiscalService
             throw new Exception("Falha de segurança ao descriptografar o certificado. A chave de criptografia do sistema foi alterada?");
         }
 
-        // 3. Monta o DTO padronizado para a Interface Fiscal
+        // 3. Monta o DTO padronizado para a Interface Fiscal (Agora usando os itens do banco)
+        $itensDocumento = $documento->itens->toArray();
+
         $dadosEmissao = [
             'empresa' => $empresa->toArray(),
             'destinatario' => $destinatario->toArray(),
-            'modelo' => $modelo,
-            'itens' => $itens,
-            'origem' => $origem,
+            'modelo' => $documento->modelo_documento,
+            'itens' => $itensDocumento,
+            'origem' => 'assincrono',
             'numero_nota' => 0, // No futuro, buscaremos da tabela de série/numeração
         ];
 
-        // 4. Resolve o Driver pelo container, configura dinamicamente e emite
-        $driver = app(FiscalDriverInterface::class);
+        // 4. Aciona o Driver Real (se estiver configurado) ou simula em homologação local
+        if (app()->bound(FiscalDriverInterface::class)) {
+            $driver = app(FiscalDriverInterface::class);
+            $ambiente = $certificado->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
+            $ufEmpresa = $empresa->endereco_padrao?->uf ?? 'RJ';
 
-        $ambiente = $certificado->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
-        // Pega a UF do endereço da matriz (mockado para 'RJ' se não existir no payload)
-        $ufEmpresa = $empresa->endereco_padrao?->uf ?? 'RJ';
+            $driver->configurar($pfxBinario, $senhaPfx, $ufEmpresa, $ambiente);
+            $driver->emitir($dadosEmissao);
+        } else {
+            // Fallback de Simulação (Homologação sem driver externo plugado)
+            sleep(2);
+            $cnpjLimpo = preg_replace('/[^0-9]/', '', $empresa->cnpj ?? '00000000000191');
 
-        $driver->configurar($pfxBinario, $senhaPfx, $ufEmpresa, $ambiente);
+            $documento->update([
+                'status' => 'AUTORIZADO',
+                'protocolo_autorizacao' => '133' . rand(10000000000, 99999999999),
+                'chave_acesso' => '332609' . str_pad($cnpjLimpo, 14, '0', STR_PAD_LEFT) . '550010000000011000000001',
+                'mensagem_sefaz' => 'Autorizado o uso da NF-e (Simulação)'
+            ]);
+        }
+    }
 
-        // Retorna a promessa do DocumentoFiscal gerado pelo Driver
-        return $driver->emitir($dadosEmissao);
+    /**
+     * Retrocompatibilidade com a emissão síncrona manual caso o sistema chame diretamente
+     */
+    public static function emitirDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens, string $origem = 'manual'): DocumentoFiscal
+    {
+        $doc = self::prepararDocumento($empresa, $destinatario, $modelo, $itens);
+        self::processarTransmissaoSefaz($doc);
+        return $doc->fresh();
     }
 }
