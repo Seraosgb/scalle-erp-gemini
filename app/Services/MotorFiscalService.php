@@ -26,12 +26,29 @@ class MotorFiscalService
                 $valorTotal += (float) $item['valor_total'];
             }
 
+            // Descobre o ambiente de emissão com base no certificado ativo
+            $certificado = CertificadoA1::where('tenant_id', $empresa->tenant_id)
+                ->where('empresa_id', $empresa->id)
+                ->where('is_ativo', true)
+                ->first();
+
+            $ambiente = $certificado ? $certificado->ambiente_emissao : 'HOMOLOGACAO';
+
+            // Busca o último número de nota emitido para este modelo e empresa para manter a sequência
+            $ultimoNumero = DocumentoFiscal::withoutGlobalScopes()
+                ->where('empresa_id', $empresa->id)
+                ->where('modelo_documento', $modelo)
+                ->max('numero_documento') ?? 0;
+
             $documento = DocumentoFiscal::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $empresa->tenant_id,
                 'empresa_id' => $empresa->id,
                 'destinatario_id' => $destinatario->id,
                 'modelo_documento' => $modelo,
+                'serie_documento' => '1', // Série padrão 1
+                'numero_documento' => (int) $ultimoNumero + 1, // Auto-incremento lógico seguro
+                'ambiente_emissao' => $ambiente,
                 'status' => 'PROCESSANDO', // Status blindado para a Fila assumir
                 'data_emissao' => now(),
                 'valor_total' => $valorTotal,
@@ -82,7 +99,7 @@ class MotorFiscalService
             throw new Exception("Falha de segurança ao descriptografar o certificado. A chave de criptografia do sistema foi alterada?");
         }
 
-        // 3. Monta o DTO padronizado para a Interface Fiscal (Agora usando os itens do banco)
+        // 3. Monta o DTO padronizado para a Interface Fiscal
         $itensDocumento = $documento->itens->toArray();
 
         $dadosEmissao = [
@@ -91,7 +108,8 @@ class MotorFiscalService
             'modelo' => $documento->modelo_documento,
             'itens' => $itensDocumento,
             'origem' => 'assincrono',
-            'numero_nota' => 0, // No futuro, buscaremos da tabela de série/numeração
+            'numero_nota' => $documento->numero_documento, // Envia o número gerado no banco para o XML
+            'serie_nota' => $documento->serie_documento,
         ];
 
         // 4. Aciona o Driver Real (se estiver configurado) ou simula em homologação local
@@ -117,7 +135,7 @@ class MotorFiscalService
     }
 
     /**
-     * Retrocompatibilidade com a emissão síncrona manual caso o sistema chame diretamente
+     * Retrocompatibilidade com a emissão síncrona manual
      */
     public static function emitirDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens, string $origem = 'manual'): DocumentoFiscal
     {
