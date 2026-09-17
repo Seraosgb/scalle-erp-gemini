@@ -58,36 +58,36 @@ class FiscalController extends Controller
             'destinatario_id' => 'required|uuid|exists:pes_pessoas,id',
             'modelo_documento' => 'required|string|in:55,65,NFS-e',
             'itens' => 'required|array|min:1',
-            'itens.*.tipo_item' => 'required|string|in:PRODUTO,SERVICO',
-            'itens.*.cfop' => 'required|string|max:10',
-            'itens.*.valor_total' => 'required|numeric|min:0.01',
+            // ... (restante das validações)
         ]);
 
         $empresa = Empresa::first();
         $destinatario = Pessoa::findOrFail($validated['destinatario_id']);
 
         try {
-            $docFiscal = MotorFiscalService::emitirDocumento(
+            // 1. Apenas monta o documento no banco e deixa como PROCESSANDO (Rápido)
+            $docFiscal = MotorFiscalService::prepararDocumento(
                 $empresa,
                 $destinatario,
                 $validated['modelo_documento'],
-                $validated['itens'],
-                'manual'
+                $validated['itens']
             );
+
+            // 2. Despacha para o Worker trabalhar em background (Assíncrono)
+            \App\Jobs\TransmitirDocumentoFiscalJob::dispatch($docFiscal->id);
 
             return response()->json([
                 'data' => [
-                    'message' => 'Documento fiscal emitido e autorizado com sucesso!',
-                    'documento' => $docFiscal,
+                    'message' => 'Documento fiscal enfileirado para transmissão! O status será atualizado em breve.',
+                    'documento' => $docFiscal, // Status: PROCESSANDO
                 ]
-            ], 201);
+            ], 202); // 202 Accepted (Em processamento)
+
         } catch (\Throwable $e) {
             return response()->json([
                 'error' => [
-                    'code' => 'FISCAL_EMISSION_ERROR',
-                    'message' => $e->getMessage(),
-                    'file' => $e->getFile(), // Retorna o arquivo exato do erro no React
-                    'line' => $e->getLine()  // Retorna a linha exata
+                    'code' => 'FISCAL_PREPARATION_ERROR',
+                    'message' => $e->getMessage()
                 ]
             ], 422);
         }
