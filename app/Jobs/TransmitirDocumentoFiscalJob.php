@@ -38,8 +38,7 @@ class TransmitirDocumentoFiscalJob implements ShouldQueue
         }
 
         try {
-            // Aqui o serviço tenta assinar o XML e enviar para a SEFAZ
-            // Se não houver certificado, o MotorFiscalService deve disparar uma Exception
+            // Aciona o Motor para assinar o XML e enviar para a SEFAZ
             MotorFiscalService::processarTransmissaoSefaz($documento);
 
             Log::info("NF-e {$documento->id} transmitida com sucesso de forma assíncrona.");
@@ -52,7 +51,7 @@ class TransmitirDocumentoFiscalJob implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        // Se esgotar as 3 tentativas, marca como Rejeitada/Falha Técnica
+        // Se esgotar as 3 tentativas, marca como Falha Técnica para o usuário poder reenviar
         $documento = DocumentoFiscal::find($this->documentoId);
         if ($documento) {
             $documento->update([
