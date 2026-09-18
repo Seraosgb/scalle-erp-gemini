@@ -2,78 +2,45 @@
 
 namespace App\Models;
 
-use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Traits\BelongsToEmpresa;
 
 class DocumentoFiscal extends Model
 {
-    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+    use HasFactory;
 
     protected $table = 'fis_documentos_fiscais';
-    public $incrementing = false;
     protected $keyType = 'string';
+    public $incrementing = false;
 
+    // Libera a gravação dos campos preenchidos pelo Motor e pelo Job
     protected $fillable = [
         'id',
         'tenant_id',
         'empresa_id',
         'destinatario_id',
-        'origem_tipo',
-        'origem_id',
         'modelo_documento',
-        'serie',
+        'serie_documento',
         'numero_documento',
-        'chave_acesso',
-        'ambiente',
+        'ambiente_emissao',
         'status',
-        'protocolo_autorizacao',
-        'codigo_status_sefaz',
-        'motivo_status_sefaz',
-        'valor_total_produtos',
-        'valor_total_servicos',
-        'valor_total_documento',
-        'valor_icms',
-        'valor_pis',
-        'valor_cofins',
-        'valor_issqn',
-        'valor_ibs',
-        'valor_cbs',
-        'xml_assinado',
-        'xml_protocolado',
-        'url_danfe_pdf',
         'data_emissao',
-        'data_autorizacao',
+        'valor_total',
+        'chave_acesso',
+        'protocolo_autorizacao',
+        'mensagem_sefaz'
     ];
 
-    protected $casts = [
-        'valor_total_produtos' => 'decimal:2',
-        'valor_total_servicos' => 'decimal:2',
-        'valor_total_documento' => 'decimal:2',
-        'valor_icms' => 'decimal:2',
-        'valor_pis' => 'decimal:2',
-        'valor_cofins' => 'decimal:2',
-        'valor_issqn' => 'decimal:2',
-        'valor_ibs' => 'decimal:2',
-        'valor_cbs' => 'decimal:2',
-        'data_emissao' => 'datetime',
-        'data_autorizacao' => 'datetime',
-    ];
-
-    public function empresa(): BelongsTo
+    public function empresa()
     {
         return $this->belongsTo(Empresa::class, 'empresa_id');
     }
 
-    public function destinatario(): BelongsTo
+    public function destinatario()
     {
         return $this->belongsTo(Pessoa::class, 'destinatario_id');
     }
-    /**
-     * Relação com os itens da nota fiscal
-     */
+
     public function itens()
     {
         return $this->hasMany(DocumentoFiscalItem::class, 'documento_fiscal_id');
