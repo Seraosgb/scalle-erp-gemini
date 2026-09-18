@@ -1,410 +1,179 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
-import { 
-  FileText, 
-  Search, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  AlertTriangle,
-  X,
-  FileCode, 
-  ShieldCheck,
-  Upload,
-  Lock,
-  Calendar,
-  Send
+import {
+    FileText, XCircle, Edit3, RefreshCw, AlertTriangle, CheckCircle, Clock, ShieldAlert
 } from 'lucide-react';
 
 export default function FiscalPage() {
-  const [search, setSearch] = useState('');
-  const [modeloFiltro, setModeloFiltro] = useState('');
-  
-  // Estado do Certificado Digital A1
-  const [certificadoAtivo, setCertificadoAtivo] = useState(null);
-  const [loadingCert, setLoadingCert] = useState(false);
-  const [modalCertificado, setModalCertificado] = useState(false);
-  const [arquivoCert, setArquivoCert] = useState(null);
-  const [senhaCert, setSenhaCert] = useState('');
-  const [ambienteCert, setAmbienteCert] = useState('HOMOLOGACAO');
-  const [salvandoCert, setSalvandoCert] = useState(false);
-  const [feedback, setFeedback] = useState(null);
+    const [documentos, setDocumentos] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [modalEvento, setModalEvento] = useState({ aberto: false, tipo: '', documento: null });
+    const [justificativa, setJustificativa] = useState('');
+    const [enviandoEvento, setEnviandoEvento] = useState(false);
 
-  // Consulta de Documentos Fiscais
-  const { data: fiscalResponse, isLoading, refetch } = useQuery({
-    queryKey: ['fiscal-documentos', search, modeloFiltro],
-    queryFn: async () => {
-      const res = await api.get('/fiscal', {
-        params: { modelo: modeloFiltro, search }
-      });
-      return res.data;
-    }
-  });
+    const carregarDocumentos = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get('/fiscal');
+            setDocumentos(response.data?.data || []);
+        } catch (error) {
+            console.error('Erro ao buscar documentos fiscais', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-  const carregarStatusCertificado = async () => {
-    setLoadingCert(true);
-    try {
-      const res = await api.get('/fiscal/certificado');
-      setCertificadoAtivo(res.data?.data || null);
-    } catch (err) {
-      console.warn('Nenhum certificado A1 configurado no tenant:', err);
-      setCertificadoAtivo(null);
-    } finally {
-      setLoadingCert(false);
-    }
-  };
+    useEffect(() => {
+        carregarDocumentos();
+    }, []);
 
-  useEffect(() => {
-    carregarStatusCertificado();
-  }, []);
+    const abrirModal = (doc, tipo) => {
+        setModalEvento({ aberto: true, tipo, documento: doc });
+        setJustificativa('');
+    };
 
-  const handleUploadCertificadoA1 = async (e) => {
-    e.preventDefault();
-    if (!arquivoCert || !senhaCert) return;
+    const enviarEvento = async (e) => {
+        e.preventDefault();
+        setEnviandoEvento(true);
 
-    setSalvandoCert(true);
-    const data = new FormData();
-    data.append('certificado', arquivoCert);
-    data.append('senha', senhaCert);
-    data.append('ambiente_emissao', ambienteCert);
+        try {
+            await api.post(`/fiscal/documentos/${modalEvento.documento.id}/eventos`, {
+                tipo_evento: modalEvento.tipo,
+                justificativa: justificativa
+            });
 
-    try {
-      const res = await api.post('/fiscal/certificado', data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Certificado A1 importado com sucesso!' });
-      setModalCertificado(false);
-      setArquivoCert(null);
-      setSenhaCert('');
-      carregarStatusCertificado();
-    } catch (err) {
-      const msgErro = err.response?.data?.error?.message || 'Erro ao importar e descriptografar o certificado A1.';
-      setFeedback({ tipo: 'erro', msg: msgErro });
-    } finally {
-      setSalvandoCert(false);
-    }
-  };
+            alert(`Solicitação de ${modalEvento.tipo} enviada para a SEFAZ!`);
+            setModalEvento({ aberto: false, tipo: '', documento: null });
+            carregarDocumentos(); // Atualiza a tela para ver o status PENDENTE
+        } catch (error) {
+            alert(error.response?.data?.error?.message || 'Erro ao enviar evento.');
+        } finally {
+            setEnviandoEvento(false);
+        }
+    };
 
-  const rawData = fiscalResponse?.data;
-  const documentos = Array.isArray(rawData) ? rawData : (rawData?.data || []);
+    const BadgeStatus = ({ status }) => {
+        const cores = {
+            'AUTORIZADO': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+            'PROCESSANDO': 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+            'CANCELAMENTO_PENDENTE': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+            'CCE_PENDENTE': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+            'CANCELADO': 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+            'FALHA_COMUNICACAO': 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+        };
+        return (
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${cores[status] || 'bg-slate-800 text-slate-400'}`}>
+                {status.replace('_', ' ')}
+            </span>
+        );
+    };
 
-  const docsFiltrados = documentos.filter((doc) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    const dest = doc.destinatario?.nome_razao_social?.toLowerCase() || '';
-    const num = String(doc.numero_documento || '');
-    const chave = String(doc.chave_acesso || '').toLowerCase();
-    return dest.includes(s) || num.includes(s) || chave.includes(s);
-  });
+    if (loading) return <div className="p-8 text-slate-400 font-medium text-center">Carregando painel fiscal...</div>;
 
-  return (
-    <div className="space-y-5 max-w-7xl mx-auto p-3 sm:p-5 lg:p-6 text-slate-200">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
-            <FileText className="w-6 h-6 sm:w-7 sm:h-7 text-indigo-400 shrink-0" />
-            <span>Motor Fiscal & Documentos Eletrônicos</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Emissão, autorização e guarda de NF-e, NFC-e, NFS-e e matriz tributária IBS/CBS
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setModalCertificado(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 text-xs font-bold cursor-pointer transition shadow-sm"
-          >
-            <ShieldCheck className="h-4 w-4" /> 
-            {certificadoAtivo ? 'Atualizar Certificado A1' : 'Configurar Certificado A1'}
-          </button>
-          <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-mono font-bold text-emerald-400">SEFAZ Online</span>
-          </div>
-        </div>
-      </div>
-
-      {feedback && (
-        <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
-          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
-        }`}>
-          <div className="flex items-center gap-2">
-            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
-            <span>{feedback.msg}</span>
-          </div>
-          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
-        </div>
-      )}
-
-      {/* Card Status do Certificado Digital A1 */}
-      <div className={`p-4 sm:p-5 rounded-2xl border transition ${
-        certificadoAtivo 
-          ? (certificadoAtivo.is_expirado ? 'bg-rose-950/30 border-rose-800' : 'bg-slate-900/90 border-slate-800')
-          : 'bg-amber-950/20 border-amber-800/60'
-      }`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${
-              certificadoAtivo 
-                ? (certificadoAtivo.is_expirado ? 'bg-rose-900/50 text-rose-300' : 'bg-emerald-950 text-emerald-400 border border-emerald-800') 
-                : 'bg-amber-900/50 text-amber-300'
-            }`}>
-              <ShieldCheck className="h-6 w-6" />
+    return (
+        <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
+                        <ShieldAlert className="h-6 w-6 text-indigo-500" />
+                        Motor Fiscal SEFAZ
+                    </h1>
+                    <p className="text-sm text-slate-400 mt-1">Gerenciamento de NF-e, NFC-e e NFS-e</p>
+                </div>
+                <button onClick={carregarDocumentos} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer">
+                    <RefreshCw className="h-5 w-5" />
+                </button>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white text-xs sm:text-sm">
-                  {certificadoAtivo ? certificadoAtivo.razao_social : 'Nenhum Certificado A1 Ativo no Tenant'}
-                </span>
-                {certificadoAtivo && (
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    certificadoAtivo.ambiente_emissao === 'PRODUCAO' 
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' 
-                      : 'bg-amber-950 text-amber-300 border border-amber-800'
-                  }`}>
-                    {certificadoAtivo.ambiente_emissao}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {certificadoAtivo ? (
-                  <>CNPJ: <span className="font-mono text-slate-300">{certificadoAtivo.cnpj_certificado || 'Vinculado ao Tenant'}</span> | Válido até: <span className="font-mono text-emerald-400 font-semibold">{new Date(certificadoAtivo.valido_ate).toLocaleDateString('pt-BR')}</span></>
-                ) : (
-                  'Faça o upload do arquivo .pfx/.p12 para habilitar a assinatura digital e emissão oficial de NF-e/NFC-e.'
-                )}
-              </p>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm text-slate-300">
+                        <thead className="bg-slate-950/50 border-b border-slate-800 text-slate-400 font-medium">
+                            <tr>
+                                <th className="p-4">Documento</th>
+                                <th className="p-4">Cliente / Destinatário</th>
+                                <th className="p-4">Emissão</th>
+                                <th className="p-4">Valor (R$)</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Ações SEFAZ</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/50">
+                            {documentos.map(doc => (
+                                <tr key={doc.id} className="hover:bg-slate-800/20 transition">
+                                    <td className="p-4 font-mono font-medium text-slate-200">
+                                        Mod {doc.modelo_documento} - {doc.numero_documento || 'S/N'}
+                                    </td>
+                                    <td className="p-4 truncate max-w-[200px]">{doc.destinatario?.nome_razao_social}</td>
+                                    <td className="p-4">{new Date(doc.data_emissao).toLocaleDateString('pt-BR')}</td>
+                                    <td className="p-4 font-medium text-slate-200">
+                                        {Number(doc.valor_total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </td>
+                                    <td className="p-4"><BadgeStatus status={doc.status} /></td>
+                                    <td className="p-4 text-right space-x-2">
+                                        {doc.status === 'AUTORIZADO' && (
+                                            <>
+                                                <button onClick={() => abrirModal(doc, 'CCE')} title="Carta de Correção" className="p-2 bg-slate-800 hover:bg-indigo-900/50 text-indigo-400 rounded-lg transition cursor-pointer inline-flex">
+                                                    <Edit3 className="h-4 w-4" />
+                                                </button>
+                                                <button onClick={() => abrirModal(doc, 'CANCELAMENTO')} title="Cancelar NF-e" className="p-2 bg-slate-800 hover:bg-rose-900/50 text-rose-400 rounded-lg transition cursor-pointer inline-flex">
+                                                    <XCircle className="h-4 w-4" />
+                                                </button>
+                                            </>
+                                        )}
+                                        {doc.status === 'FALHA_COMUNICACAO' && (
+                                            <span className="text-xs text-rose-400 font-medium">Rejeitada</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                            {documentos.length === 0 && (
+                                <tr><td colSpan="6" className="p-8 text-center text-slate-500">Nenhum documento emitido neste tenant.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => setModalCertificado(true)}
-            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs self-start sm:self-center cursor-pointer shadow-md transition"
-          >
-            {certificadoAtivo ? 'Substituir / Gerenciar' : 'Importar A1 Agora'}
-          </button>
-        </div>
-      </div>
+            {/* Modal de Eventos Fiscais */}
+            {modalEvento.aberto && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                                {modalEvento.tipo === 'CANCELAMENTO' ? <XCircle className="text-rose-500" /> : <Edit3 className="text-indigo-500" />}
+                                {modalEvento.tipo === 'CANCELAMENTO' ? 'Cancelar Documento' : 'Carta de Correção (CC-e)'}
+                            </h2>
+                            <button onClick={() => setModalEvento({aberto: false})} className="text-slate-500 hover:text-white cursor-pointer">&times;</button>
+                        </div>
 
-      {/* Cards de Métricas Fiscais */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total NF-e (Modelo 55)</p>
-            <h3 className="text-xl font-mono font-bold text-white mt-1">
-              {documentos.filter(d => d.modelo_documento === '55').length} <span className="text-xs text-slate-500">emitidas</span>
-            </h3>
-          </div>
-          <div className="p-2 bg-indigo-950/60 border border-indigo-800/60 rounded-xl text-indigo-400"><FileCode className="h-5 w-5" /></div>
-        </div>
+                        <p className="text-sm text-slate-400 mb-4">
+                            NF-e: <strong className="text-slate-200">{modalEvento.documento.numero_documento}</strong> <br/>
+                            Atenção: Esta operação envia um evento irreversível para a SEFAZ.
+                        </p>
 
-        <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">NFC-e Balcão (Modelo 65)</p>
-            <h3 className="text-xl font-mono font-bold text-white mt-1">
-              {documentos.filter(d => d.modelo_documento === '65').length} <span className="text-xs text-slate-500">emitidas</span>
-            </h3>
-          </div>
-          <div className="p-2 bg-purple-950/60 border border-purple-800/60 rounded-xl text-purple-400"><FileText className="h-5 w-5" /></div>
-        </div>
-
-        <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Reforma Tributária (IBS/CBS)</p>
-            <h3 className="text-xl font-mono font-bold text-emerald-400 mt-1">
-              Conforme
-            </h3>
-          </div>
-          <div className="p-2 bg-emerald-950/60 border border-emerald-800/60 rounded-xl text-emerald-400"><CheckCircle2 className="h-5 w-5" /></div>
-        </div>
-      </div>
-
-      {/* Barra de Filtros e Busca */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setModeloFiltro('')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
-              modeloFiltro === '' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
-            }`}
-          >
-            Todos os Modelos
-          </button>
-          <button
-            type="button"
-            onClick={() => setModeloFiltro('55')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
-              modeloFiltro === '55' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
-            }`}
-          >
-            NF-e (55)
-          </button>
-          <button
-            type="button"
-            onClick={() => setModeloFiltro('65')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
-              modeloFiltro === '65' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
-            }`}
-          >
-            NFC-e (65)
-          </button>
-        </div>
-
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por Destinatário, Número ou Chave..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-      </div>
-
-      {/* Tabela de Documentos Fiscais */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
-        <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[700px]">
-          <thead className="bg-slate-950/80 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-            <tr>
-              <th className="p-3.5 sm:p-4">Documento</th>
-              <th className="p-3.5 sm:p-4">Destinatário</th>
-              <th className="p-3.5 sm:p-4">Chave de Acesso</th>
-              <th className="p-3.5 sm:p-4 text-right">Valor Total</th>
-              <th className="p-3.5 sm:p-4 text-center">Status SEFAZ</th>
-              <th className="p-3.5 sm:p-4 text-center">Protocolo</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60 text-xs">
-            {isLoading ? (
-              <tr>
-                <td colSpan="6" className="p-8 text-center text-slate-500">Consultando documentos fiscais...</td>
-              </tr>
-            ) : docsFiltrados.length === 0 ? (
-              <tr>
-                <td colSpan="6" className="p-8 text-center text-slate-500">Nenhum documento fiscal encontrado para os filtros selecionados.</td>
-              </tr>
-            ) : (
-              docsFiltrados.map((doc) => {
-                const isAutorizado = doc.status === 'AUTORIZADO';
-                return (
-                  <tr key={doc.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="p-3.5 sm:p-4">
-                      <span className="font-mono text-xs font-bold text-white block">
-                        Mod. {doc.modelo_documento} #{doc.numero_documento}
-                      </span>
-                      <span className="text-[10px] text-slate-500">Série {doc.serie || '1'}</span>
-                    </td>
-                    <td className="p-3.5 sm:p-4 font-medium text-slate-200">
-                      {doc.destinatario?.nome_razao_social || 'Consumidor Final'}
-                    </td>
-                    <td className="p-3.5 sm:p-4 font-mono text-[11px] text-slate-400 truncate max-w-xs">
-                      {doc.chave_acesso || '—'}
-                    </td>
-                    <td className="p-3.5 sm:p-4 text-right font-mono font-bold text-white">
-                      R$ {parseFloat(doc.valor_total_documento || 0).toFixed(2)}
-                    </td>
-                    <td className="p-3.5 sm:p-4 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        isAutorizado 
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' 
-                          : 'bg-rose-950 text-rose-300 border border-rose-800'
-                      }`}>
-                        {doc.status}
-                      </span>
-                    </td>
-                    <td className="p-3.5 sm:p-4 text-center font-mono text-[11px] text-slate-400">
-                      {doc.protocolo_autorizacao || '—'}
-                    </td>
-                  </tr>
-                );
-              })
+                        <form onSubmit={enviarEvento} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1.5">Justificativa (Mín. 15 caracteres)</label>
+                                <textarea required minLength="15" rows="4"
+                                    className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none resize-none"
+                                    placeholder={modalEvento.tipo === 'CANCELAMENTO' ? 'Motivo do cancelamento...' : 'O que está sendo corrigido...'}
+                                    value={justificativa}
+                                    onChange={(e) => setJustificativa(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setModalEvento({aberto: false})} className="flex-1 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl hover:bg-slate-700 cursor-pointer">
+                                    Voltar
+                                </button>
+                                <button type="submit" disabled={enviandoEvento || justificativa.length < 15} className={`flex-1 py-2.5 font-bold rounded-xl text-white shadow-lg transition cursor-pointer disabled:opacity-50 ${modalEvento.tipo === 'CANCELAMENTO' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}>
+                                    {enviandoEvento ? 'Processando...' : 'Assinar e Enviar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Modal Upload Certificado Digital A1 */}
-      {modalCertificado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-emerald-400" /> Configurar Certificado Digital A1 (.pfx/.p12)
-              </h3>
-              <button type="button" onClick={() => setModalCertificado(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
-            </div>
-
-            <form onSubmit={handleUploadCertificadoA1} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-400 mb-1">Arquivo do Certificado Digital (.pfx / .p12) *</label>
-                <input
-                  type="file"
-                  accept=".pfx,.p12"
-                  required
-                  onChange={(e) => setArquivoCert(e.target.files[0])}
-                  className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white cursor-pointer"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Senha do Certificado *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Digite a senha do .pfx"
-                    value={senhaCert}
-                    onChange={(e) => setSenhaCert(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-400 mb-1">Ambiente de Emissão *</label>
-                  <select
-                    value={ambienteCert}
-                    onChange={(e) => setAmbienteCert(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
-                  >
-                    <option value="HOMOLOGACAO">Homologação (Testes)</option>
-                    <option value="PRODUCAO">Produção Oficial</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded-xl space-y-1 text-[11px] text-slate-300">
-                <span className="font-bold text-indigo-400 block flex items-center gap-1">
-                  <Lock className="h-3 w-3" /> Isolamento Criptográfico por Tenant:
-                </span>
-                <p>O arquivo e sua senha serão armazenados com criptografia simétrica AES-256 atrelada à chave exclusiva do seu tenant.</p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setModalCertificado(false)}
-                  className="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={salvandoCert}
-                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold cursor-pointer transition shadow-md"
-                >
-                  {salvandoCert ? 'Validando OpenSSL...' : 'Importar & Ativar A1'}
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
-      )}
-    </div>
-  );
+    );
 }
