@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\RecrutamentoController;
 use App\Http\Controllers\Api\DesempenhoClimaController;
 use App\Http\Controllers\Api\FrotaVeiculoController;
 use App\Http\Controllers\Api\FrotaOperacaoController;
+use App\Http\Controllers\Api\Projetos\KanbanController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -353,4 +354,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::delete('/veiculos/{id}', [FrotaVeiculoController::class, 'destroy']);
         Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
+    Route::prefix('projetos')->group(function () {
+    Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
+    Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
+});
 });
