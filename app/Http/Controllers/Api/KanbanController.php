@@ -1,5 +1,5 @@
 <php
-namespace App\Http\Controllers\Api\Projetos;
+namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Projetos\Projeto;
