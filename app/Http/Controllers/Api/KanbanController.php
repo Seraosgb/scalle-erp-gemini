@@ -9,6 +9,7 @@ use App\Models\Etapa;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
+use App\Models\PrjTarefaChecklist;
 
 class KanbanController extends Controller
 {
@@ -92,7 +93,7 @@ class KanbanController extends Controller
             'descricao' => 'required|string|max:255'
         ]);
 
-        $item = PrjTarefaChecklist::create([
+        $item = \App\Models\PrjTarefaChecklist::create([
             'id' => (string) \Illuminate\Support\Str::uuid(),
             'tarefa_id' => $tarefaId,
             'descricao' => $validated['descricao'],
@@ -104,7 +105,7 @@ class KanbanController extends Controller
 
     public function toggleChecklist(Request $request, string $checklistId): JsonResponse
     {
-        $item = PrjTarefaChecklist::findOrFail($checklistId);
+        $item = \App\Models\PrjTarefaChecklist::findOrFail($checklistId);
         $item->concluido = !$item->concluido;
         $item->save();
 
