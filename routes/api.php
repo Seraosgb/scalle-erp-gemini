@@ -356,16 +356,13 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::delete('/veiculos/{id}', [FrotaVeiculoController::class, 'destroy']);
         Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
-    Route::prefix('projetos')->group(function () {
-    Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
-    Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
-});
+
     // Módulo de Projetos (Kanban & Timesheet)
 Route::prefix('projetos')->group(function () {
-    Route::post('/', [ProjetoController::class, 'store']);
+    Route::get('/', [ProjetoController::class, 'index']);
     Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
     Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
-
+    Route::post('/', [ProjetoController::class, 'store']);
     // Timesheet
     Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
     Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);

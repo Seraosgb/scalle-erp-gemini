@@ -97,6 +97,7 @@ export default function AppLayout() {
     { name: 'PDV Balcão', path: '/app/pdv', icon: ShoppingBag },
     { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
+    { name: 'Gestão de Projetos (PMO)', path: '/app/projetos', icon: Kanban, end: false },
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },

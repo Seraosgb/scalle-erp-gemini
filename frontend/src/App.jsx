@@ -47,6 +47,8 @@ import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
 // Portal Colaborador
 import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
 import FrotaPage from './pages/frota/FrotaDashboard';
+import ProjetosList from './pages/Projetos/ProjetosList';
+import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -105,6 +107,10 @@ export default function App() {
             {/* Serviços & CMMS */}
             <Route path="os" element={<OrdensServicoPage />} />
             <Route path="ordens-servico" element={<Navigate to="/app/os" replace />} />
+
+            {/* Projetos & B2B */}
+            <Route path="projetos" element={<ProjetosList />} />
+            <Route path="projetos/:id" element={<ProjetoDashboard />} />
 
             {/* Financeiro, Fiscal & Controladoria */}
             <Route path="financeiro" element={<FinanceiroPage />} />

@@ -12,6 +12,19 @@ use Illuminate\Support\Str;
 
 class ProjetoController extends Controller
 {
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $projetos = Projeto::where('tenant_id', $tenantId)
+            ->withCount('tarefas')
+            ->with('etapas')
+            ->orderByDesc('created_at')
+            ->paginate(15);
+
+        return response()->json($projetos);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
