@@ -378,6 +378,12 @@ Route::prefix('projetos')->group(function () {
     Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
     Route::put('/{projetoId}/orcamento', [\App\Http\Controllers\Api\ProjetoController::class, 'atualizarOrcamento']);
     Route::post('/etapas/{etapaId}/tarefas', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarTarefa']);
+    // Micro-Gestão da Tarefa (Checklists e Blockers)
+        Route::post('/tarefas/{tarefaId}/checklists', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarChecklist']);
+        Route::patch('/tarefas/checklists/{checklistId}/toggle', [\App\Http\Controllers\Api\KanbanController::class, 'toggleChecklist']);
+
+        Route::post('/tarefas/{tarefaId}/dependencias', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarDependencia']);
+        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [\App\Http\Controllers\Api\KanbanController::class, 'removerDependencia']);
 });
 
     // ==========================================

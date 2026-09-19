@@ -22,10 +22,14 @@ class KanbanController extends Controller
         $projeto = Projeto::with(['etapas.tarefas' => function($query) use ($usuarioId) {
             $query->orderBy('prioridade', 'desc')
                   ->orderBy('created_at', 'desc')
-                  // Carrega apenas o apontamento aberto deste usuário, se existir
-                  ->with(['apontamentos' => function($q) use ($usuarioId) {
-                      $q->whereNull('fim')->where('usuario_id', $usuarioId);
-                  }]);
+                  ->with([
+                      'checklists',
+                      'dependencias',
+                      'anexos', // Prepara o terreno para o GED
+                      'apontamentos' => function($q) use ($usuarioId) {
+                          $q->whereNull('fim')->where('usuario_id', $usuarioId);
+                      }
+                  ]);
         }])->findOrFail($projetoId);
 
         return response()->json(['data' => $projeto]);
@@ -75,5 +79,57 @@ class KanbanController extends Controller
         ]);
 
         return response()->json(['data' => $tarefa], 201);
+    }
+    /**
+     * ==========================================
+     * MICRO-GESTÃO DO CARD (Enterprise)
+     * ==========================================
+     */
+
+    public function adicionarChecklist(Request $request, string $tarefaId): JsonResponse
+    {
+        $validated = $request->validate([
+            'descricao' => 'required|string|max:255'
+        ]);
+
+        $item = PrjTarefaChecklist::create([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'tarefa_id' => $tarefaId,
+            'descricao' => $validated['descricao'],
+            'concluido' => false,
+        ]);
+
+        return response()->json(['data' => $item], 201);
+    }
+
+    public function toggleChecklist(Request $request, string $checklistId): JsonResponse
+    {
+        $item = PrjTarefaChecklist::findOrFail($checklistId);
+        $item->concluido = !$item->concluido;
+        $item->save();
+
+        return response()->json(['data' => $item]);
+    }
+
+    public function adicionarDependencia(Request $request, string $tarefaId): JsonResponse
+    {
+        $validated = $request->validate([
+            'depende_de_id' => 'required|uuid|exists:prj_tarefas,id'
+        ]);
+
+        $tarefa = Tarefa::findOrFail($tarefaId);
+
+        // Evita duplicidade usando o syncWithoutDetaching
+        $tarefa->dependencias()->syncWithoutDetaching([$validated['depende_de_id']]);
+
+        return response()->json(['message' => 'Dependência adicionada com sucesso.']);
+    }
+
+    public function removerDependencia(Request $request, string $tarefaId, string $dependeDeId): JsonResponse
+    {
+        $tarefa = Tarefa::findOrFail($tarefaId);
+        $tarefa->dependencias()->detach($dependeDeId);
+
+        return response()->json(['message' => 'Dependência removida com sucesso.']);
     }
 }
