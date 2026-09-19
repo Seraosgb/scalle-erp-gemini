@@ -375,5 +375,6 @@ Route::prefix('projetos')->group(function () {
     Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
 
     Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
+    Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
 });
 });

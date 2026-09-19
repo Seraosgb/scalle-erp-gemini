@@ -78,4 +78,21 @@ class ProjetoGestaoController extends Controller
         $entregaveis = Entregavel::where('tenant_id', $tenantId)->where('projeto_id', $projetoId)->get();
         return response()->json(['data' => $entregaveis]);
     }
+    public function adicionarEntregavel(Request $request, string $projetoId): JsonResponse {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:200',
+            'data_prevista' => 'nullable|date',
+            'valor_faturamento' => 'required|numeric|min:0'
+        ]);
+
+        $entregavel = \App\Models\Entregavel::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $request->user()->tenant_id,
+            'projeto_id' => $projetoId,
+            'titulo' => $validated['titulo'],
+            'data_prevista' => $validated['data_prevista'] ?? null,
+            'valor_faturamento' => $validated['valor_faturamento']
+        ]);
+        return response()->json(['data' => $entregavel], 201);
+    }
 }
