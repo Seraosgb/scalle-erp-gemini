@@ -33,4 +33,20 @@ class Tarefa extends Model
     {
         return $this->hasMany(Apontamento::class, 'tarefa_id');
     }
+    public function checklists()
+    {
+        return $this->hasMany(PrjTarefaChecklist::class, 'tarefa_id');
+    }
+
+    public function dependencias()
+    {
+        // Tarefas que precisam ser terminadas ANTES desta
+        return $this->belongsToMany(Tarefa::class, 'prj_tarefa_dependencias', 'tarefa_id', 'depende_de_id');
+    }
+
+    public function anexos()
+    {
+        // Ligação polimórfica com o GED
+        return $this->morphMany(GedDocumento::class, 'entidade_vinculada');
+    }
 }
