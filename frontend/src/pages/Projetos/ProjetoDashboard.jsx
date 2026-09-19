@@ -170,11 +170,117 @@ export default function ProjetoDashboard() {
 
             {activeTab !== 'board' && (
                 <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center text-slate-500">
-                    <span className="text-4xl mb-4 block">🚧</span>
-                    <h2 className="text-lg font-bold text-slate-300">Aba de {activeTab} em construção</h2>
-                    <p className="mt-2 text-sm">Os CRUDs e as visões de lista para {activeTab} serão renderizados aqui.</p>
+                   {/* Conteúdo Aba Equipe */}
+            {activeTab === 'equipe' && <TabEquipe projetoId={projeto.id} api={api} />}
+
+            {/* Conteúdo Aba Custos */}
+            {activeTab === 'custos' && <TabCustos projetoId={projeto.id} api={api} />}
+
+            {/* Conteúdo Aba Entregáveis */}
+            {activeTab === 'entregaveis' && <TabEntregaveis projetoId={projeto.id} api={api} />}
                 </div>
             )}
         </div>
     );
+    // ==========================================
+// SUB-COMPONENTES DAS ABAS (Cole no final do mesmo arquivo)
+// ==========================================
+
+function TabEquipe({ projetoId, api }) {
+    const [equipe, setEquipe] = React.useState([]);
+
+    React.useEffect(() => {
+        api.get(`/projetos/${projetoId}/equipe`).then(res => setEquipe(res.data.data));
+    }, [projetoId]);
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-white font-bold text-lg">Alocação de Profissionais</h3>
+                <button className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition">+ Adicionar Membro</button>
+            </div>
+            <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400">
+                    <tr><th className="p-3">Membro da Equipe</th><th className="p-3 text-right">Custo Hora (R$)</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                    {equipe.length === 0 ? (
+                        <tr><td colSpan="2" className="p-4 text-center text-slate-500">Nenhum membro alocado.</td></tr>
+                    ) : equipe.map(m => (
+                        <tr key={m.id}>
+                            <td className="p-3 text-white font-medium">{m.nome_usuario || 'Usuário do Sistema'}</td>
+                            <td className="p-3 text-right font-mono text-emerald-400">R$ {Number(m.custo_hora).toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function TabCustos({ projetoId, api }) {
+    const [custos, setCustos] = React.useState([]);
+
+    React.useEffect(() => {
+        api.get(`/projetos/${projetoId}/custos`).then(res => setCustos(res.data.data));
+    }, [projetoId]);
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-white font-bold text-lg">Despesas e Apontamentos</h3>
+                <button className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg transition">+ Lançar Custo</button>
+            </div>
+            <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400">
+                    <tr><th className="p-3">Data</th><th className="p-3">Descrição</th><th className="p-3 text-right">Valor (R$)</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                    {custos.length === 0 ? (
+                        <tr><td colSpan="3" className="p-4 text-center text-slate-500">Sem despesas registradas.</td></tr>
+                    ) : custos.map(c => (
+                        <tr key={c.id}>
+                            <td className="p-3 text-slate-400 font-mono">{new Date(c.data_custo).toLocaleDateString('pt-BR')}</td>
+                            <td className="p-3 text-white">{c.descricao}</td>
+                            <td className="p-3 text-right font-mono text-rose-400 font-bold">R$ {Number(c.valor).toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function TabEntregaveis({ projetoId, api }) {
+    const [entregaveis, setEntregaveis] = React.useState([]);
+
+    React.useEffect(() => {
+        api.get(`/projetos/${projetoId}/entregaveis`).then(res => setEntregaveis(res.data.data));
+    }, [projetoId]);
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-white font-bold text-lg">Marcos de Faturamento (Milestones)</h3>
+                <button className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition">+ Novo Entregável</button>
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+                {entregaveis.length === 0 ? (
+                    <div className="p-4 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">Sem entregáveis mapeados.</div>
+                ) : entregaveis.map(e => (
+                    <div key={e.id} className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex justify-between items-center">
+                        <div>
+                            <h4 className="font-bold text-white text-sm">{e.titulo}</h4>
+                            <p className="text-xs text-slate-500 mt-1">Previsão: {e.data_prevista ? new Date(e.data_prevista).toLocaleDateString('pt-BR') : 'A definir'}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span className="font-mono font-bold text-emerald-400">R$ {Number(e.valor_faturamento).toLocaleString('pt-BR')}</span>
+                            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 border border-slate-700 text-xs font-bold rounded-lg">Gerar Fatura</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
 }

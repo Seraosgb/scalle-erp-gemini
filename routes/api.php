@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\FrotaOperacaoController;
 use App\Http\Controllers\Api\KanbanController;
 use App\Http\Controllers\Api\ProjetoController;
 use App\Http\Controllers\Api\TimesheetController;
+use App\Http\Controllers\Api\ProjetoGestaoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -366,5 +367,13 @@ Route::prefix('projetos')->group(function () {
     // Timesheet
     Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
     Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);
+    // Rotas de Gestão Interna (Abas)
+    Route::get('/{projetoId}/equipe', [ProjetoGestaoController::class, 'listarEquipe']);
+    Route::post('/{projetoId}/equipe', [ProjetoGestaoController::class, 'adicionarEquipe']);
+
+    Route::get('/{projetoId}/custos', [ProjetoGestaoController::class, 'listarCustos']);
+    Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
+
+    Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
 });
 });
