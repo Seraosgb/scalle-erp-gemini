@@ -379,4 +379,11 @@ Route::prefix('projetos')->group(function () {
     Route::put('/{projetoId}/orcamento', [\App\Http\Controllers\Api\ProjetoController::class, 'atualizarOrcamento']);
     Route::post('/etapas/{etapaId}/tarefas', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarTarefa']);
 });
+
+    // ==========================================
+    // MÓDULO GED (Cofre Digital)
+    // ==========================================
+    Route::prefix('ged')->group(function () {
+        Route::post('/upload', [\App\Http\Controllers\Api\GedController::class, 'upload']);
+    });
 });
