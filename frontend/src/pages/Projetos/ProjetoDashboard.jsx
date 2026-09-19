@@ -79,17 +79,18 @@ export default function ProjetoDashboard() {
         setDraggedTarefa(null);
     };
 
-    const toggleTimer = async (tarefa) => {
+    const toggleTimer = async (tarefa, isRunning) => {
         try {
-            await api.post(`/projetos/tarefas/${tarefa.id}/play`);
-            alert('Cronômetro iniciado!');
+            if (isRunning) {
+                await api.put(`/projetos/tarefas/${tarefa.id}/stop`, { descricao: 'Pausa/Fim via Board' });
+                alert('Cronômetro parado e horas apropriadas ao custo do projeto!');
+            } else {
+                await api.post(`/projetos/tarefas/${tarefa.id}/play`);
+                alert('Cronômetro iniciado!');
+            }
             carregarProjeto();
         } catch (error) {
-            if (error.response?.status === 422) {
-                await api.put(`/projetos/tarefas/${tarefa.id}/stop`, { descricao: 'Pausa/Fim via Board' });
-                alert('Cronômetro parado e horas registradas!');
-                carregarProjeto();
-            }
+            alert('Falha ao processar o apontamento de horas.');
         }
     };
 
@@ -171,13 +172,22 @@ export default function ProjetoDashboard() {
                                             <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 border border-slate-700 rounded font-mono">
                                                 Prio: {tarefa.prioridade}
                                             </span>
-                                            <button
-                                                onClick={() => toggleTimer(tarefa)}
-                                                className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-950/40 border border-emerald-800 text-emerald-400 hover:bg-emerald-900 transition"
-                                                title="Play/Stop Apontamento"
-                                            >
-                                                ⏱
-                                            </button>
+                                            {(() => {
+                                                const isRunning = tarefa.apontamentos && tarefa.apontamentos.length > 0;
+                                                return (
+                                                    <button
+                                                        onClick={() => toggleTimer(tarefa, isRunning)}
+                                                        className={`flex items-center justify-center w-8 h-8 rounded-lg border transition shadow-md cursor-pointer ${
+                                                            isRunning
+                                                            ? 'bg-rose-950/60 border-rose-600 text-rose-400 animate-pulse'
+                                                            : 'bg-emerald-950/40 border-emerald-800 text-emerald-400 hover:bg-emerald-900'
+                                                        }`}
+                                                        title={isRunning ? "Parar Cronômetro" : "Iniciar Cronômetro"}
+                                                    >
+                                                        {isRunning ? '⏹' : '▶'}
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 ))}

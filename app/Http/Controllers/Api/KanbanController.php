@@ -15,15 +15,21 @@ class KanbanController extends Controller
     /**
      * Retorna o quadro completo com Etapas e Tarefas aninhadas.
      */
-    public function board(Request $request, string $projetoId): JsonResponse
+   public function board(Request $request, string $projetoId): JsonResponse
     {
-        $projeto = Projeto::with(['etapas.tarefas' => function($query) {
-            $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
+        $usuarioId = $request->user()->id;
+
+        $projeto = Projeto::with(['etapas.tarefas' => function($query) use ($usuarioId) {
+            $query->orderBy('prioridade', 'desc')
+                  ->orderBy('created_at', 'desc')
+                  // Carrega apenas o apontamento aberto deste usuário, se existir
+                  ->with(['apontamentos' => function($q) use ($usuarioId) {
+                      $q->whereNull('fim')->where('usuario_id', $usuarioId);
+                  }]);
         }])->findOrFail($projetoId);
 
         return response()->json(['data' => $projeto]);
     }
-
     /**
      * Move uma tarefa dinamicamente entre as etapas (Drag and Drop).
      */
