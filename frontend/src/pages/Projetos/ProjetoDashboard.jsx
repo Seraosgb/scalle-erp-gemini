@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // <-- Hooks do router
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck } from 'lucide-react';
 
 export default function ProjetoDashboard() {
-    const { id: projetoId } = useParams(); // <-- Pega o ID da URL
+    const { id: projetoId } = useParams();
     const navigate = useNavigate();
 
     const [projeto, setProjeto] = useState(null);
@@ -23,15 +23,18 @@ export default function ProjetoDashboard() {
             setProjeto(response.data.data || response.data);
         } catch (error) {
             console.error("Erro ao buscar o projeto:", error);
-            // navigate('/app/projetos'); // Volta se o projeto não existir
         } finally {
             setLoading(false);
         }
     };
 
-    // ... (Mecânica de Drag and Drop e Timesheet exatamente igual à anterior) ...
-    const handleDragStart = (e, tarefa) => { setDraggedTarefa(tarefa); e.dataTransfer.effectAllowed = "move"; };
+    const handleDragStart = (e, tarefa) => {
+        setDraggedTarefa(tarefa);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
     const handleDragOver = (e) => e.preventDefault();
+
     const handleDrop = async (e, novaEtapaId) => {
         e.preventDefault();
         if (!draggedTarefa || draggedTarefa.etapa_id === novaEtapaId) return;
@@ -77,7 +80,6 @@ export default function ProjetoDashboard() {
 
     return (
         <div className="min-h-screen flex flex-col space-y-4">
-            {/* Header */}
             <header className="bg-slate-900 border border-slate-800 shadow-sm rounded-2xl p-5">
                 <div className="flex items-center gap-4 border-b border-slate-800 pb-4">
                     <button
@@ -95,7 +97,6 @@ export default function ProjetoDashboard() {
                     </div>
                 </div>
 
-                {/* Abas */}
                 <div className="flex gap-2 pt-4">
                     {[
                         { id: 'board', label: 'Kanban', icon: Kanban },
@@ -121,7 +122,6 @@ export default function ProjetoDashboard() {
                 </div>
             </header>
 
-            {/* Conteúdo Aba Kanban */}
             {activeTab === 'board' && (
                 <div className="flex space-x-4 overflow-x-auto h-full pb-4 items-start">
                     {projeto.etapas?.map(etapa => (
@@ -168,22 +168,15 @@ export default function ProjetoDashboard() {
                 </div>
             )}
 
-            {activeTab !== 'board' && (
-                <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center text-slate-500">
-                   {/* Conteúdo Aba Equipe */}
-            {activeTab === 'equipe' && <TabEquipe projetoId={projeto.id} api={api} />}
-
-            {/* Conteúdo Aba Custos */}
-            {activeTab === 'custos' && <TabCustos projetoId={projeto.id} api={api} />}
-
-            {/* Conteúdo Aba Entregáveis */}
-            {activeTab === 'entregaveis' && <TabEntregaveis projetoId={projeto.id} api={api} />}
-                </div>
-            )}
+            {activeTab === 'equipe' && projeto && <TabEquipe projetoId={projetoId} api={api} />}
+            {activeTab === 'custos' && projeto && <TabCustos projetoId={projetoId} api={api} />}
+            {activeTab === 'entregaveis' && projeto && <TabEntregaveis projetoId={projetoId} api={api} />}
         </div>
     );
-    // ==========================================
-// SUB-COMPONENTES DAS ABAS (Cole no final do mesmo arquivo)
+}
+
+// ==========================================
+// SUB-COMPONENTES DAS ABAS
 // ==========================================
 
 function TabEquipe({ projetoId, api }) {
@@ -282,5 +275,4 @@ function TabEntregaveis({ projetoId, api }) {
             </div>
         </div>
     );
-}
 }
