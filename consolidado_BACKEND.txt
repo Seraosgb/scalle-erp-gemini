@@ -12623,6 +12623,6788 @@ class RegraComissao extends Model
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\consolidado_DOCUMENTOS_BASE.txt
+========================================
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\GO-LIVE ROADMAP.md
+========================================
+
+=========================================================
+===========================================================================================================================
+
+📄 **GO-LIVE ROADMAP - SCALLE ERP (V3.3 - FISCAL ASYNC COMPLETED)**
+===========================================================================================================================
+
+**⚠️ IMPORTANT DISCLAIMER:** _This roadmap is intended strictly as a memory refresher for the final Go-Live stages. It DOES NOT represent the current active development sprint or the immediate next steps. It is a macro-view of the finish line._
+
+**Goal:** 100% B2B Commercial Readiness and Self-Service SaaS
+**Architecture:** Multi-Tenant Modular Monolith (Gemini Standard) with RBAC
+
+### 1. CODE X-RAY (WHAT WE ALREADY HAVE 🟢)
+
+The engine is already built and tested in the following areas, respecting the `tenant_id` isolation and UUID shielding:
+
+* **Core & SaaS:** Authentication (Sanctum/TOTP), Subscriptions, Asaas Webhooks, Soft-Lock, and `GlobalScopeTenant` isolation.
+* **HR & Payroll (Ponto):** Employee registration, georeferenced time tracking, PDF payslips, and climate evaluation (eNPS).
+* **Services (CMMS):** Work Order (OS) lifecycle, SLA, technical reports, and digital signature with hash (MP 2.200-2).
+* **WMS & Industry (PCP):** Catalog, multiple warehouses, atomic transfers, stock movement, BOM, and Production Orders (MRP).
+* **Commercial & Financial:** Inbound CRM Funnel, quotes, bank accounts, and invoice settlement.
+* **Fleets:** Gestão de veículos, motoristas, e controle atômico de abastecimentos integrado ao financeiro.
+* **Governance:** All dropdown lists are already running dynamically in the `sis_tabelas_dominio` table.
+* **Fiscal Engine (Async & Base):** Upload de certificado A1 com criptografia simétrica (AES-256) no cofre do tenant. Geração de XML de NF-e e orquestração de transmissão **assíncrona (via Filas/Jobs)** implementadas e testadas. API base para Eventos Fiscais (Cancelamento e CC-e) estruturada e orquestrada. Base de dados preparada para Reforma Tributária (CBS/IBS e Split Payment).
+
+### 2. THE GAP (FINAL STAGES REMINDER 🔴)
+
+Crossing the code with the base document specifications, these are the remaining puzzle pieces to keep on the radar for the future:
+
+1. **Front-End (The Face of the ERP):** Mapeamento do layout Backoffice em React/Vite já iniciado, mas as telas operacionais (Projetos, GED, Dashboard Fiscal) e o PWA Offline-First precisam ser consolidados.
+2. **Missing Core Modules:** Project Management (Kanban) e EDMS (Electronic Document Management System - GED).
+3. **Fiscal Engine (Homologação Real):** O motor assíncrono está pronto, mas falta homologar a autorização de emissão (cStat 100) na SEFAZ utilizando um Certificado A1 e-CNPJ válido, além de plugar os drivers específicos para NFC-e (Balcão) e NFS-e (Prefeituras).
+
+### 3. CHRONOLOGICAL SPRINT TIMELINE (FOR FUTURE REFERENCE)
+
+#### 🚀 Sprint 1: React Front-End and PWA (In Progress)
+
+* **Objective:** Bring the system to life by building the interfaces consuming the ready REST APIs.
+* **Steps:**
+  1. Develop the Administrative Backoffice layout in React/Tailwind.
+  2. Implement RBAC-based screens (each profile only sees what they have permission to).
+  3. Create the modular dashboards: Financial Dashboard, CRM Kanban, WMS, and PCP Grids.
+  4. Configure the Service Worker to transform the technician portal into an **Offline-First PWA** (Work Orders in areas without 4G using `IndexedDB`).
+
+#### 🚀 Sprint 2: Filling the Core Gaps (Projects and EDMS)
+
+* **Objective:** Code the modules described in the specification that do not yet exist in the database.
+* **Steps:**
+  1. **Projects:** Structure task management, team time tracking, and project budgets com visão Kanban.
+  2. **EDMS (GED):** Implement a secure file repository (S3 ou disco local via Storage Facade) isolated by tenant for contracts, reports, and financial attachments.
+  3. _Database Note:_ Use only incremental migrations (`add column` or `create table`) without destructive actions.
+
+#### 🚀 Sprint 3: The Fiscal Engine Trial by Fire (SEFAZ)
+
+* **Objective:** Close the legal billing obligations.
+* **Steps:**
+  1. ~~Refatorar a transmissão da NF-e para o formato **Assíncrono** usando Laravel Queues/Jobs.~~ *(CONCLUÍDO)*
+  2. ~~Preparar a estrutura do banco de dados para Split Payment e coexistência tributária (CBS/IBS).~~ *(CONCLUÍDO)*
+  3. Homologar a autorização de emissão (cStat 100) utilizando um Certificado A1 e-CNPJ (ICP-Brasil) válido na Hostoo.
+  4. Homologar os fluxos reais de rejeição, cancelamento, inutilização e CC-e com a SEFAZ.
+
+#### 🚀 Sprint 4: Multi-Pipeline Refinement and SaaS Onboarding
+
+* **Objective:** Get the system ready for _Self-Service_ sales and closing new clients.
+* **Steps:**
+  1. Ensure that the taxonomies of Multiple Funnels (CRM) and stages are 100% dynamic and parameterizable by tenant.
+  2. Create automated _Onboarding_ routines (importing client and product spreadsheets via CSV/Excel).
+  3. E2E review of security ties to prevent any leakage of sequential IDs in responses (total DTO shielding).
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\Instructions.md
+========================================
+
+Always include these procedures to synchronize the assets on both routes (`/` and `/app/`) and update the commit according to the context:
+
+In the VS Code PowerShell terminal:
+
+
+
+PowerShell
+    .\deploy.ps1 "feat: update the commit text here"
+
+
+
+Provide the response in Brazilian Portuguese
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\MASTER FUNCTIONAL AND TECHNICAL SPECIFICATION � SCALLE ERP.md
+========================================
+
+# MASTER FUNCTIONAL AND TECHNICAL SPECIFICATION — SCALLE ERP
+
+## From requirement to implementation, homologation, and commercial operation
+
+**Version:** 1.0  
+**Base:** Master Project Document — Scalle ERP  
+**Initial State:** 0%  
+**Objective:** Enable a product, UX, architecture, backend, frontend, QA, DevOps, and deployment team to build Scalle ERP without relying on implicit interpretations.
+
+---
+
+# 1. HOW THIS DOCUMENT SHOULD BE USED
+
+This document transforms the Master Document into a construction specification.
+
+The chosen order prioritizes dependencies:
+
+1. Governance and architecture;
+2. Core and multi-tenant;
+3. Identity, users, and permissions;
+4. Master registries;
+5. Configuration and workflow engine;
+6. Commercial/CRM;
+7. Purchasing;
+8. Inventory/WMS;
+9. Financial;
+10. Fiscal;
+11. Services/Work Orders (OS);
+12. Industrial/PCP/MRP;
+13. Fleets;
+14. Assets;
+15. Projects;
+16. HR/Payroll (DP);
+17. Document Management (GED);
+18. Portal;
+19. BI;
+20. APIs/integrations;
+21. SaaS/Billing;
+22. Security/LGPD;
+23. Infrastructure/DevOps;
+24. QA;
+25. Deployment/support;
+26. PWA/Offline/Real-time/AI.
+
+**Rule:** No implementation shall be considered final without requirements, rules, permissions, integration, testing, and acceptance criteria.
+
+---
+
+# 2. MANDATORY SPECIFICATION STANDARD
+
+Each module must be described by:
+
+- Objective;
+- Scope;
+- Actors;
+- Permissions;
+- Entities;
+- Fields;
+- Screens;
+- Actions;
+- Flows;
+- Business rules;
+- States;
+- Validations;
+- Integrations;
+- Events;
+- APIs;
+- Reports;
+- Audit;
+- Security;
+- Tests;
+- Acceptance criteria;
+- Dependencies;
+- Completion criteria.
+- Guideline that all taxonomy, flow nomenclature, dropdown lists, and process stages must be dynamic and parameterizable per tenant, avoiding hardcoded static terms in the codebase.
+
+---
+
+# 3. FOUNDATION — CORE AND MULTI-TENANT
+
+## 3.1 Objective
+
+Create the foundation upon which all modules will operate.
+
+## 3.2 Minimum Entities
+
+- EnterpriseGroup (GrupoEmpresarial)
+- Tenant
+- Company (Empresa)
+- Branch (Filial)
+- Establishment (Estabelecimento)
+- User (Usuario)
+- Profile (Perfil)
+- Permission (Permissao)
+- Session (Sessao)
+- FeatureFlag
+- Configuration (Configuracao)
+- Audit (Auditoria)
+- File (Arquivo)
+- Notification (Notificacao)
+- Job
+- Webhook
+- Integration (Integracao)
+
+## 3.3 Requirements
+
+### CORE-001 — Tenant
+
+All operational data must belong to a tenant when the domain requires isolation.
+
+### CORE-002 — Isolation
+
+Every query must respect the authenticated tenant.
+
+### CORE-003 — Cross-Isolation
+
+A user from one tenant must not query, alter, delete, or infer data from another tenant.
+
+### CORE-004 — Enterprise Group
+
+A group may contain multiple companies/tenants according to the defined model.
+
+### CORE-005 — Branches
+
+A company may have multiple branches/establishments.
+
+### CORE-006 — Feature Flags
+
+Features may be activated/deactivated per tenant and plan.
+
+### CORE-007 — Audit
+
+Critical operations must record user, tenant, date/time, operation, entity, and context.
+
+### CORE-008 — Idempotency
+
+Financial, fiscal, and critical integration operations must have an idempotent mechanism when applicable.
+
+## 3.4 Acceptance Criteria
+
+Do not consider the Core complete until automated tests prove isolation, authorization, auditing, and correct behavior across multiple tenants.
+
+---
+
+# 4. IDENTITY, USERS, AND PERMISSIONS
+
+## 4.1 Objective
+
+Control who can access the system and what each person can do.
+
+## 4.2 Screens
+
+- Login;
+- password recovery;
+- first access;
+- password change;
+- MFA;
+- user profile;
+- users;
+- profiles;
+- permissions;
+- sessions;
+- devices;
+- audit.
+
+## 4.3 Permissions
+
+Authorization must allow control by:
+
+- module;
+- resource;
+- action;
+- tenant;
+- company;
+- branch;
+- operational context when applicable.
+
+Minimum actions:
+
+- view;
+- create;
+- edit;
+- delete;
+- approve;
+- cancel;
+- export;
+- print;
+- administer.
+
+## 4.4 Security
+
+- strong password;
+- session expiration/revocation;
+- MFA/2FA;
+- TOTP;
+- attempt throttling;
+- secure recovery;
+- audit.
+
+---
+
+# 5. MASTER REGISTRIES
+
+## 5.1 Persons (Pessoas)
+
+### Screen
+
+List + search + filters + registration + details + history.
+
+### Base Fields
+
+- type;
+- name/legal name;
+- document (CPF/CNPJ);
+- contacts;
+- address;
+- fiscal data;
+- status;
+- observations;
+- relationships.
+
+### Rules
+
+- documents must be validated when applicable;
+- duplicates must be controlled;
+- history must preserve relevant changes.
+
+## 5.2 Products
+
+### Base Fields
+
+- code;
+- name;
+- description;
+- type;
+- unit;
+- category;
+- group;
+- brand;
+- model;
+- NCM/taxation when applicable;
+- cost;
+- price;
+- minimum stock;
+- maximum stock;
+- lot;
+- serial number;
+- expiration date;
+- active/inactive.
+
+## 5.3 Services
+
+- code;
+- name;
+- description;
+- unit;
+- price;
+- cost;
+- taxation;
+- standard SLA;
+- category;
+- active/inactive.
+
+## 5.4 Acceptance Criteria
+
+Master registries must function as the single source of truth for dependent modules.
+
+---
+
+# 6. CONFIGURATIONS AND RULE ENGINE
+
+A central layer must exist for:
+
+- tenant parameters;
+- company parameters;
+- branch parameters;
+- numbering series;
+- numberings;
+- payment conditions;
+- discount rules;
+- approval thresholds (alçadas);
+- limits;
+- feature flags;
+- templates;
+- notifications.
+
+## Approval Engine (Motor de Alçadas)
+
+Must allow:
+
+- condition;
+- limit;
+- approver;
+- sequence;
+- approval/rejection;
+- justification;
+- audit.
+
+---
+
+# 7. CRM AND COMMERCIAL
+
+## 7.1 Entities
+
+- Lead;
+- Opportunity;
+- Customer;
+- Contact;
+- Activity;
+- Proposal;
+- Quote (Orçamento);
+- Sales Order (Pedido);
+- Contract;
+- PriceTable;
+- Commission.
+
+## 7.2 Screens
+
+- commercial dashboard;
+- leads;
+- funnel;
+- opportunities;
+- customers;
+- proposals;
+- quotes;
+- orders;
+- contracts;
+- price tables;
+- commissions.
+
+## 7.3 Main Flow
+
+Lead → Qualification → Opportunity → Proposal/Quote → Approval → Order → Sale → Financial/Fiscal.
+
+## 7.4 Rules
+
+- discounts above limit require approval;
+- sales must respect availability or reservation rules;
+- approved orders may generate financial records;
+- fiscal documents must be issued according to fiscal configuration;
+- conversions must maintain history.
+
+## 7.5 Acceptance Criteria
+
+An authorized user must be able to execute the complete cycle from opportunity to order, with proper integration to subsequent modules.
+
+---
+
+# 8. PURCHASING AND SUPPLIES
+
+## Entities
+
+- PurchaseRequisition;
+- Quotation;
+- Supplier;
+- PurchaseOrder;
+- Receiving;
+- Entry.
+
+## Flow
+
+Requisition → Quotation → Comparison → Approval → Order → Receiving → Inventory/Fiscal/Financial.
+
+## Rules
+
+- orders above threshold require approval;
+- receiving must reflect effective quantities;
+- entry must generate necessary links;
+- discrepancies must be recorded.
+
+---
+
+# 9. INVENTORY AND WMS
+
+## Entities
+
+- Product;
+- Warehouse (Deposito);
+- Location (Localizacao);
+- StockBalance;
+- Lot;
+- Serial;
+- Movement;
+- Transfer;
+- InventoryCount;
+- Reservation.
+
+## Operations
+
+- entry;
+- exit;
+- adjustment;
+- transfer;
+- inventory;
+- reservation;
+- write-off;
+- reversal.
+
+## Rules
+
+- movements must be auditable;
+- balances must be consistent;
+- lot/serial/validity must be respected when configured;
+- in-transit transfers must have states;
+- concurrent operations must not corrupt balances.
+
+## Acceptance Criteria
+
+Balance and history must remain consistent after normal operations, reversals, transfers, and controlled concurrency.
+
+---
+
+# 10. FINANCIAL
+
+## 10.1 Entities
+
+- FinancialAccount;
+- AccountsPayable;
+- AccountsReceivable;
+- Installment (Parcela);
+- Settlement (Baixa);
+- Reversal (Estorno);
+- Cash (Caixa);
+- Bank;
+- Transfer;
+- Reconciliation;
+- CostCenter;
+- ChartOfAccounts;
+- Billing/Collection.
+
+## 10.2 Screens
+
+- dashboard;
+- accounts payable;
+- accounts receivable;
+- cash flow;
+- banks;
+- reconciliation;
+- collection;
+- cash flow projection;
+- P&L (DRE);
+- cost centers;
+- chart of accounts;
+- closing.
+
+## 10.3 Flows
+
+### Payable
+
+Entry → Approval → Due Date → Payment → Settlement → Reconciliation.
+
+### Receivable
+
+Sale/Entry → Installment → Collection → Receipt → Settlement → Reconciliation.
+
+## 10.4 Rules
+
+- settlement must have an origin;
+- reversal must preserve history;
+- interest/fine/discount must be parameterizable;
+- entries must link to their origin;
+- closing must restrict modifications per policy.
+
+---
+
+# 11. PIX AND COLLECTIONS
+
+## Flow
+
+Collection → Payload/QR → Gateway → Webhook → Confirmation → Settlement → Reconciliation.
+
+## Requirements
+
+- idempotency;
+- webhook validation;
+- transaction logging;
+- duplicity handling;
+- failures and reprocessing;
+- audit.
+
+---
+
+# 12. FISCAL
+
+## 12.1 Architecture
+
+Decoupled fiscal driver.
+
+## 12.2 Entities
+
+- FiscalDocument;
+- FiscalItem;
+- FiscalEvent;
+- Certificate;
+- FiscalRule;
+- Contingency;
+- XML.
+
+## 12.3 Flows
+
+Issuance → Validation → Signing → Submission → Return → Storage → Integrations.
+
+## 12.4 Treatment
+
+Must include:
+
+- authorization;
+- rejection;
+- cancellation;
+- correction letter (CC-e);
+- nullification (inutilização);
+- contingency;
+- events;
+- query;
+- storage.
+
+## Acceptance Criteria
+
+Each enabled fiscal type must be validated in an appropriate environment and handle major returns and failures.
+
+---
+
+# 13. SERVICES / WORK ORDERS / CMMS
+
+## Entities
+
+- WorkOrder (OrdemServico);
+- Customer;
+- Technician;
+- Team;
+- Schedule;
+- SLA;
+- Asset;
+- WorkOrderMaterial;
+- Evidence;
+- TechnicalReport (Laudo);
+- Signature;
+- MaintenanceContract.
+
+## Flow
+
+Opening → Triage → Scheduling → Execution → Evidences → Materials → Report → Signature/Approval → Closure → Financial.
+
+## Rules
+
+- SLA must be calculated per configured calendar;
+- execution must record the responsible party;
+- materials must move inventory;
+- closure must respect mandatory requirements;
+- evidences must be traceable.
+
+---
+
+# 14. PCP / INDUSTRIAL / MRP
+
+## Entities
+
+- Product;
+- BOM;
+- BOMVersion;
+- ProductionOrder;
+- Operation;
+- Machine;
+- Operator;
+- Tracking/TimeSheet (Apontamento);
+- Consumption;
+- Scrap/Loss;
+- Cost.
+
+## Flow
+
+Demand → Planning → Production Order → Reservation/Picking → Production → Tracking → Consumption → Finished Product → Costs.
+
+## Rules
+
+- BOM version must be identifiable;
+- consumption must have traceability;
+- losses/scraps must be recorded;
+- Production Orders must have states;
+- costs must be calculable per adopted method.
+
+---
+
+# 15. FLEETS AND TRANSPORTS
+
+Must include:
+
+- vehicles;
+- drivers;
+- documents;
+- refuelings;
+- maintenance;
+- tires;
+- trips;
+- costs;
+- alerts;
+- CT-e/MDF-e when applicable.
+
+Criterion: Utilization and cost history must be auditable per vehicle.
+
+---
+
+# 16. ASSETS AND PATRIMONY
+
+Must include:
+
+- registry;
+- asset tagging;
+- location;
+- responsible person;
+- depreciation;
+- transfer;
+- write-off;
+- digital custody;
+- QR Code;
+- maintenance;
+- history.
+
+---
+
+# 17. HR AND PERSONNEL DEPARTMENT (DP)
+
+## Strategic HR
+
+- vacancies;
+- candidates;
+- selection;
+- evaluations;
+- cycles;
+- IDP (PDI);
+- trainings;
+- competencies;
+- climate;
+- eNPS;
+- Nine-Box.
+
+## Personnel Department (DP)
+
+- employee;
+- functional file;
+- work schedule;
+- shift;
+- time clock (ponto);
+- time bank;
+- vacation;
+- 13th salary;
+- payslip (holerite);
+- termination;
+- integrations.
+
+## Rule
+
+Personal data must have restricted access by role and audit trail.
+
+---
+
+# 18. PROJECTS
+
+Entities:
+
+- Project;
+- Contract;
+- Task;
+- Team;
+- TimeTracking;
+- Cost;
+- Budget;
+- Deliverable.
+
+Flow:
+Planning → Execution → Time tracking → Costs → Deliverables → Billing/Closure.
+
+---
+
+# 19. DOCUMENT MANAGEMENT (GED)
+
+Must include:
+
+- document;
+- version;
+- category;
+- permissions;
+- entity binding;
+- storage;
+- retention;
+- audit;
+- search.
+
+---
+
+# 20. CUSTOMER PORTAL
+
+The customer must be able to, per permissions/contract:
+
+- access;
+- query work orders;
+- query quotes;
+- approve;
+- track;
+- view documents;
+- sign;
+- query payments;
+- use PIX;
+- receive notifications.
+
+---
+
+# 21. BI AND REPORTS
+
+Each module must define its indicators and reports.
+
+Common requirements:
+
+- filters;
+- period;
+- company;
+- branch;
+- user;
+- export;
+- permissions;
+- audit;
+- tenant isolation.
+
+---
+
+# 22. API AND INTEGRATIONS
+
+Every external integration must have:
+
+- contract;
+- authentication;
+- timeout;
+- retry;
+- idempotency when applicable;
+- logs;
+- error handling;
+- versioning;
+- documentation;
+- monitoring.
+
+---
+
+# 23. EVENTS AND MESSAGING
+
+Events must be defined for relevant processes, for example:
+
+- sale created;
+- order approved;
+- inventory moved;
+- payment confirmed;
+- fiscal document authorized;
+- work order closed;
+- user created;
+- tenant created.
+
+Asynchronous processes must be retryable and observable.
+
+---
+
+# 24. SAAS AND BILLING
+
+## Entities
+
+- Plan;
+- Subscription;
+- Tenant;
+- Resource;
+- Limit;
+- Consumption;
+- Billing;
+- Invoice;
+- BillingEvent.
+
+## Flow
+
+Registration → Trial/Plan → Subscription → Billing → Confirmation → Activation → Consumption → Renewal/Upgrade/Downgrade/Cancellation.
+
+## Rules
+
+- downgrade must not destroy data;
+- excess resources must have a defined policy;
+- delinquency must have states;
+- plan changes must be audited.
+
+---
+
+# 25. SECURITY AND LGPD
+
+Cross-cutting requirements:
+
+- least privilege;
+- tenant isolation;
+- MFA;
+- audit;
+- session protection;
+- API protection;
+- rate limiting;
+- secrets management;
+- retention;
+- anonymization when applicable;
+- traceability;
+- incident response.
+
+---
+
+# 26. INFRASTRUCTURE AND DEVOPS
+
+Must include:
+
+- separate environments;
+- CI/CD;
+- controlled deploy;
+- migrations;
+- rollback;
+- secrets;
+- workers;
+- queues;
+- cache;
+- storage;
+- database;
+- monitoring;
+- logs;
+- alerts;
+- health checks;
+- SSL/TLS.
+
+---
+
+# 27. BACKUP AND DISASTER RECOVERY
+
+Must define:
+
+- frequency;
+- retention;
+- destination;
+- encryption;
+- restoration;
+- RPO;
+- RTO;
+- periodic tests;
+- contingency plan.
+
+---
+
+# 28. QA AND ACCEPTANCE CRITERIA
+
+Every module must have:
+
+- unit tests;
+- integration tests;
+- API tests;
+- permission tests;
+- multi-tenant tests;
+- regression tests;
+- critical flow tests;
+- error tests;
+- homologation.
+
+## Definition of Done
+
+A feature is only considered done when:
+
+1. requirement approved;
+2. implementation completed;
+3. validations implemented;
+4. permissions implemented;
+5. audit defined when necessary;
+6. tests approved;
+7. integration validated;
+8. documentation updated;
+9. homologation approved;
+10. controlled deploy executed.
+
+---
+
+# 29. ONBOARDING, DEPLOYMENT, AND SUPPORT
+
+Must exist:
+
+- tenant creation;
+- configuration;
+- import;
+- training;
+- homologation;
+- activation;
+- checklist;
+- support;
+- ticketing;
+- SLA;
+- knowledge base;
+- incident management.
+
+---
+
+# 30. PWA, OFFLINE, REAL-TIME, AND AI
+
+These features will be treated as evolution layers, but must respect the Core.
+
+## PWA/Offline
+
+- cache;
+- IndexedDB;
+- local queue;
+- synchronization;
+- conflict resolution.
+
+## Real-Time
+
+- SSE;
+- notifications;
+- dashboard updates;
+- events.
+
+## AI
+
+- semantic search;
+- vectorization;
+- recommendations;
+- automation;
+- assistants.
+
+---
+
+# 31. DEPENDENCY MATRIX
+
+Minimum recommended order:
+
+**Core → Identity → Registries → Configurations → Commercial/Purchasing → Inventory → Financial → Fiscal → Services/Industrial → Corporate → SaaS/Operation**
+
+No module shall duplicate fundamental registries without architectural justification.
+
+---
+
+# 32. GLOBAL 100% CRITERION
+
+Scalle will be 100% commercially ready only when:
+
+- product specified;
+- architecture validated;
+- Core stable;
+- multi-tenant validated;
+- identity secure;
+- registries complete;
+- operational modules functional;
+- integrations working;
+- fiscal homologated as applicable;
+- financial validated;
+- critical automated tests passing;
+- security validated;
+- LGPD documented;
+- backup tested;
+- recovery validated;
+- observability active;
+- CI/CD operational;
+- documentation complete;
+- onboarding defined;
+- support structured;
+- SaaS/Billing operational;
+- contracts and policies defined;
+- production ready;
+- commercial operation validated.
+
+---
+
+# 33. MASTER EXECUTION MATRIX
+
+| Domain             | Specification | Development | Tests | Homologation | Production | Commercial |
+| ------------------ | ------------- | ----------- | ----- | ------------ | ---------- | ---------- |
+| Core               | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Identity           | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Registries         | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Commercial         | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Purchasing         | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Inventory/WMS      | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Financial          | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Fiscal             | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Services/OS        | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| PCP/MRP            | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Fleets             | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Assets             | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| HR/DP              | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Projects           | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| GED                | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Portal             | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| BI                 | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| API/Integrations   | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| SaaS/Billing       | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Security/LGPD      | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| DevOps             | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| QA                 | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+| Deployment/Support | ⚪             | ⚪           | ⚪     | ⚪            | ⚪          | ⚪          |
+
+---
+
+# 34. FINAL RULE
+
+This document is a construction specification.
+
+When a decision is not defined, it must be recorded as a pending requirement prior to implementation, rather than assumed by the team.
+
+The objective is to eliminate the need to "guess" how the ERP should work.
+
+**SCALLE ERP — 0% → 100% COMMERCIALLY READY**
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\MASTER PROJECT DOCUMENT.md
+========================================
+
+**MASTER PROJECT DOCUMENT**
+===========================
+
+**Scalle ERP — Architectural Blueprint, Engineering, Commercial Modules, and Governance**
+-----------------------------------------------------------------------------------------
+
+**Document Version:** 2.0.0 (Complete Commercial Vision — From Zero to Enterprise)
+
+**Product Type:** Hybrid Multi-Tenant ERP (Self-Service SaaS & Corporate B2B Consultative Sales)
+
+**Classification:** Official Engineering and Product Specification Document
+**1. Prerequisites and Architectural Philosophy**
+-------------------------------------------------
+
+### **1.1 Fundamental Guidelines**
+
+**Scalle ERP** was designed to compete directly with consolidated market solutions (such as Omie, Bling, Tiny, Protheus, and Sankhya), serving everything from individual microentrepreneurs (MEI)/Micro-businesses to large industries and multi-branch networks using the same codebase.
+
+> * **Modular Monolith Backend in PHP 8.4 + Laravel:** A robust RESTful API, decoupled into hermetic domains with strict dependency injection, immutable DTOs, and service interfaces. Modern PHP with OPcache and JIT ensures high performance with low infrastructure costs.
+> 
+> * **PostgreSQL Database:** Strict relational modeling using UUIDs as public keys (shielding internal sequential IDs), native JSONB support for custom configurations, and high-performance B-Tree/GIN indexing.
+> 
+> * **Hybrid Multi-Tenancy with Global Isolation (Row-Level Security / Global Scope):** Hermetic logical isolation by `empresa_id` managed at the ORM level (GlobalScopeTenant) and parameterization tables for dropdown lists (Dropdowns as Tables), ensuring scalability without schema mutation.
+> 
+> * **Decoupling and Backward Compatibility:** Express prohibition of cross-SQL queries between tables from different modules. All database migrations must be incremental (additive), without destructive commands (drop column), preserving versioned API contracts.
+
+### **1.2 Critical Security Alerts and Anti-Patterns (What NOT to do)**
+
+> * **DO NOT** expose auto-increment sequential IDs in public routes or response payloads.
+> 
+> * **DO NOT** query data from another module via direct database query without using the service interface or dedicated DTO of the origin domain.
+> 
+> * **DO NOT** store passwords or fiscal secrets (digital certificates) without symmetric encryption (AES-256) tied to the tenant's key.
+> 
+> * **DO NOT** allow physical deletion (Hard Delete) of records with fiscal, labor, or accounting relevance. All deletions must be logical (Soft Delete) with mandatory historical retention of at least 5 years.
+
+**2. System Domains Architectural Diagram**
+-------------------------------------------
+
+                                `┌────────────────────────────────────────────────────────┐`  
+                                `│             CORE LAYER & SAAS GOVERNANCE               │`  
+                                `│ Auth (Sanctum/OAuth2) | GlobalScopeTenant | ACL/Roles  │`  
+                                `│ Idempotency | Audit Trail | Shielded DTOs              │`  
+                                `│ Billing & Subscriptions | Plan & Storage Quota Mgt     │`  
+                                `└───────────────────────────┬────────────────────────────┘`  
+                                                            `│`  
+                `┌───────────────────────────────────────────┼───────────────────────────────────────────┐`  
+                `▼                                           ▼                                           ▼`  
+       `🛠️ SERVICE PROVISION & CMMS              🏬 COMMERCE, SALES & POS                 🏭 INDUSTRY & PCP`  
+
+`- Full OS (Work Order) Lifecycle Mgt - Counter Sales / Offline First POS - Bill of Materials (Multi-level BOM)`
+
+`- Preventive/Corrective Checklists - Quotes, Proposals & Orders - Production Orders (OP) & Time Tracking`
+
+`- Photographic Evidences (Before/After) - Multi-level Commission Management - Cost Appropriation (Direct Labor + Overhead)`
+
+`- Legal Digital Signature (MP 2.200-2) - Dynamic Price Tables by Channel - Analytical Scrap and Loss Control`
+
+`- Customer Portal (Self-Service OS) - CRM & Negotiation Funnel - Production Batch Traceability`
+
+`│ │ │`
+
+`└───────────────────────────────────────────┼───────────────────────────────────────────┘`
+
+`│`
+
+`┌───────────────────────────────────────────┴───────────────────────────────────────────┐`
+
+`▼ ▼`
+
+`📦 SUPPLIES, WMS & LOGISTICS 💰 FINANCIAL, FISCAL & CONTROLLERSHIP`
+
+`- Purchasing, Quotations & Supplier Orders - Accounts Payable / Accounts Receivable / Partial Write-offs`
+
+`- Smart Inbound Invoice (NF-e) XML Importer - Native PIX Billing (EMV/QR Code) & Bank Slips/Credit Card`
+
+`- Multi-Warehouses, Storerooms & Locations - Bank Reconciliation OFX / Open Finance`
+
+`- Batch, Serial & Expiration Traceability - Managerial P&L (DRE), Cost Centers & Cash Flow`
+
+`- Fleet Management, Fuel KM/L & CTe - Full Fiscal Engine (NF-e, NFS-e, NFC-e, MDF-e, CTe)`
+
+`- Patrimonial Assets, Depreciation & Assignment - Fiscal/Accounting Export (SPED Fiscal/Payroll/Domínio)`
+
+`│ │`
+
+`└───────────────────────────────────────────┬───────────────────────────────────────────┘`
+
+`▼`
+
+`┌────────────────────────────────────────────────────────┐`
+
+`│ 👥 HUMAN RESOURCES, PAYROLL & TALENT │`
+
+`│ Employee Record | Work Schedules & REP-P GPS Time Tracking│`
+
+`│ Time Bank | Managerial Payslip | PPE Assignment Form │`
+
+`│ R&S Kanban Funnel | Performance Evaluation & IDP │`
+
+`│ Organizational Climate Survey & Anonymous eNPS │`
+
+`└────────────────────────────────────────────────────────┘`
+**3. Complete Specification of System Modules**
+-----------------------------------------------
+
+### **3.1 Core Layer, Security, and Multi-Tenant Governance**
+
+> * **Authentication & Authorization:** Stateless authentication via Laravel Sanctum / OAuth2, support for multiple branches/establishments under the same login, and granular role-based access control (ACL / CheckRole).
+> 
+> * **Hermetic Isolation (GlobalScopeTenant):** Forced scope in the Eloquent ORM that automatically injects `WHERE empresa_id = ?` into 100% of reads and writes, preventing cross-tenant data leakage.
+> 
+> * **Audit Trail & Idempotency:** Centralized table (`sis_auditoria_logs`) to track mutations (who, when, IP, old and new values). Mandatory `Idempotency-Key` header in financial and fiscal mutation requests to prevent duplicate operations.
+> 
+> * **Dropdown Lists as Tables:** All categories, statuses, reasons, and dynamic parameters are modeled in tenant domain tables, ensuring scalability and corporate customization.
+
+### **3.2 Service Provision, Field Service & CMMS**
+
+> * **Work Order (OS) Lifecycle:** Opening, technical diagnosis, commercial approval, execution, warranty validation, and closure with automatic write-off of parts inventory.
+> 
+> * **Photographic Evidences & Digital Signature:** Photo collection with compression and optimized storage. Customer signature on the mobile/tablet screen with corroborating metadata collection (Geolocation, Connection IP, Atomic Timestamp, and SHA-256 cryptographic Hash) in compliance with MP 2.200-2/2001.
+> 
+> * **Customer Portal (Self-Service):** Secure public temporary link for the end customer to approve OS quotes, view technical reports with photos, and make payments via integrated PIX.
+
+### **3.3 Commerce, Sales & Counter POS**
+
+> * **Counter POS (Offline First):** Agile point of sale frontend, compatible with barcode scanners, thermal printers (ESC/POS), and local contingency with automatic batch synchronization.
+> 
+> * **Commercial Management & CRM:** Sales funnel, smart quotes, commission tracking per salesperson/technician, and discount rules with parameterized approval limits.
+> 
+> * **Multiple Price Tables:** Support for differentiated pricing by sales channel (Wholesale, Retail, Counter, and Corporate B2B).
+
+### **3.4 Industry, Product Engineering & PCP (Production Planning and Control)**
+
+> * **Bill of Materials (Multi-level BOM):** Detailed technical specification with consumption of raw materials, intermediate components, and fractionated supplies.
+> 
+> * **Production Orders (OP):** Planning, atomic reservation of inputs, tracking of direct labor (MOD) time, and manufacturing overhead/cost centers (CIF).
+> 
+> * **Calculated Cost & Scrap Management:** Recalculation of the average unit cost of the finished product after OP completion and analytical tracking of waste/scrap.
+
+### **3.5 Supplies, Purchasing, WMS & Logistics**
+
+> * **Purchasing & Quotations:** Comparative quotation map with multiple suppliers and purchase orders linked to receipt verification.
+> 
+> * **Smart XML Importer:** Automatic reading of inbound NF-e, smart linking of items, automatic unit of measurement conversion, and entry into Accounts Payable.
+> 
+> * **WMS & Multi-Warehouses:** Fractionated stock control by storeroom, logistical addressing, and internal transfers in Direct and In-Transit modes.
+> 
+> * **Batch, Serial & Expiration Traceability:** Strict expiration tracking (FEFO/FIFO), serial numbers for warranties, and automatic blocking of expired items.
+> 
+> * **Fleet & Asset Management:** Vehicle tracking, odometer/KM, KM/L average consumption integrated with Financials, capitalization of patrimonial assets, automatic linear depreciation, and Digital Assignment Term with QR Code for tools.
+
+### **3.6 Financial, Billing, Reconciliation & Controllership**
+
+> * **Accounts Payable & Receivable:** Management of titles with installments, interest, fines, discounts, tax withholdings, and partial or batch write-offs.
+> 
+> * **Integrated Billing:** Native generation of EMV PIX (Copy & Paste + dynamic QR Code with CRC16), issuance of registered bank slips, and integration with credit card gateways.
+> 
+> * **Bank Reconciliation:** Importer for bank OFX files and preparation for Open Finance integration with automatic transaction reconciliation.
+> 
+> * **Managerial P&L (DRE) & Cash Flow:** Analytical Income Statement by accrual and cash basis, segregated by cost center and structured chart of accounts.
+> 
+> * **External Accounting Bridge:** Generation of standardized files for external accounting firms (SPED Fiscal, SPED Contribuições, Domínio Sistemas, and managerial CSV).
+
+### **3.7 Decoupled Fiscal Engine**
+
+> * **Fiscal Drivers Architecture:** Abstract interface (`FiscalDriverInterface`) decoupling the core from municipal and state rules.
+> 
+> * **Supported Fiscal Documents:** Issuance, cancellation, invalidation, and Electronic Correction Letter (CC-e) for NF-e (Model 55), NFC-e (Model 65), NFS-e (National Standard and Major City Halls), CT-e (Model 57), and MDF-e (Model 58).
+> 
+> * **Certificate Management & XML Storage:** Support for A1 Digital Certificates (secure encrypted storage) and automatic routine for archiving and compressing signed XMLs for 5 years.
+
+### **3.8 Human Resources, Payroll & Talent**
+
+> * **Employee Record & Schedules:** Complete registry of employees, dependents, salary history, job titles, and matrix of flexible work schedules.
+> 
+> * **Georeferenced Electronic Time Tracking (MTP Ordinance No. 671/2021):** Time clocking capturing Atomic Date/Time, IP, and GPS coordinates. Immutable base with an auditable mirror record for labor rectifications.
+> 
+> * **Managerial Payslip & Time Bank:** Calculation of earnings, hazard/unhealthiness bonuses, overtime matrix, and time bank compensation integrated with Accounts Payable.
+> 
+> * **Recruitment, Selection & Evaluation:** Kanban funnel for job openings, admission process with assisted form filling, competency-based performance evaluations, Individual Development Plan (IDP), and 100% anonymous eNPS survey (with a minimum floor of 5 respondents per department).
+
+**4. Commercial Matrix of SaaS Plans & Feature Flags**
+------------------------------------------------------
+
+| **Domain / Feature**                      | **MEI / Basic (SaaS)** | **Pro / SMBs (SaaS)**   | **Enterprise / Corporate (B2B)**        |
+| ----------------------------------------- | ---------------------- | ----------------------- | --------------------------------------- |
+| **Sales Model**                           | Online Self-Service    | Self-Service / Assisted | Consultative / Dedicated Implementation |
+| **Work Orders & CMMS**                    | ✅ Basic                | ✅ Full                  | ✅ Full + Advanced Checklists            |
+| **Sales & Quotes**                        | ✅                      | ✅                       | ✅ + Advanced CRM                        |
+| **Offline Counter POS**                   | ✅                      | ✅                       | ✅ Multi-Concurrent POS                  |
+| **Financial Management & P&L**            | ✅                      | ✅                       | ✅ + Multi-level Cost Centers            |
+| **Native PIX Billing**                    | ✅                      | ✅                       | ✅                                       |
+| **Evidences & Legal Signature**           | —                      | ✅                       | ✅                                       |
+| **Customer Portal (Self-Service)**        | ✅                      | ✅                       | ✅ with White-label / Custom Domain      |
+| **Storage Quota**                         | **3 GB**               | **20 GB**               | **100 GB+ (Customizable)**              |
+| **Fiscal Issuance (NFe/NFSe/NFCe)**       | —                      | ✅                       | ✅ + CT-e / MDF-e / Batch Issuance       |
+| **Industrial Module (PCP & Costs)**       | —                      | Optional (Add-on)       | ✅ Full                                  |
+| **WMS & Batch Tracking**                  | —                      | ✅                       | ✅                                       |
+| **Fleet & Asset Management**              | —                      | ✅                       | ✅                                       |
+| **Payroll, GPS REP-P Time Tracking & HR** | —                      | ✅                       | ✅                                       |
+| **Multi-Branches / Concurrent Tax IDs**   | —                      | —                       | ✅ Unlimited                             |
+| **Advanced Approval Limits Engine**       | —                      | Simple (Discount > 10%) | ✅ Parameterizable Multi-level           |
+| **Accounting Export / SPED**              | —                      | ✅                       | ✅                                       |
+| **Security & Mandatory MFA**              | —                      | Optional                | ✅ Mandatory with TOTP                   |
+
+**5. Step-by-Step Development Execution (Chronological Timeline)**
+------------------------------------------------------------------
+
+### **Phase 1: Core Foundation, Database & Multi-Tenant Governance (Sprints 1 to 3)**
+
+> * **Action:** Model migrations in PostgreSQL with UUIDs in public routes and create the GlobalScopeTenant in Laravel.
+> 
+> * **Why:** Ensures that no future module is built without security isolation constraints.
+> 
+> * **Deliverables:** Sanctum authentication, audit table (`sis_auditoria_logs`), tables for dynamic dropdown lists, and idempotency middleware.
+
+### **Phase 2: Base Registries, Products, WMS & Purchasing (Sprints 4 to 6)**
+
+> * **Action:** Build People domain (`pes_pessoas`), Items catalog (`pro_itens`), multi-warehouses (`wms_depositos`), and NF-e XML importer.
+> 
+> * **Why:** Provides the infrastructure of inputs and master data necessary for sales, services, and manufacturing.
+> 
+> * **Deliverables:** Registry with CPF/CNPJ (Tax ID) validation, batch/expiration control, internal stock transfers, and inbound supplier invoices.
+
+### **Phase 3: Service Provision (CMMS), Sales & Counter POS (Sprints 7 to 9)**
+
+> * **Action:** Implement full OS workflow with evidences/legal signature and POS frontend.
+> 
+> * **Why:** Delivers the most commercially appealing operational module for service providers and retail businesses.
+> 
+> * **Deliverables:** Quotes, orders, OS with technical report and photo uploads, signature collection (MP 2.200-2), OS PDF generation, and counter POS with atomic stock write-off.
+
+### **Phase 4: Full Financial, PIX Billing & Controllership (Sprints 10 to 12)**
+
+> * **Action:** Develop Accounts Payable/Receivable, EMV PIX Copy & Paste payload generator with QR Code, and analytical Managerial P&L (DRE).
+> 
+> * **Why:** Connects the invoicing of OS and Sales to the client company's financial health.
+> 
+> * **Deliverables:** Partial/total write-offs, bank statement, OFX reconciliation, cost centers, cash flow, and real-time P&L.
+
+### **Phase 5: Integrated Fiscal Engine & Fleets/Assets (Sprints 13 to 15)**
+
+> * **Action:** Implement `FiscalDriverInterface` with actual issuance of NF-e, NFS-e, and NFC-e, alongside vehicle tracking and asset capitalization.
+> 
+> * **Why:** Allows full legal operation for clients issuing tax documents and controlling corporate assets.
+> 
+> * **Deliverables:** XML signature with A1 certificate, SEFAZ transmission, CC-e, cancellation, KM/L tracking, and Assignment Term with QR Code.
+
+### **Phase 6: Industrial Module (PCP) & Complete Human Resources (Sprints 16 to 18)**
+
+> * **Action:** Develop Bill of Materials (BOM), Production Orders (OP), georeferenced REP-P time tracking, and R&S Kanban Funnel.
+> 
+> * **Why:** Enables serving industrial accounts and medium/large companies with a broad workforce.
+> 
+> * **Deliverables:** OP tracking with cost apportionment, loss calculation, GPS time clocking with immutable base, managerial payslips, and anonymous eNPS.
+
+### **Phase 7: SaaS Monetization, Billing, Customer Portal & Commercial Polish (Sprints 19 to 21)**
+
+> * **Action:** Develop plan billing engine (`sis_planos`), storage quota control, downgrade soft-lock, and Customer Portal.
+> 
+> * **Why:** Enables large-scale monetization in the self-service SaaS model and delivers the self-service channel to the end customer.
+> 
+> * **Deliverables:** Recurring subscription billing, public portal with temporary token for OS, upload storage lock, and accounting/SPED export.
+
+**6. Success Validation and Acceptance Criteria**
+-------------------------------------------------
+
+| **Stage / Module**                 | **Testing and Validation Method**                                                                              | **Acceptance Criteria (Success)**                                                                                  |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Multi-Tenant Isolation**         | Automated HTTP test suite simulating an authenticated request from Tenant A trying to read data from Tenant B. | Mandatory return of HTTP 403 Forbidden or 404 Not Found on 100% of endpoints without exception.                    |
+| **Financial Idempotency**          | Simultaneous duplicate sending of the same financial write-off request with the same Idempotency-Key.          | Single processing in the database; the second request returns the same payload without duplicating entries.        |
+| **Digital OS Signature**           | Signature collection on the device screen and verification of the cryptographic payload.                       | Generation of the SHA-256 hash integrating latitude, longitude, IP, atomic date/time, and executed service data.   |
+| **Fiscal Issuance (NF-e / NFS-e)** | Transmission in the SEFAZ/City Hall staging environment with different ICMS/ISS tax rates.                     | Document authorization returning a protocol, DANFE/PDF generation, and signed XML storage.                         |
+| **Production Tracking**            | Completion of a Production Order for a composite item.                                                         | Automatic write-off of raw materials stock, finished product entry, and accurately recalculated average unit cost. |
+| **Immutable Time Clock (REP-P)**   | Attempted direct update (UPDATE) via API on the original time clock record.                                    | Blocked at the service layer; rectifications are recorded exclusively in the auditable mirror table.               |
+| **Downgrade Soft-Lock**            | Simulation of a corporate plan downgrading to basic in a tenant exceeding warehouses and users.                | Excess data remains preserved in Read-Only mode, blocking new insertions without causing integrity failures.       |
+
+**7. Diagnostics and Immediate Problem Resolution**
+---------------------------------------------------
+
+> * **Problem: Sluggishness in financial reports and managerial P&L with large data volumes.**
+>   _Diagnosis:_ Queries calculating balances of millions of records at runtime without indexed aggregations.
+>   _Solution:_ Create materialized views or daily/monthly consolidation tables per tenant, updated asynchronously via Laravel Queues (Jobs).
+> 
+> * **Problem: Rejection in fiscal document transmission due to SEFAZ instability.**
+>   _Diagnosis:_ Communication timeout or temporary unavailability of state servers.
+>   _Solution:_ Activate automatic contingency (EPEC/SVC for NF-e or offline contingency for NFC-e) and reprocess the batch via an asynchronous queue as soon as connectivity is restored.
+> 
+> * **Problem: Upload attempt failing due to plan storage limit.**
+>   _Diagnosis:_ Tenant reached the contracted GB ceiling (e.g., 3GB on the basic plan).
+>   _Solution:_ Upload interceptor returns a friendly 402/422 error with a standardized payload indicating quota usage and a direct link for a storage upgrade.
+> 
+> * **Problem: Inventory inconsistency during simultaneous POS sales.**
+>   _Diagnosis:_ Concurrency in balance write-off without transactional lock.
+>   _Solution:_ Use atomic transactions with pessimistic locking (`DB::transaction` with `lockForUpdate()`) on the balance table per warehouse during sale checkout.
+
+**8. Immediate Action Plan to Start Development**
+-------------------------------------------------
+
+> 1. Create the base Laravel project structure with PHP 8.4 and PostgreSQL.
+> 
+> 2. Define the migration for the Core layer: Tenants, Users, Roles, and Domain Tables for Dropdown Lists.
+> 
+> 3. Implement the GlobalScopeTenant and the first cross-isolation test suite.
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\PROJECT MASTER DOCUMENT � SCALLE ERP.md
+========================================
+
+PROJECT MASTER DOCUMENT — SCALLE ERP
+====================================
+
+**Version:** 1.1 — Architectural and Tax Shielding**Reference state:** 0%**Objective:** fully specify the Scalle ERP, from scratch to a commercial, scalable SaaS product applicable to companies of any size and segment.**Base architecture:** SaaS Multi-Tenant Modular Monolith**Main database:** PostgreSQL
+
+
+
+1. PURPOSE
+   ==========
+
+This document is the central specification of the product.
+
+
+
+It must allow:
+
+
+
+* product;
+  
+  
+
+* architecture;
+  
+  
+
+* UX/UI;
+  
+  
+
+* backend;
+  
+  
+
+* frontend;
+  
+  
+
+* database;
+  
+  
+
+* QA;
+  
+  
+
+* DevOps;
+  
+  
+
+* security;
+  
+  
+
+* deployment;
+  
+  
+
+* support;
+  
+  
+
+to be able to work on the same definition.
+
+
+
+The project is considered **0%** regardless of the state of previously existing versions, releases, or functionalities.
+
+
+
+No historical functionality will be considered automatically completed.
+
+
+
+2. PRODUCT VISION
+   =================
+
+Scalle ERP must be a SaaS business platform capable of serving:
+
+
+
+* MEI (Individual Microentrepreneurs);
+  
+  
+
+* micro-enterprises;
+  
+  
+
+* small businesses;
+  
+  
+
+* medium-sized businesses;
+  
+  
+
+* large companies;
+  
+  
+
+* corporate groups;
+  
+  
+
+* companies with multiple branches;
+  
+  
+
+* simple operations;
+  
+  
+
+* complex operations;
+  
+  
+
+* service companies;
+  
+  
+
+* commerce;
+  
+  
+
+* industry;
+  
+  
+
+* distribution;
+  
+  
+
+* maintenance;
+  
+  
+
+* logistics;
+  
+  
+
+* construction;
+  
+  
+
+* projects;
+  
+  
+
+* hybrid operations.
+  
+  
+
+The architecture must not force a small company to use complex corporate features, but it must allow growth without structural product migration.
+
+
+
+3. PRODUCT PRINCIPLES
+   =====================
+
+4. Multi-tenant from the foundation.
+   
+   
+
+2. Security by default.
+   
+   
+
+3. Modularity.
+   
+   
+
+4. Auditability.
+   
+   
+
+5. Configurability.
+   
+   
+
+6. Scalability.
+   
+   
+
+7. Transactional integrity.
+   
+   
+
+8. API-first.
+   
+   
+
+9. Automation.
+   
+   
+
+10. Simple user experience.
+    
+    
+
+11. Compatibility with business growth.
+    
+    
+
+12. No module should create unnecessary duplicate fundamental registries.
+    
+    
+
+13. Critical rules must be explicit and testable.
+    
+    
+
+14. Data must not be destroyed by downgrades, payment defaults, or deactivation.
+    
+    
+
+15. The system must have an audit trail for relevant operations.
+    
+    
+
+4. ARCHITECTURE
+   ===============
+
+4.1 Model
+---------
+
+**SaaS Multi-Tenant Modular Monolith.**
+
+
+
+The application will initially be an operational unit, yet organized into independent modules.
+
+
+
+Conceptual structure:
+
+Scalle ERP
+    ├── Core
+    ├── Tenancy
+    ├── Identity
+    ├── Authorization
+    ├── Organization
+    ├── Configuration
+    ├── Audit
+    ├── Storage
+    ├── Notifications
+    ├── Jobs
+    ├── Integrations
+    ├── CRM
+    ├── Sales
+    ├── Purchasing
+    ├── Inventory
+    ├── Finance
+    ├── Fiscal
+    ├── Services
+    ├── Manufacturing
+    ├── Fleet
+    ├── Assets
+    ├── Projects
+    ├── HR
+    ├── Payroll
+    ├── GED
+    ├── BI
+    ├── Portal
+    └── SaaS/Billing
+4.2 Database
+------------
+
+PostgreSQL will be the official production database.
+
+
+
+Reasons:
+
+
+
+* transactional robustness;
+  
+  
+
+* referential integrity;
+  
+  
+
+* concurrency;
+  
+  
+
+* JSONB;
+  
+  
+
+* advanced indexes;
+  
+  
+
+* extensibility;
+  
+  
+
+* ecosystem;
+  
+  
+
+* scalability;
+  
+  
+
+* possibility of pgvector for AI.
+  
+  
+
+4.3 Evolution
+-------------
+
+The architecture must later allow for:
+
+
+
+* independent workers;
+  
+  
+
+* distributed cache;
+  
+  
+
+* external storage;
+  
+  
+
+* queues;
+  
+  
+
+* specialized services;
+  
+  
+
+* dedicated database;
+  
+  
+
+* dedicated environment;
+  
+  
+
+* extraction of critical modules to services.
+  
+  
+
+Microservices will not be adopted prematurely.
+
+
+
+5. SAAS MULTI-TENANT
+   ====================
+
+5.1 Initial Strategy
+--------------------
+
+Shared database + shared schema + `tenant_id`.
+
+5.2 Isolation
+-------------
+
+Every entity belonging to a tenant must have a tenant context.
+
+
+
+No query can ignore the context.
+
+5.3 Enterprise Evolution
+------------------------
+
+Prepare for:
+
+
+
+* dedicated schema;
+  
+  
+
+* dedicated database;
+  
+  
+
+* dedicated infrastructure;
+  
+  
+
+* dedicated region;
+  
+  
+
+* specific policies.
+  
+  
+
+5.4 Tenant States
+-----------------
+
+* trial;
+  
+  
+
+* active;
+  
+  
+
+* pending payment;
+  
+  
+
+* default;
+  
+  
+
+* suspended;
+  
+  
+
+* blocked;
+  
+  
+
+* canceled;
+  
+  
+
+* closed.
+  
+  
+
+4.4 Tenant Shielding in Laravel
+-------------------------------
+
+In the Laravel backend, every Model belonging to a tenant must use `GlobalScopeTenant` in Eloquent as a mandatory isolation mechanism.
+
+
+
+The scope must be automatically applied to multi-tenant Models and must:
+
+
+
+* resolve the tenant from a reliable context;
+  
+  
+
+* prevent queries without a tenant context;
+  
+  
+
+* prevent creation without a `tenant_id`;
+  
+  
+
+* prevent alteration/deletion of records from another tenant;
+  
+  
+
+* have automated isolation tests.
+  
+  
+
+### Golden Rule
+
+**NEVER query tables from another domain via direct SQL.**
+
+
+
+It is prohibited, in domain code, to bypass isolation or encapsulation using `withoutGlobalScopes()`, `DB::table()`, `DB::select()`, or raw SQL to access data from another domain.
+
+
+
+Inter-module communication must use:
+
+
+
+* DTOs;
+  
+  
+
+* Service Interfaces;
+  
+  
+
+* Application Services;
+  
+  
+
+* Commands;
+  
+  
+
+* Events;
+  
+  
+
+* internal APIs, when necessary.
+  
+  
+
+Prohibited example:
+
+
+    DB::table('finance_accounts')->where(...)->get();
+
+Allowed example:
+
+
+    $receivable =$financeService->findReceivable(
+        ReceivableQueryDTO::fromId($id)
+    );
+
+Any exception must be restricted to explicitly authorized, documented, and audited infrastructure.
+
+4.5 Database Boundary
+---------------------
+
+The database must not be used as an integration contract between modules.
+
+
+
+The internal structure of the tables is the property of the domain that owns them.
+
+5.5 Isolation Enforcement
+-------------------------
+
+Isolation must exist in layers:
+
+
+    Request
+     ↓
+    Tenant Resolver
+     ↓
+    Authenticated Context
+     ↓
+    Authorization
+     ↓
+    GlobalScopeTenant
+     ↓
+    Service Layer
+     ↓
+    ORM/Repository
+     ↓
+    Database
+
+The client can never provide a `tenant_id` and thereby obtain authorization to access that tenant.
+
+
+
+Jobs, queues, events, cache, storage, and integrations must also preserve the correct context.
+
+5.6 Mandatory Multi-Tenancy Tests
+---------------------------------
+
+They must prove:
+
+
+
+* Tenant A does not read Tenant B;
+  
+  
+
+* Tenant A does not alter Tenant B;
+  
+  
+
+* Tenant A does not delete Tenant B;
+  
+  
+
+* Tenant A does not access files from Tenant B;
+  
+  
+
+* relationships do not allow indirect leakage;
+  
+  
+
+* IDs do not allow improper enumeration;
+  
+  
+
+* APIs do not accept arbitrary `tenant_id` from the client;
+  
+  
+
+* jobs preserve the tenant;
+  
+  
+
+* events preserve the tenant;
+  
+  
+
+* cache never mixes tenants.
+  
+  
+6. CORE / FOUNDATION
+   ====================
+
+6.1 Responsibility
+------------------
+
+Provide common services to all modules.
+
+6.2 Components
+--------------
+
+* Tenant;
+  
+  
+
+* Company;
+  
+  
+
+* Branch;
+  
+  
+
+* User;
+  
+  
+
+* Profile;
+  
+  
+
+* Permission;
+  
+  
+
+* Session;
+  
+  
+
+* Configuration;
+  
+  
+
+* Feature Flag;
+  
+  
+
+* Audit;
+  
+  
+
+* Storage;
+  
+  
+
+* Notifications;
+  
+  
+
+* Jobs;
+  
+  
+
+* Queues;
+  
+  
+
+* Cache;
+  
+  
+
+* Events;
+  
+  
+
+* Webhooks;
+  
+  
+
+* Integrations;
+  
+  
+
+* Observability.
+  
+  
+
+6.3 Identifiers
+---------------
+
+Use UUID as a public identifier.
+
+
+
+Every relevant record must have:
+
+
+
+* `id`;
+  
+  
+
+* `created_at`;
+  
+  
+
+* `updated_at`;
+  
+  
+
+* `deleted_at` when applicable.
+  
+  
+7. BUSINESS ORGANIZATION
+   ========================
+
+Flexible hierarchy:
+
+
+    Tenant
+    └── Corporate Group
+        └── Company
+            └── Branch
+                └── Establishment
+
+No level should be mandatory when it doesn't make sense.
+
+Company
+-------
+
+Fields:
+
+
+
+* corporate name (razão social);
+  
+  
+
+* trade name (nome fantasia);
+  
+  
+
+* document (tax ID);
+  
+  
+
+* registrations;
+  
+  
+
+* tax regime;
+  
+  
+
+* size;
+  
+  
+
+* address;
+  
+  
+
+* contacts;
+  
+  
+
+* activity;
+  
+  
+
+* status.
+  
+  
+
+Branch
+------
+
+Fields:
+
+
+
+* company;
+  
+  
+
+* code;
+  
+  
+
+* name;
+  
+  
+
+* document;
+  
+  
+
+* address;
+  
+  
+
+* registrations;
+  
+  
+
+* tax series;
+  
+  
+
+* timezone;
+  
+  
+
+* status.
+  
+  
+8. IDENTITY
+   ===========
+
+8.1 User
+--------
+
+Fields:
+
+
+
+* first name;
+  
+  
+
+* last name;
+  
+  
+
+* email;
+  
+  
+
+* phone;
+  
+  
+
+* password;
+  
+  
+
+* status;
+  
+  
+
+* MFA;
+  
+  
+
+* timezone;
+  
+  
+
+* locale;
+  
+  
+
+* avatar;
+  
+  
+
+* last login.
+  
+  
+
+8.2 Authentication
+------------------
+
+Must support:
+
+
+
+* login;
+  
+  
+
+* logout;
+  
+  
+
+* recovery;
+  
+  
+
+* email verification;
+  
+  
+
+* MFA;
+  
+  
+
+* TOTP;
+  
+  
+
+* recovery codes;
+  
+  
+
+* sessions;
+  
+  
+
+* revocation;
+  
+  
+
+* brute force protection.
+  
+  
+
+8.3 Preparation
+---------------
+
+* WebAuthn;
+  
+  
+
+* Passkeys;
+  
+  
+
+* SSO;
+  
+  
+
+* corporate integration.
+  
+  
+9. AUTHORIZATION
+   ================
+
+Model:
+
+
+    User
+    → Profile
+    → Permission
+    → Context
+
+Actions:
+
+
+
+* view;
+  
+  
+
+* create;
+  
+  
+
+* edit;
+  
+  
+
+* delete;
+  
+  
+
+* approve;
+  
+  
+
+* cancel;
+  
+  
+
+* download;
+  
+  
+
+* reverse (estornar);
+  
+  
+
+* export;
+  
+  
+
+* print;
+  
+  
+
+* administer.
+  
+  
+
+Scopes:
+
+
+
+* tenant;
+  
+  
+
+* company;
+  
+  
+
+* branch;
+  
+  
+
+* department;
+  
+  
+
+* team;
+  
+  
+
+* own user.
+  
+  
+10. AUDIT
+    =========
+
+Record:
+
+
+
+* user;
+  
+  
+
+* tenant;
+  
+  
+
+* action;
+  
+  
+
+* module;
+  
+  
+
+* entity;
+  
+  
+
+* record;
+  
+  
+
+* previous values;
+  
+  
+
+* new values;
+  
+  
+
+* IP;
+  
+  
+
+* user-agent;
+  
+  
+
+* request ID;
+  
+  
+
+* correlation ID;
+  
+  
+
+* date/time.
+  
+  
+
+Critical events:
+
+
+
+* authentication;
+  
+  
+
+* permission changes;
+  
+  
+
+* financial changes;
+  
+  
+
+* tax issuance;
+  
+  
+
+* cancellations;
+  
+  
+
+* approvals;
+  
+  
+
+* configuration changes;
+  
+  
+
+* billing.
+  
+  
+11. CONFIGURATIONS
+    ==================
+
+Hierarchy:
+
+
+    System
+    → Plan
+    → Tenant
+    → Company
+    → Branch
+    → User
+
+Possible configurations:
+
+
+
+* currency;
+  
+  
+
+* language;
+  
+  
+
+* timezone;
+  
+  
+
+* numbering;
+  
+  
+
+* series;
+  
+  
+
+* taxes;
+  
+  
+
+* discounts;
+  
+  
+
+* SLA;
+  
+  
+
+* notifications;
+  
+  
+
+* documents;
+  
+  
+
+* commercial rules;
+  
+  
+
+* financial parameters.
+  
+  
+
+11.1 Dropdown Lists as Domain Tables
+------------------------------------
+
+Configurable business values should not be implemented as rigid enums in the database.
+
+
+
+Applicable, depending on the domain:
+
+
+
+* status;
+  
+  
+
+* categories;
+  
+  
+
+* types;
+  
+  
+
+* reasons;
+  
+  
+
+* priorities;
+  
+  
+
+* classifications;
+  
+  
+
+* origins;
+  
+  
+
+* natures;
+  
+  
+
+* modalities;
+  
+  
+
+* operational situations.
+  
+  
+
+These values should be domain tables, with `tenant_id` when customizable.
+
+
+
+Recommended fields:
+
+
+
+* `id`;
+  
+  
+
+* `tenant_id`;
+  
+  
+
+* `code`;
+  
+  
+
+* `name`;
+  
+  
+
+* `description`;
+  
+  
+
+* `sort_order`;
+  
+  
+
+* `is_active`;
+  
+  
+
+* `is_system`;
+  
+  
+
+* `metadata`;
+  
+  
+
+* `created_at`;
+  
+  
+
+* `updated_at`;
+  
+  
+
+* `deleted_at`.
+  
+  
+
+Adding a new business parameter **must not require a schema migration**.
+
+
+
+Systemic values may exist as protected records, simultaneously allowing custom values per tenant.
+
+
+
+12. FEATURE FLAGS
+    =================
+
+Allow activation by:
+
+
+
+* system;
+  
+  
+
+* plan;
+  
+  
+
+* tenant;
+  
+  
+
+* company;
+  
+  
+
+* user.
+  
+  
+
+A feature flag does not replace a permission.
+
+
+
+Effective access:
+
+
+    Feature enabled
+    +
+    Plan allows
+    +
+    Permission allows
+    =
+    Access
+
+13. WORKFLOW AND APPROVALS
+    ==========================
+
+Configurable engine.
+
+
+
+Elements:
+
+
+
+* trigger;
+  
+  
+
+* condition;
+  
+  
+
+* authority limit;
+  
+  
+
+* approver;
+  
+  
+
+* sequence;
+  
+  
+
+* deadline;
+  
+  
+
+* approval;
+  
+  
+
+* rejection;
+  
+  
+
+* justification;
+  
+  
+
+* escalation;
+  
+  
+
+* audit.
+  
+  
+
+Applications:
+
+
+
+* purchasing;
+  
+  
+
+* sales;
+  
+  
+
+* discounts;
+  
+  
+
+* payments;
+  
+  
+
+* contracts;
+  
+  
+
+* work orders (OS);
+  
+  
+
+* documents;
+  
+  
+
+* expenses.
+  
+  
+14. MASTER REGISTRIES
+    =====================
+
+14.0 Configurable Domains Rule
+------------------------------
+
+Master registries must use domain tables for lists that may vary by company or evolve throughout the product.
+
+
+
+Do not use database enums for configurable categories, types, reasons, classifications, statuses, priorities, origins, or situations.
+
+
+
+Application enums should only be used for technical states that are truly invariable and structural.
+
+14.1 People
+-----------
+
+* customer;
+  
+  
+
+* supplier;
+  
+  
+
+* employee;
+  
+  
+
+* contact;
+  
+  
+
+* partner.
+  
+  
+
+Data:
+
+
+
+* identification;
+  
+  
+
+* documents;
+  
+  
+
+* contacts;
+  
+  
+
+* addresses;
+  
+  
+
+* tax data;
+  
+  
+
+* relationships;
+  
+  
+
+* status;
+  
+  
+
+* history.
+  
+  
+
+14.2 Products
+-------------
+
+Fields:
+
+
+
+* code;
+  
+  
+
+* name;
+  
+  
+
+* description;
+  
+  
+
+* type;
+  
+  
+
+* unit;
+  
+  
+
+* category;
+  
+  
+
+* group;
+  
+  
+
+* brand;
+  
+  
+
+* model;
+  
+  
+
+* NCM (Tax Code);
+  
+  
+
+* cost;
+  
+  
+
+* price;
+  
+  
+
+* minimum stock;
+  
+  
+
+* maximum stock;
+  
+  
+
+* batch;
+  
+  
+
+* serial number;
+  
+  
+
+* validity;
+  
+  
+
+* status.
+  
+  
+
+14.3 Services
+-------------
+
+* code;
+  
+  
+
+* name;
+  
+  
+
+* description;
+  
+  
+
+* unit;
+  
+  
+
+* price;
+  
+  
+
+* cost;
+  
+  
+
+* taxation;
+  
+  
+
+* SLA;
+  
+  
+
+* category;
+  
+  
+
+* status.
+  
+  
+
+14.4 Units
+----------
+
+* unit of measurement;
+  
+  
+
+* conversions;
+  
+  
+
+* decimal places;
+  
+  
+
+* usage rules.
+  
+  
+15. CRM
+    =======
+
+Entities
+--------
+
+* Lead;
+  
+  
+
+* Contact;
+  
+  
+
+* Customer;
+  
+  
+
+* Opportunity;
+  
+  
+
+* Activity;
+  
+  
+
+* Funnel;
+  
+  
+
+* Stage;
+  
+  
+
+* Campaign;
+  
+  
+
+* Proposal.
+  
+  
+
+Features
+--------
+
+* capture;
+  
+  
+
+* qualification;
+  
+  
+
+* distribution;
+  
+  
+
+* follow-up;
+  
+  
+
+* tasks;
+  
+  
+
+* history;
+  
+  
+
+* funnel;
+  
+  
+
+* forecast;
+  
+  
+
+* conversion.
+  
+  
+
+Flow
+----
+
+    Lead
+    → Qualification
+    → Opportunity
+    → Proposal
+    → Negotiation
+    → Won/Lost
+
+16. COMMERCIAL / SALES
+    ======================
+
+Entities
+--------
+
+* quote/estimate;
+  
+  
+
+* proposal;
+  
+  
+
+* order;
+  
+  
+
+* price table;
+  
+  
+
+* payment condition;
+  
+  
+
+* commission;
+  
+  
+
+* contract.
+  
+  
+
+Flow
+----
+
+    Customer
+    → Quote
+    → Approval
+    → Order
+    → Reservation
+    → Invoicing
+    → Financial
+    → Fiscal
+
+Rules
+-----
+
+* discount limit;
+  
+  
+
+* authority level;
+  
+  
+
+* credit;
+  
+  
+
+* stock;
+  
+  
+
+* commission;
+  
+  
+
+* taxes;
+  
+  
+
+* commercial conditions.
+  
+  
+17. PURCHASING
+    ==============
+
+Entities
+--------
+
+* requisition;
+  
+  
+
+* quotation;
+  
+  
+
+* supplier;
+  
+  
+
+* quotation map;
+  
+  
+
+* order;
+  
+  
+
+* receipt.
+  
+  
+
+Flow
+----
+
+    Requisition
+    → Quotation
+    → Comparison
+    → Approval
+    → Order
+    → Receipt
+    → Stock
+    → Fiscal
+    → Financial
+
+Rules
+-----
+
+* multiple suppliers;
+  
+  
+
+* lowest price;
+  
+  
+
+* deadline;
+  
+  
+
+* quality;
+  
+  
+
+* approval;
+  
+  
+
+* divergence;
+  
+  
+
+* partial receipt.
+  
+  
+18. INVENTORY / WMS
+    ===================
+
+Entities
+--------
+
+* product;
+  
+  
+
+* warehouse;
+  
+  
+
+* address;
+  
+  
+
+* balance;
+  
+  
+
+* batch;
+  
+  
+
+* serial number;
+  
+  
+
+* movement;
+  
+  
+
+* transfer;
+  
+  
+
+* reservation;
+  
+  
+
+* physical count (inventory).
+  
+  
+
+Operations
+----------
+
+* inward / entry;
+  
+  
+
+* outward / exit;
+  
+  
+
+* adjustment;
+  
+  
+
+* transfer;
+  
+  
+
+* physical count;
+  
+  
+
+* reservation;
+  
+  
+
+* write-off;
+  
+  
+
+* reversal.
+  
+  
+
+Control
+-------
+
+* FIFO/FEFO when configured;
+  
+  
+
+* batch;
+  
+  
+
+* validity;
+  
+  
+
+* serial number;
+  
+  
+
+* location;
+  
+  
+
+* available balance;
+  
+  
+
+* reserved balance;
+  
+  
+
+* blocked balance.
+  
+  
+
+Critical Criterion
+------------------
+
+No concurrency may produce an inconsistent balance.
+
+
+
+19. FINANCIAL
+    =============
+
+Accounts Payable
+----------------
+
+* entry;
+  
+  
+
+* installment;
+  
+  
+
+* approval;
+  
+  
+
+* due date;
+  
+  
+
+* payment;
+  
+  
+
+* settlement/write-off;
+  
+  
+
+* reversal.
+  
+  
+
+Accounts Receivable
+-------------------
+
+* entry;
+  
+  
+
+* installment;
+  
+  
+
+* billing/collection;
+  
+  
+
+* receipt;
+  
+  
+
+* settlement/write-off;
+  
+  
+
+* reversal.
+  
+  
+
+Treasury
+--------
+
+* cash;
+  
+  
+
+* bank;
+  
+  
+
+* transfer;
+  
+  
+
+* reconciliation.
+  
+  
+
+Managerial Accounting
+---------------------
+
+* chart of accounts;
+  
+  
+
+* cost centers;
+  
+  
+
+* categories;
+  
+  
+
+* P&L (DRE);
+  
+  
+
+* cash flow.
+  
+  
+
+Rules
+-----
+
+* entry origin;
+  
+  
+
+* history;
+  
+  
+
+* competence period;
+  
+  
+
+* due date;
+  
+  
+
+* liquidation;
+  
+  
+
+* interest;
+  
+  
+
+* penalty/fine;
+  
+  
+
+* discount;
+  
+  
+
+* reversal;
+  
+  
+
+* closing.
+  
+  
+20. BILLING / PIX
+    =================
+
+Flow:
+
+
+    Billing
+    → QR/Payload
+    → Gateway
+    → Webhook
+    → Confirmation
+    → Settlement
+    → Reconciliation
+
+Requirements:
+
+
+
+* idempotency;
+  
+  
+
+* signature;
+  
+  
+
+* retry;
+  
+  
+
+* logs;
+  
+  
+
+* duplication handling;
+  
+  
+
+* reconciliation.
+  
+  
+21. FISCAL (TAX)
+    ================
+
+Decoupled architecture.
+
+Entities
+--------
+
+* fiscal document;
+  
+  
+
+* fiscal item;
+  
+  
+
+* event;
+  
+  
+
+* certificate;
+  
+  
+
+* rule;
+  
+  
+
+* XML;
+  
+  
+
+* contingency.
+  
+  
+
+Processes
+---------
+
+* issuance;
+  
+  
+
+* validation;
+  
+  
+
+* signature;
+  
+  
+
+* sending;
+  
+  
+
+* return;
+  
+  
+
+* authorization;
+  
+  
+
+* rejection;
+  
+  
+
+* cancellation;
+  
+  
+
+* CC-e (correction letter);
+  
+  
+
+* invalidation;
+  
+  
+
+* contingency;
+  
+  
+
+* query;
+  
+  
+
+* storage.
+  
+  
+
+Fiscal support must be modular per document, operation, and applicability.
+
+21.4 Tax Reform — CBS / IBS
+---------------------------
+
+The tax engine must be born ready for the coexistence and transition between tax models.
+
+
+
+It must allow representing, according to validity, operation, and framework:
+
+
+
+* PIS;
+  
+  
+
+* COFINS;
+  
+  
+
+* ICMS;
+  
+  
+
+* ISS;
+  
+  
+
+* CBS;
+  
+  
+
+* IBS;
+  
+  
+
+* other future taxes or components.
+  
+  
+
+Rules should not be scattered in `if/else` statements throughout the system.
+
+
+
+The calculation must consider:
+
+Tax
+    +
+    Rule
+    +
+    Validity Period
+    +
+    Framework
+    +
+    Operation
+    +
+    Product/Service
+    +
+    Location
+    +
+    Calculation Base
+    +
+    Rate
+    +
+    Benefit/Exception
+21.5 Tax Validity
+-----------------
+
+Every relevant tax rule must support:
+
+
+
+* start date;
+  
+  
+
+* end date;
+  
+  
+
+* tax;
+  
+  
+
+* regime;
+  
+  
+
+* operation;
+  
+  
+
+* parameters/formula.
+  
+  
+
+Thus, old and new rules can coexist during the transition.
+
+21.6 Split Payment
+------------------
+
+The fiscal/financial engine must have an architecture prepared for Split Payment.
+
+
+
+The model must be able to represent:
+
+
+    Gross Value
+     ↓
+    Tax Components
+     ↓
+    Segregated/Withheld Value when applicable
+     ↓
+    Net Value to the receiver
+
+It must support:
+
+
+
+* calculation;
+  
+  
+
+* segregation;
+  
+  
+
+* integration with payment methods;
+  
+  
+
+* reconciliation;
+  
+  
+
+* divergence;
+  
+  
+
+* reversal;
+  
+  
+
+* traceability;
+  
+  
+
+* audit.
+  
+  
+
+The concrete implementation must be configurable according to legislation, regulation, validity period, and integration used.
+
+21.7 Fiscal Engine Components
+-----------------------------
+
+    FiscalEngine
+    ├── TaxRuleResolver
+    ├── TaxCalculator
+    ├── TaxValidator
+    ├── FiscalDocumentBuilder
+    ├── FiscalEventProcessor
+    ├── TaxTransitionResolver
+    └── SplitPaymentResolver
+
+21.8 Tax Tests
+--------------
+
+Scenarios must exist for:
+
+
+
+* previous regime;
+  
+  
+
+* transition;
+  
+  
+
+* CBS;
+  
+  
+
+* IBS;
+  
+  
+
+* coexistence of taxes;
+  
+  
+
+* change in validity period;
+  
+  
+
+* exceptions;
+  
+  
+
+* goods;
+  
+  
+
+* services;
+  
+  
+
+* returns;
+  
+  
+
+* cancellations;
+  
+  
+
+* contingency;
+  
+  
+
+* Split Payment;
+  
+  
+
+* divergences.
+  
+  
+22. SERVICES / WORK ORDERS (OS) / CMMS
+    ======================================
+
+Entities
+--------
+
+* OS (Work Order);
+  
+  
+
+* customer;
+  
+  
+
+* technician;
+  
+  
+
+* team;
+  
+  
+
+* schedule;
+  
+  
+
+* SLA;
+  
+  
+
+* asset;
+  
+  
+
+* material;
+  
+  
+
+* evidence;
+  
+  
+
+* technical report;
+  
+  
+
+* signature;
+  
+  
+
+* contract.
+  
+  
+
+Flow
+----
+
+    Opening
+    → Triage
+    → Scheduling
+    → Execution
+    → Materials
+    → Evidences
+    → Technical Report
+    → Approval
+    → Closing
+    → Financial
+
+Rules
+-----
+
+* SLA;
+  
+  
+
+* calendar;
+  
+  
+
+* priority;
+  
+  
+
+* team;
+  
+  
+
+* technician;
+  
+  
+
+* materials;
+  
+  
+
+* signature;
+  
+  
+
+* evidences;
+  
+  
+
+* cost;
+  
+  
+
+* invoicing.
+  
+  
+23. INDUSTRIAL / PCP / MRP
+    ==========================
+
+Entities
+--------
+
+* product;
+  
+  
+
+* BOM (Bill of Materials);
+  
+  
+
+* version;
+  
+  
+
+* operation;
+  
+  
+
+* resource;
+  
+  
+
+* machine;
+  
+  
+
+* operator;
+  
+  
+
+* production order (OP);
+  
+  
+
+* recording/entry;
+  
+  
+
+* consumption;
+  
+  
+
+* loss;
+  
+  
+
+* cost.
+  
+  
+
+Flow
+----
+
+    Demand
+    → MRP
+    → Planning
+    → OP (Production Order)
+    → Separation
+    → Production
+    → Recording
+    → Consumption
+    → Finished Goods
+    → Costs
+
+Rules
+-----
+
+* BOM versions;
+  
+  
+
+* capacity;
+  
+  
+
+* lead time;
+  
+  
+
+* stock;
+  
+  
+
+* losses;
+  
+  
+
+* scrap;
+  
+  
+
+* traceability;
+  
+  
+
+* cost.
+  
+  
+24. FLEET
+    =========
+
+Features:
+
+
+
+* vehicles;
+  
+  
+
+* drivers;
+  
+  
+
+* documents;
+  
+  
+
+* fueling;
+  
+  
+
+* maintenance;
+  
+  
+
+* tires;
+  
+  
+
+* trips;
+  
+  
+
+* costs;
+  
+  
+
+* fines;
+  
+  
+
+* alerts;
+  
+  
+
+* telemetry when integrated.
+  
+  
+
+Fiscal/logistical integrations when applicable.
+
+
+
+25. ASSETS / PATRIMONY
+    ======================
+
+Features:
+
+
+
+* registry;
+  
+  
+
+* patrimony;
+  
+  
+
+* location;
+  
+  
+
+* responsible person;
+  
+  
+
+* movement;
+  
+  
+
+* depreciation;
+  
+  
+
+* maintenance;
+  
+  
+
+* assignment term (cautela);
+  
+  
+
+* QR Code;
+  
+  
+
+* write-off;
+  
+  
+
+* history.
+  
+  
+26. PROJECTS
+    ============
+
+Entities:
+
+
+
+* project;
+  
+  
+
+* contract;
+  
+  
+
+* task;
+  
+  
+
+* team;
+  
+  
+
+* resource;
+  
+  
+
+* time entry;
+  
+  
+
+* cost;
+  
+  
+
+* budget;
+  
+  
+
+* delivery.
+  
+  
+
+Features:
+
+
+
+* schedule;
+  
+  
+
+* dependencies;
+  
+  
+
+* responsible parties;
+  
+  
+
+* hours;
+  
+  
+
+* costs;
+  
+  
+
+* budget;
+  
+  
+
+* margin;
+  
+  
+
+* progress;
+  
+  
+
+* invoicing.
+  
+  
+27. HR
+    ======
+
+Features:
+
+
+
+* employees;
+  
+  
+
+* job openings;
+  
+  
+
+* recruitment;
+  
+  
+
+* selection;
+  
+  
+
+* competencies;
+  
+  
+
+* evaluations;
+  
+  
+
+* IDP (Individual Development Plan);
+  
+  
+
+* training;
+  
+  
+
+* performance;
+  
+  
+
+* climate;
+  
+  
+
+* surveys;
+  
+  
+
+* Nine-Box.
+  
+  
+28. PAYROLL (DEPARTAMENTO PESSOAL)
+    ==================================
+
+Features:
+
+
+
+* registry;
+  
+  
+
+* work journey;
+  
+  
+
+* schedule;
+  
+  
+
+* time and attendance;
+  
+  
+
+* time bank;
+  
+  
+
+* vacations;
+  
+  
+
+* 13th salary;
+  
+  
+
+* benefits;
+  
+  
+
+* payslip;
+  
+  
+
+* severance;
+  
+  
+
+* legal integrations.
+  
+  
+
+Data must have restricted and audited access.
+
+
+
+29. EDMS (GED)
+    ==============
+
+Features:
+
+
+
+* documents;
+  
+  
+
+* folders;
+  
+  
+
+* versions;
+  
+  
+
+* categories;
+  
+  
+
+* permissions;
+  
+  
+
+* signature;
+  
+  
+
+* retention;
+  
+  
+
+* search;
+  
+  
+
+* links;
+  
+  
+
+* history.
+  
+  
+
+Files may be linked to:
+
+
+
+* customer;
+  
+  
+
+* supplier;
+  
+  
+
+* employee;
+  
+  
+
+* contract;
+  
+  
+
+* OS;
+  
+  
+
+* order;
+  
+  
+
+* fiscal document;
+  
+  
+
+* project;
+  
+  
+
+* asset.
+  
+  
+30. CUSTOMER PORTAL
+    ===================
+
+Allow:
+
+
+
+* login;
+  
+  
+
+* tracking;
+  
+  
+
+* approval;
+  
+  
+
+* documents;
+  
+  
+
+* OS;
+  
+  
+
+* quotes;
+  
+  
+
+* contracts;
+  
+  
+
+* financial;
+  
+  
+
+* payments;
+  
+  
+
+* PIX;
+  
+  
+
+* signature;
+  
+  
+
+* notifications.
+  
+  
+31. BI
+    ======
+
+Dashboards
+----------
+
+Each module must have its own indicators.
+
+
+
+Examples:
+
+
+
+### Commercial
+
+* sales;
+  
+  
+
+* conversion;
+  
+  
+
+* average ticket;
+  
+  
+
+* margin;
+  
+  
+
+* forecast.
+  
+  
+
+### Financial
+
+* invoicing;
+  
+  
+
+* receipt;
+  
+  
+
+* default rate;
+  
+  
+
+* cash flow;
+  
+  
+
+* margin.
+  
+  
+
+### Inventory
+
+* turnover;
+  
+  
+
+* coverage;
+  
+  
+
+* stockout;
+  
+  
+
+* physical count;
+  
+  
+
+* losses.
+  
+  
+
+### Services
+
+* OS;
+  
+  
+
+* SLA;
+  
+  
+
+* productivity;
+  
+  
+
+* cost;
+  
+  
+
+* recurrence.
+  
+  
+
+### Industrial
+
+* production;
+  
+  
+
+* OEE when applicable;
+  
+  
+
+* losses;
+  
+  
+
+* efficiency;
+  
+  
+
+* capacity.
+  
+  
+32. REPORTS
+    ===========
+
+Reports must have:
+
+
+
+* filters;
+  
+  
+
+* period;
+  
+  
+
+* company;
+  
+  
+
+* branch;
+  
+  
+
+* user;
+  
+  
+
+* export;
+  
+  
+
+* printing;
+  
+  
+
+* permissions;
+  
+  
+
+* scheduling when applicable.
+  
+  
+
+Formats:
+
+
+
+* PDF;
+  
+  
+
+* XLSX;
+  
+  
+
+* CSV;
+  
+  
+
+* JSON.
+  
+  
+33. API
+    =======
+
+Standard:
+
+
+    /api/v1
+
+Resources must have:
+
+
+
+* authentication;
+  
+  
+
+* authorization;
+  
+  
+
+* pagination;
+  
+  
+
+* filters;
+  
+  
+
+* sorting;
+  
+  
+
+* validation;
+  
+  
+
+* standardized errors;
+  
+  
+
+* rate limiting;
+  
+  
+
+* idempotency when necessary;
+  
+  
+
+* versioning.
+  
+  
+
+Response:
+
+
+    {
+      "data": {},
+      "meta": {},
+      "request_id": "..."
+    }
+
+Error:
+
+
+    {
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid data",
+        "details": {}
+      },
+      "request_id": "..."
+    }
+
+34. INTEGRATIONS
+    ================
+
+Every integration must have:
+
+
+
+* contract;
+  
+  
+
+* authentication;
+  
+  
+
+* credentials;
+  
+  
+
+* timeout;
+  
+  
+
+* retry;
+  
+  
+
+* backoff;
+  
+  
+
+* logs;
+  
+  
+
+* idempotency;
+  
+  
+
+* monitoring;
+  
+  
+
+* documentation;
+  
+  
+
+* versioning.
+  
+  
+
+Categories:
+
+
+
+* banks;
+  
+  
+
+* payments;
+  
+  
+
+* fiscal;
+  
+  
+
+* accounting;
+  
+  
+
+* e-commerce;
+  
+  
+
+* marketplaces;
+  
+  
+
+* logistics;
+  
+  
+
+* communication;
+  
+  
+
+* signature;
+  
+  
+
+* storage;
+  
+  
+
+* identity.
+  
+  
+35. EVENTS AND WEBHOOKS
+    =======================
+
+Internal events:
+
+
+
+* TenantCreated;
+  
+  
+
+* UserCreated;
+  
+  
+
+* OrderCreated;
+  
+  
+
+* OrderApproved;
+  
+  
+
+* StockMoved;
+  
+  
+
+* PaymentConfirmed;
+  
+  
+
+* InvoiceAuthorized;
+  
+  
+
+* ServiceOrderClosed;
+  
+  
+
+* SubscriptionChanged.
+  
+  
+
+External webhooks must have:
+
+
+
+* signature;
+  
+  
+
+* secret;
+  
+  
+
+* events;
+  
+  
+
+* attempts;
+  
+  
+
+* response;
+  
+  
+
+* retry;
+  
+  
+
+* logs.
+  
+  
+36. NOTIFICATIONS
+    =================
+
+Channels:
+
+
+
+* in-app;
+  
+  
+
+* email;
+  
+  
+
+* WhatsApp;
+  
+  
+
+* push.
+  
+  
+
+Features:
+
+
+
+* templates;
+  
+  
+
+* preferences;
+  
+  
+
+* queues;
+  
+  
+
+* retry;
+  
+  
+
+* history;
+  
+  
+
+* delivery status.
+  
+  
+37. PWA
+    =======
+
+Must allow:
+
+
+
+* installation;
+  
+  
+
+* responsiveness;
+  
+  
+
+* cache;
+  
+  
+
+* notifications;
+  
+  
+
+* mobile experience;
+  
+  
+
+* offline resources when applicable.
+  
+  
+38. OFFLINE
+    ===========
+
+Architecture prepared for:
+
+
+
+* IndexedDB;
+  
+  
+
+* local queue;
+  
+  
+
+* synchronization;
+  
+  
+
+* conflicts;
+  
+  
+
+* timestamps;
+  
+  
+
+* idempotency.
+  
+  
+
+Initial priority:
+
+
+
+* OS;
+  
+  
+
+* data collection;
+  
+  
+
+* reading;
+  
+  
+
+* entries;
+  
+  
+
+* evidences.
+  
+  
+39. REAL TIME
+    =============
+
+Possibilities:
+
+
+
+* SSE;
+  
+  
+
+* WebSocket when necessary;
+  
+  
+
+* notifications;
+  
+  
+
+* dashboards;
+  
+  
+
+* job status;
+  
+  
+
+* operational tracking.
+  
+  
+40. AI
+    ======
+
+AI will be a cross-cutting layer.
+
+
+
+Possibilities:
+
+
+
+* semantic search;
+  
+  
+
+* classification;
+  
+  
+
+* OCR;
+  
+  
+
+* extraction;
+  
+  
+
+* assistant;
+  
+  
+
+* financial analysis;
+  
+  
+
+* forecasting;
+  
+  
+
+* recommendation;
+  
+  
+
+* automation;
+  
+  
+
+* report generation;
+  
+  
+
+* anomaly detection.
+  
+  
+
+No critical automation shall execute an irreversible operation without an appropriate authorization policy.
+
+
+
+41. SAAS / BILLING
+    ==================
+
+Entities
+--------
+
+* plan;
+  
+  
+
+* subscription;
+  
+  
+
+* resource;
+  
+  
+
+* limit;
+  
+  
+
+* consumption;
+  
+  
+
+* charge;
+  
+  
+
+* invoice;
+  
+  
+
+* payment;
+  
+  
+
+* event.
+  
+  
+
+Plans
+-----
+
+The model must allow:
+
+
+
+* free/trial plan;
+  
+  
+
+* paid plans;
+  
+  
+
+* add-on modules;
+  
+  
+
+* additional users;
+  
+  
+
+* consumption;
+  
+  
+
+* storage;
+  
+  
+
+* Enterprise resources.
+  
+  
+
+Flow
+----
+
+    Registration
+    → Trial
+    → Plan
+    → Subscription
+    → Charge
+    → Payment
+    → Activation
+    → Consumption
+    → Renewal
+
+42. LIMITS PER PLAN
+    ===================
+
+Possible limits:
+
+
+
+* users;
+  
+  
+
+* companies;
+  
+  
+
+* branches;
+  
+  
+
+* storage;
+  
+  
+
+* documents;
+  
+  
+
+* APIs;
+  
+  
+
+* integrations;
+  
+  
+
+* volume;
+  
+  
+
+* modules;
+  
+  
+
+* automations.
+  
+  
+
+Limits must be configurable.
+
+
+
+43. DOWNGRADE / UPGRADE
+    =======================
+
+Upgrade:
+
+
+
+* immediate activation or according to policy;
+  
+  
+
+* proportional billing when applicable.
+  
+  
+
+Downgrade:
+
+
+
+* do not delete data;
+  
+  
+
+* preserve history;
+  
+  
+
+* block only new uses that exceed the plan.
+  
+  
+44. SECURITY
+    ============
+
+Requirements:
+
+
+
+* HTTPS;
+  
+  
+
+* secure secrets;
+  
+  
+
+* password hashing;
+  
+  
+
+* MFA;
+  
+  
+
+* RBAC;
+  
+  
+
+* rate limiting;
+  
+  
+
+* session protection;
+  
+  
+
+* audit;
+  
+  
+
+* tenant isolation;
+  
+  
+
+* input validation;
+  
+  
+
+* API protection;
+  
+  
+
+* security headers;
+  
+  
+
+* dependency management;
+  
+  
+
+* vulnerability analysis.
+  
+  
+45. LGPD (General Data Protection Law)
+    ======================================
+
+Structure must exist for:
+
+
+
+* purpose;
+  
+  
+
+* consent when applicable;
+  
+  
+
+* legal basis;
+  
+  
+
+* minimization;
+  
+  
+
+* retention;
+  
+  
+
+* anonymization;
+  
+  
+
+* export;
+  
+  
+
+* data subject request;
+  
+  
+
+* deletion when legally applicable;
+  
+  
+
+* audit;
+  
+  
+
+* access control.
+  
+  
+46. OBSERVABILITY
+    =================
+
+Metrics:
+
+
+
+* CPU;
+  
+  
+
+* memory;
+  
+  
+
+* latency;
+  
+  
+
+* errors;
+  
+  
+
+* database;
+  
+  
+
+* cache;
+  
+  
+
+* queues;
+  
+  
+
+* jobs;
+  
+  
+
+* storage;
+  
+  
+
+* integrations;
+  
+  
+
+* authentication;
+  
+  
+
+* consumption per tenant.
+  
+  
+
+Logs must have:
+
+
+
+* timestamp;
+  
+  
+
+* level;
+  
+  
+
+* service/module;
+  
+  
+
+* request ID;
+  
+  
+
+* correlation ID;
+  
+  
+
+* tenant;
+  
+  
+
+* user when applicable.
+  
+  
+47. INFRASTRUCTURE
+    ==================
+
+Environments:
+
+
+
+* development;
+  
+  
+
+* testing;
+  
+  
+
+* staging (homologation);
+  
+  
+
+* production.
+  
+  
+
+Components:
+
+
+
+* application;
+  
+  
+
+* database;
+  
+  
+
+* cache;
+  
+  
+
+* queues;
+  
+  
+
+* workers;
+  
+  
+
+* storage;
+  
+  
+
+* CDN when necessary;
+  
+  
+
+* monitoring.
+  
+  
+48. CI/CD
+    =========
+
+Pipeline:
+
+
+    Commit
+    → Lint
+    → Tests
+    → Build
+    → Security Scan
+    → Package
+    → Deploy
+    → Smoke Test
+    → Monitoring
+
+Must allow rollback.
+
+
+
+Migrations must be controlled.
+
+
+
+49. BACKUP
+    ==========
+
+Backup must include:
+
+
+
+* database;
+  
+  
+
+* files;
+  
+  
+
+* configurations;
+  
+  
+
+* metadata.
+  
+  
+
+Define:
+
+
+
+* frequency;
+  
+  
+
+* retention;
+  
+  
+
+* encryption;
+  
+  
+
+* storage;
+  
+  
+
+* restoration;
+  
+  
+
+* RPO;
+  
+  
+
+* RTO.
+  
+  
+
+Restoration must be tested periodically.
+
+
+
+50. DISASTER RECOVERY
+    =====================
+
+A plan must exist for:
+
+
+
+* server unavailability;
+  
+  
+
+* database failure;
+  
+  
+
+* storage loss;
+  
+  
+
+* corruption;
+  
+  
+
+* security incident;
+  
+  
+
+* deployment failure;
+  
+  
+
+* integration unavailability.
+  
+  
+51. SCALABILITY
+    ===============
+
+Prepare for:
+
+
+
+* multiple instances;
+  
+  
+
+* load balancer;
+  
+  
+
+* horizontal workers;
+  
+  
+
+* distributed cache;
+  
+  
+
+* scalable database;
+  
+  
+
+* external storage;
+  
+  
+
+* queues;
+  
+  
+
+* CDN.
+  
+  
+52. QA
+    ======
+
+Each feature must have:
+
+
+
+* unit test;
+  
+  
+
+* integration;
+  
+  
+
+* API;
+  
+  
+
+* authorization;
+  
+  
+
+* multitenant;
+  
+  
+
+* regression;
+  
+  
+
+* error;
+  
+  
+
+* concurrency when necessary;
+  
+  
+
+* staging (homologation).
+  
+  
+53. SECURITY TESTS
+    ==================
+
+Mandatory:
+
+
+
+* cross-access between tenants;
+  
+  
+
+* privilege escalation;
+  
+  
+
+* brute force;
+  
+  
+
+* session;
+  
+  
+
+* files;
+  
+  
+
+* APIs;
+  
+  
+
+* injection;
+  
+  
+
+* validations;
+  
+  
+
+* CSRF when applicable;
+  
+  
+
+* XSS;
+  
+  
+
+* permission control.
+  
+  
+54. LOAD TESTS
+    ==============
+
+Must evaluate:
+
+
+
+* login;
+  
+  
+
+* dashboard;
+  
+  
+
+* queries;
+  
+  
+
+* writes;
+  
+  
+
+* APIs;
+  
+  
+
+* jobs;
+  
+  
+
+* queues;
+  
+  
+
+* reports;
+  
+  
+
+* concurrent operations.
+  
+  
+55. HOMOLOGATION (STAGING)
+    ==========================
+
+Each module must have a staging environment.
+
+
+
+Flow:
+
+
+    Development
+    → QA
+    → Staging
+    → Approval
+    → Production
+
+56. ONBOARDING
+    ==============
+
+Flow:
+
+
+    Registration
+    → Verification
+    → Tenant
+    → Plan
+    → Company
+    → User
+    → Configuration
+    → Import
+    → Training
+    → Staging
+    → Activation
+
+57. DATA MIGRATION
+    ==================
+
+Must exist:
+
+
+
+* import;
+  
+  
+
+* mapping;
+  
+  
+
+* validation;
+  
+  
+
+* preview;
+  
+  
+
+* errors;
+  
+  
+
+* logs;
+  
+  
+
+* rollback when possible;
+  
+  
+
+* migration report.
+  
+  
+
+Possible sources:
+
+
+
+* Excel;
+  
+  
+
+* CSV;
+  
+  
+
+* APIs;
+  
+  
+
+* databases;
+  
+  
+
+* other ERPs.
+  
+  
+58. SUPPORT
+    ===========
+
+Must exist:
+
+
+
+* tickets;
+  
+  
+
+* priorities;
+  
+  
+
+* SLA;
+  
+  
+
+* categories;
+  
+  
+
+* assignees;
+  
+  
+
+* history;
+  
+  
+
+* knowledge base;
+  
+  
+
+* incidents;
+  
+  
+
+* problems;
+  
+  
+
+* changes.
+  
+  
+59. DOCUMENTATION
+    =================
+
+Mandatory documents:
+
+
+
+* architecture;
+  
+  
+
+* API;
+  
+  
+
+* database;
+  
+  
+
+* modules;
+  
+  
+
+* deployment;
+  
+  
+
+* configuration;
+  
+  
+
+* security;
+  
+  
+
+* backup;
+  
+  
+
+* recovery;
+  
+  
+
+* user;
+  
+  
+
+* administrator;
+  
+  
+
+* support.
+  
+  
+60. COMMERCIAL MODEL
+    ====================
+
+Scalle must allow commercialization:
+
+
+
+* per plan;
+  
+  
+
+* per user;
+  
+  
+
+* per company;
+  
+  
+
+* per module;
+  
+  
+
+* per consumption;
+  
+  
+
+* per storage;
+  
+  
+
+* Enterprise under contract.
+  
+  
+
+The billing architecture must be independent of the business modules.
+
+
+
+61. 100% CRITERION
+    ==================
+
+Scalle will only be considered 100% commercial when:
+
+
+
+* requirements defined;
+  
+  
+
+* architecture validated;
+  
+  
+
+* Core functional;
+  
+  
+
+* multitenant validated;
+  
+  
+
+* security validated;
+  
+  
+
+* master registries complete;
+  
+  
+
+* operational modules;
+  
+  
+
+* critical integrations;
+  
+  
+
+* applicable fiscal homologated;
+  
+  
+
+* financial validated;
+  
+  
+
+* QA completed;
+  
+  
+
+* backup validated;
+  
+  
+
+* restoration validated;
+  
+  
+
+* monitoring active;
+  
+  
+
+* documentation complete;
+  
+  
+
+* onboarding ready;
+  
+  
+
+* support ready;
+  
+  
+
+* billing ready;
+  
+  
+
+* production stable;
+  
+  
+
+* commercial operation validated.
+  
+  
+62. DEFINITION OF DONE
+    ======================
+
+A feature can only be marked as done when:
+
+
+
+1. requirement defined;
+   
+   
+
+2. business rule defined;
+   
+   
+
+3. UX defined;
+   
+   
+
+4. database defined;
+   
+   
+
+5. backend implemented;
+   
+   
+
+6. frontend implemented;
+   
+   
+
+7. permissions implemented;
+   
+   
+
+8. audit defined;
+   
+   
+
+9. integrations implemented;
+   
+   
+
+10. tests passed;
+    
+    
+
+11. documentation updated;
+    
+    
+
+12. staging approved;
+    
+    
+
+13. deployment executed;
+    
+    
+
+14. monitoring available.
+    
+    
+
+63. 0% → 100% MATRIX
+    ====================
+
+| **Domain**    | **Specification** | **Design** | **Development** | **QA** | **Staging** | **Production** | **Commercial** |
+| ------------- | ----------------- | ---------- | --------------- | ------ | ----------- | -------------- | -------------- |
+| Core          | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Identity      | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Organization  | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Registries    | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Workflow      | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| CRM           | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Commercial    | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Purchasing    | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Inventory/WMS | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Financial     | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Fiscal        | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Services      | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Industrial    | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Fleet         | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Assets        | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Projects      | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| HR            | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Payroll       | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| EDMS          | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Portal        | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| BI            | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| API           | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Integrations  | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| SaaS/Billing  | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Security      | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| LGPD          | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| DevOps        | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| QA            | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Deployment    | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+| Support       | ⬜                 | ⬜          | ⬜               | ⬜      | ⬜           | ⬜              | ⬜              |
+
+64. OFFICIAL BUILD ORDER
+    ========================
+
+The recommended order is:
+
+
+
+1. Architecture and standards;
+   
+   
+
+2. Core;
+   
+   
+
+3. Multi-tenancy;
+   
+   
+
+4. Identity;
+   
+   
+
+5. Authorization;
+   
+   
+
+6. Organization;
+   
+   
+
+7. Registries;
+   
+   
+
+8. Configurations;
+   
+   
+
+9. Workflow;
+   
+   
+
+10. CRM;
+    
+    
+
+11. Commercial;
+    
+    
+
+12. Purchasing;
+    
+    
+
+13. Inventory;
+    
+    
+
+14. Financial;
+    
+    
+
+15. Fiscal;
+    
+    
+
+16. Services;
+    
+    
+
+17. Industrial;
+    
+    
+
+18. Fleet;
+    
+    
+
+19. Assets;
+    
+    
+
+20. Projects;
+    
+    
+
+21. HR;
+    
+    
+
+22. Payroll;
+    
+    
+
+23. EDMS;
+    
+    
+
+24. Portal;
+    
+    
+
+25. BI;
+    
+    
+
+26. APIs;
+    
+    
+
+27. Integrations;
+    
+    
+
+28. SaaS/Billing;
+    
+    
+
+29. Security/LGPD;
+    
+    
+
+30. DevOps;
+    
+    
+
+31. QA;
+    
+    
+
+32. Deployment;
+    
+    
+
+33. Support;
+    
+    
+
+34. PWA/Offline;
+    
+    
+
+35. Real time;
+    
+    
+
+36. AI.
+    
+    
+
+65. DOCUMENT GOVERNANCE RULE
+    ============================
+
+Any relevant change must record:
+
+
+
+* requirement;
+  
+  
+
+* reason;
+  
+  
+
+* impact;
+  
+  
+
+* affected modules;
+  
+  
+
+* affected database;
+  
+  
+
+* affected APIs;
+  
+  
+
+* affected tests;
+  
+  
+
+* affected documentation.
+  
+  
+
+No critical rule change should occur only in the code.
+
+
+
+66. MANDATORY ARCHITECTURAL SHIELDINGS
+    ======================================
+
+These rules apply transversely across all modules.
+
+66.1 Isolation
+--------------
+
+**No tenant data can be accessed without a valid context.**
+
+66.2 Cross-Domain Communication
+-------------------------------
+
+**NEVER query tables from another domain directly via SQL.**
+
+
+
+The database is not an integration contract between modules.
+
+66.3 Configuration
+------------------
+
+Configurable business values must be data, not schema changes.
+
+66.4 Fiscal
+-----------
+
+Taxation must be:
+
+
+
+* decoupled;
+  
+  
+
+* configurable/parameterized;
+  
+  
+
+* versionable;
+  
+  
+
+* validity-driven;
+  
+  
+
+* prepared for the coexistence of models;
+  
+  
+
+* prepared for CBS/IBS;
+  
+  
+
+* prepared for Split Payment;
+  
+  
+
+* testable independently from consuming modules.
+  
+  
+
+66.5 Shielding Checklist
+------------------------
+
+* [ ] `GlobalScopeTenant` applied to multi-tenant Models.
+  
+  
+
+* [ ] Isolation tests between tenants.
+  
+  
+
+* [ ] No direct SQL access to tables from another domain.
+  
+  
+
+* [ ] Communication via DTOs/interfaces/services/events.
+  
+  
+
+* [ ] Configurable lists modeled as domain tables.
+  
+  
+
+* [ ] Adding parameters does not require schema migration.
+  
+  
+
+* [ ] Tax rules have validity periods.
+  
+  
+
+* [ ] Tax rules support tax coexistence.
+  
+  
+
+* [ ] CBS/IBS foreseen in the architecture.
+  
+  
+
+* [ ] Split Payment foreseen in the architecture.
+  
+  
+
+* [ ] Jobs preserve tenant.
+  
+  
+
+* [ ] Cache preserves tenant.
+  
+  
+
+* [ ] Storage preserves tenant.
+  
+  
+
+* [ ] APIs do not trust `tenant_id` sent by the client.
+  
+  
+67. CONCLUSION
+    ==============
+
+This document represents the definition of Scalle ERP as a product.
+
+
+
+The starting point is:
+
+
+
+> **0%**
+
+The final objective is:
+
+
+
+> **Commercial SaaS ERP, multi-tenant, modular, secure, scalable, and capable of serving companies of any size and segment.**
+
+The project shall not be considered complete simply because all screens exist.
+
+
+
+**100% means an operational, tested, secure, documented, deployable, supportable, and marketable product.**
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\README.md
+========================================
+
+<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+
+<p align="center">
+<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+</p>
+
+## About Laravel
+
+Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+
+- [Simple, fast routing engine](https://laravel.com/docs/routing).
+- [Powerful dependency injection container](https://laravel.com/docs/container).
+- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
+- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
+- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
+- [Robust background job processing](https://laravel.com/docs/queues).
+- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+
+Laravel is accessible, powerful, and provides tools required for large, robust applications.
+
+## Learning Laravel
+
+Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+
+In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+
+You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+
+## Agentic Development
+
+Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+
+```bash
+composer require laravel/boost --dev
+
+php artisan boost:install
+```
+
+Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+
+## Contributing
+
+Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+
+## Code of Conduct
+
+In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+
+## Security Vulnerabilities
+
+If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+
+## License
+
+The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+#   s c a l l e - e r p - g e m i n i  
+ 
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\nfe_teste.xml
 ========================================
 
@@ -17489,6 +24271,70 @@ class FrotaVeiculoController extends Controller
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\GedController.php
+========================================
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\GedDocumento;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
+
+class GedController extends Controller
+{
+    /**
+     * Processa o upload blindando fisicamente o arquivo na pasta do Tenant.
+     */
+    public function upload(Request $request): JsonResponse
+    {
+        $request->validate([
+            'arquivo' => 'required|file|max:20480', // Limite de 20MB
+            'pasta_id' => 'nullable|uuid|exists:ged_pastas,id',
+            'entidade_type' => 'nullable|string', // Ex: App\Models\Tarefa
+            'entidade_id' => 'nullable|uuid'
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $file = $request->file('arquivo');
+
+        $nomeOriginal = $file->getClientOriginalName();
+        $extensao = $file->getClientOriginalExtension();
+        $tamanho = $file->getSize();
+        $hash = hash_file('sha256', $file->getRealPath());
+
+        // Isolamento físico no disco (ou bucket S3) usando o ID do Inquilino
+        $caminhoFisico = $file->storeAs(
+            "ged/{$tenantId}/" . date('Y/m'),
+            Str::uuid() . '.' . $extensao,
+            'public'
+        );
+
+        $documento = GedDocumento::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'pasta_id' => $request->pasta_id,
+            'usuario_id' => $request->user()->id,
+            'nome_original' => $nomeOriginal,
+            'caminho_s3' => $caminhoFisico,
+            'extensao' => $extensao,
+            'tamanho_bytes' => $tamanho,
+            'hash_arquivo' => $hash,
+            'entidade_vinculada_type' => $request->entidade_type,
+            'entidade_vinculada_id' => $request->entidade_id,
+        ]);
+
+        return response()->json(['data' => $documento], 201);
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\HoleriteController.php
 ========================================
 
@@ -18458,31 +25304,42 @@ class ItemController extends Controller
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\KanbanController.php
 ========================================
 
-<php
+<?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Projetos\Projeto;
+use App\Models\Projeto;
+use App\Models\Tarefa;
+use App\Models\Etapa;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
 
 class KanbanController extends Controller
 {
     /**
      * Retorna o quadro completo com Etapas e Tarefas aninhadas.
      */
-    public function board(Request $request, string $projetoId): JsonResponse
+   public function board(Request $request, string $projetoId): JsonResponse
     {
-        $user = $request->user();
+        $usuarioId = $request->user()->id;
 
-        // O GlobalScopeTenant garante que o usuário só veja projetos do seu tenant[cite: 5]
-        $projeto = Projeto::with(['etapas.tarefas' => function($query) {
-            $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
+        $projeto = Projeto::with(['etapas.tarefas' => function($query) use ($usuarioId) {
+            $query->orderBy('prioridade', 'desc')
+                  ->orderBy('created_at', 'desc')
+                  ->with([
+                      'checklists',
+                      'dependencias',
+                      'anexos', // Prepara o terreno para o GED
+                      'apontamentos' => function($q) use ($usuarioId) {
+                          $q->whereNull('fim')->where('usuario_id', $usuarioId);
+                      }
+                  ]);
         }])->findOrFail($projetoId);
 
         return response()->json(['data' => $projeto]);
     }
-
     /**
      * Move uma tarefa dinamicamente entre as etapas (Drag and Drop).
      */
@@ -18492,10 +25349,94 @@ class KanbanController extends Controller
             'nova_etapa_id' => 'required|uuid|exists:prj_etapas,id'
         ]);
 
-        $tarefa = \App\Models\Projetos\Tarefa::findOrFail($tarefaId);
+        $tarefa = Tarefa::findOrFail($tarefaId);
         $tarefa->update(['etapa_id' => $validated['nova_etapa_id']]);
 
         return response()->json(['message' => 'Tarefa movida com sucesso!', 'tarefa' => $tarefa]);
+    }
+
+    /**
+     * Adiciona uma nova tarefa ao final da coluna do Kanban.
+     */
+    public function adicionarTarefa(Request $request, string $etapaId): JsonResponse {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:200',
+            'prioridade' => 'nullable|string|in:BAIXA,MEDIA,ALTA,CRITICA'
+        ]);
+
+        $etapa = Etapa::findOrFail($etapaId);
+
+        // Converte a string do React para o integer que o banco espera
+        $prioridadeInt = match ($validated['prioridade'] ?? 'MEDIA') {
+            'CRITICA' => 1,
+            'ALTA' => 2,
+            'MEDIA' => 3,
+            'BAIXA' => 4,
+            default => 3,
+        };
+
+        $tarefa = Tarefa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $request->user()->tenant_id,
+            'projeto_id' => $etapa->projeto_id,
+            'etapa_id' => $etapa->id,
+            'titulo' => $validated['titulo'],
+            'prioridade' => $prioridadeInt,
+        ]);
+
+        return response()->json(['data' => $tarefa], 201);
+    }
+    /**
+     * ==========================================
+     * MICRO-GESTÃO DO CARD (Enterprise)
+     * ==========================================
+     */
+
+    public function adicionarChecklist(Request $request, string $tarefaId): JsonResponse
+    {
+        $validated = $request->validate([
+            'descricao' => 'required|string|max:255'
+        ]);
+
+        $item = PrjTarefaChecklist::create([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'tarefa_id' => $tarefaId,
+            'descricao' => $validated['descricao'],
+            'concluido' => false,
+        ]);
+
+        return response()->json(['data' => $item], 201);
+    }
+
+    public function toggleChecklist(Request $request, string $checklistId): JsonResponse
+    {
+        $item = PrjTarefaChecklist::findOrFail($checklistId);
+        $item->concluido = !$item->concluido;
+        $item->save();
+
+        return response()->json(['data' => $item]);
+    }
+
+    public function adicionarDependencia(Request $request, string $tarefaId): JsonResponse
+    {
+        $validated = $request->validate([
+            'depende_de_id' => 'required|uuid|exists:prj_tarefas,id'
+        ]);
+
+        $tarefa = Tarefa::findOrFail($tarefaId);
+
+        // Evita duplicidade usando o syncWithoutDetaching
+        $tarefa->dependencias()->syncWithoutDetaching([$validated['depende_de_id']]);
+
+        return response()->json(['message' => 'Dependência adicionada com sucesso.']);
+    }
+
+    public function removerDependencia(Request $request, string $tarefaId, string $dependeDeId): JsonResponse
+    {
+        $tarefa = Tarefa::findOrFail($tarefaId);
+        $tarefa->dependencias()->detach($dependeDeId);
+
+        return response()->json(['message' => 'Dependência removida com sucesso.']);
     }
 }
 
@@ -20415,6 +27356,117 @@ class ProjetoController extends Controller
                 'projeto' => $projeto->load('etapas')
             ]
         ], 201);
+    }
+    public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse {
+        $validated = $request->validate(['orcamento_previsto' => 'required|numeric|min:0']);
+        $projeto = Projeto::where('tenant_id', $request->user()->tenant_id)->findOrFail($projetoId);
+        $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
+        return response()->json(['data' => $projeto]);
+    }
+}
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ProjetoGestaoController.php
+========================================
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\ProjetoEquipe;
+use App\Models\ProjetoCusto;
+use App\Models\Entregavel;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class ProjetoGestaoController extends Controller
+{
+    // === EQUIPE ===
+    public function listarEquipe(Request $request, string $projetoId): JsonResponse {
+        $tenantId = $request->user()->tenant_id;
+        $equipe = ProjetoEquipe::where('prj_projeto_equipe.tenant_id', $tenantId) // <-- Correção aqui
+            ->where('prj_projeto_equipe.projeto_id', $projetoId) // <-- Correção aqui
+            ->leftJoin('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
+            ->select('prj_projeto_equipe.*', 'users.name as nome_usuario')
+            ->get();
+        return response()->json(['data' => $equipe]);
+    }
+
+    public function adicionarEquipe(Request $request, string $projetoId): JsonResponse {
+        $validated = $request->validate([
+            'usuario_id' => 'required|uuid|exists:users,id',
+            'custo_hora' => 'required|numeric|min:0'
+        ]);
+
+        $membro = ProjetoEquipe::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $request->user()->tenant_id,
+            'projeto_id' => $projetoId,
+            'usuario_id' => $validated['usuario_id'],
+            'custo_hora' => $validated['custo_hora']
+        ]);
+        return response()->json(['data' => $membro], 201);
+    }
+
+    // === CUSTOS ===
+    public function listarCustos(Request $request, string $projetoId): JsonResponse {
+        $tenantId = $request->user()->tenant_id;
+        $custos = ProjetoCusto::where('tenant_id', $tenantId)
+            ->where('projeto_id', $projetoId)
+            ->orderByDesc('data_custo')
+            ->get();
+        return response()->json(['data' => $custos]);
+    }
+
+    public function adicionarCusto(Request $request, string $projetoId): JsonResponse {
+        $validated = $request->validate([
+            'descricao' => 'required|string',
+            'valor' => 'required|numeric|min:0.01',
+            'data_custo' => 'required|date'
+        ]);
+
+        $custo = ProjetoCusto::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $request->user()->tenant_id,
+            'projeto_id' => $projetoId,
+            'valor' => $validated['valor'],
+            'data_custo' => $validated['data_custo'],
+            'descricao' => $validated['descricao']
+        ]);
+
+        // Atualizando o custo total real do projeto
+        DB::statement("UPDATE prj_projetos SET custo_total_real = custo_total_real + ? WHERE id = ?", [$validated['valor'], $projetoId]);
+
+        return response()->json(['data' => $custo], 201);
+    }
+
+    // === ENTREGÁVEIS ===
+    public function listarEntregaveis(Request $request, string $projetoId): JsonResponse {
+        $tenantId = $request->user()->tenant_id;
+        $entregaveis = Entregavel::where('tenant_id', $tenantId)->where('projeto_id', $projetoId)->get();
+        return response()->json(['data' => $entregaveis]);
+    }
+    public function adicionarEntregavel(Request $request, string $projetoId): JsonResponse {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:200',
+            'data_prevista' => 'nullable|date',
+            'valor_faturamento' => 'required|numeric|min:0'
+        ]);
+
+        $entregavel = \App\Models\Entregavel::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $request->user()->tenant_id,
+            'projeto_id' => $projetoId,
+            'titulo' => $validated['titulo'],
+            'data_prevista' => $validated['data_prevista'] ?? null,
+            'valor_faturamento' => $validated['valor_faturamento']
+        ]);
+        return response()->json(['data' => $entregavel], 201);
     }
 }
 
@@ -24872,6 +31924,45 @@ class PontoRegistro extends Model
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PrjTarefaChecklist.php
+========================================
+
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class PrjTarefaChecklist extends Model
+{
+    protected $table = 'prj_tarefa_checklists';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tarefa_id',
+        'descricao',
+        'concluido',
+    ];
+
+    protected $casts = [
+        'concluido' => 'boolean',
+    ];
+
+    /**
+     * Retorna a tarefa à qual este item de checklist pertence.
+     */
+    public function tarefa(): BelongsTo
+    {
+        return $this->belongsTo(Tarefa::class, 'tarefa_id');
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Projeto.php
 ========================================
 
@@ -25185,6 +32276,22 @@ class Tarefa extends Model
     public function apontamentos()
     {
         return $this->hasMany(Apontamento::class, 'tarefa_id');
+    }
+    public function checklists()
+    {
+        return $this->hasMany(PrjTarefaChecklist::class, 'tarefa_id');
+    }
+
+    public function dependencias()
+    {
+        // Tarefas que precisam ser terminadas ANTES desta
+        return $this->belongsToMany(Tarefa::class, 'prj_tarefa_dependencias', 'tarefa_id', 'depende_de_id');
+    }
+
+    public function anexos()
+    {
+        // Ligação polimórfica com o GED
+        return $this->morphMany(GedDocumento::class, 'entidade_vinculada');
     }
 }
 
@@ -33688,6 +40795,72 @@ return new class extends Migration {
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_19_145257_create_prj_tarefa_checklists_table.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('prj_tarefa_checklists', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('tarefa_id')->index();
+            $table->string('descricao', 255);
+            $table->boolean('concluido')->default(false);
+            $table->timestamps();
+
+            $table->foreign('tarefa_id')->references('id')->on('prj_tarefas')->onDelete('cascade');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('prj_tarefa_checklists');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_19_150402_create_prj_tarefa_dependencias_table.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('prj_tarefa_dependencias', function (Blueprint $table) {
+            $table->uuid('tarefa_id')->index(); // Tarefa que está bloqueada
+            $table->uuid('depende_de_id')->index(); // Tarefa que precisa ser concluída primeiro
+
+            $table->foreign('tarefa_id')->references('id')->on('prj_tarefas')->onDelete('cascade');
+            $table->foreign('depende_de_id')->references('id')->on('prj_tarefas')->onDelete('cascade');
+
+            $table->primary(['tarefa_id', 'depende_de_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('prj_tarefa_dependencias');
+    }
+};
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\DatabaseSeeder.php
 ========================================
 
@@ -34737,6 +41910,7 @@ use App\Http\Controllers\Api\FrotaOperacaoController;
 use App\Http\Controllers\Api\KanbanController;
 use App\Http\Controllers\Api\ProjetoController;
 use App\Http\Controllers\Api\TimesheetController;
+use App\Http\Controllers\Api\ProjetoGestaoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -35063,7 +42237,31 @@ Route::prefix('projetos')->group(function () {
     // Timesheet
     Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
     Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);
+    // Rotas de Gestão Interna (Abas)
+    Route::get('/{projetoId}/equipe', [ProjetoGestaoController::class, 'listarEquipe']);
+    Route::post('/{projetoId}/equipe', [ProjetoGestaoController::class, 'adicionarEquipe']);
+
+    Route::get('/{projetoId}/custos', [ProjetoGestaoController::class, 'listarCustos']);
+    Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
+
+    Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
+    Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
+    Route::put('/{projetoId}/orcamento', [\App\Http\Controllers\Api\ProjetoController::class, 'atualizarOrcamento']);
+    Route::post('/etapas/{etapaId}/tarefas', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarTarefa']);
+    // Micro-Gestão da Tarefa (Checklists e Blockers)
+        Route::post('/tarefas/{tarefaId}/checklists', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarChecklist']);
+        Route::patch('/tarefas/checklists/{checklistId}/toggle', [\App\Http\Controllers\Api\KanbanController::class, 'toggleChecklist']);
+
+        Route::post('/tarefas/{tarefaId}/dependencias', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarDependencia']);
+        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [\App\Http\Controllers\Api\KanbanController::class, 'removerDependencia']);
 });
+
+    // ==========================================
+    // MÓDULO GED (Cofre Digital)
+    // ==========================================
+    Route::prefix('ged')->group(function () {
+        Route::post('/upload', [\App\Http\Controllers\Api\GedController::class, 'upload']);
+    });
 });
 
 
