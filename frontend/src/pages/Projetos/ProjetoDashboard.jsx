@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export default function ProjetoDashboard() {
     const { id: projetoId } = useParams();
@@ -10,7 +11,6 @@ export default function ProjetoDashboard() {
     const [projeto, setProjeto] = useState(null);
     const [activeTab, setActiveTab] = useState('board');
     const [loading, setLoading] = useState(true);
-    const [draggedTarefa, setDraggedTarefa] = useState(null);
 
     useEffect(() => {
         if (projetoId) carregarProjeto();
@@ -46,37 +46,49 @@ export default function ProjetoDashboard() {
         } catch (error) { alert("Erro ao criar tarefa."); }
     };
 
-    const handleDragStart = (e, tarefa) => {
-        setDraggedTarefa(tarefa);
-        e.dataTransfer.effectAllowed = "move";
-    };
+    const handleDragEnd = async (result) => {
+        const { destination, source, draggableId } = result;
 
-    const handleDragOver = (e) => e.preventDefault();
-
-    const handleDrop = async (e, novaEtapaId) => {
-        e.preventDefault();
-        if (!draggedTarefa || draggedTarefa.etapa_id === novaEtapaId) return;
+        if (!destination) return;
+        if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
         const projetoAntigo = { ...projeto };
-        const novasEtapas = projeto.etapas.map(etapa => {
-            if (etapa.id === draggedTarefa.etapa_id) {
-                return { ...etapa, tarefas: etapa.tarefas.filter(t => t.id !== draggedTarefa.id) };
-            }
-            if (etapa.id === novaEtapaId) {
-                return { ...etapa, tarefas: [{ ...draggedTarefa, etapa_id: novaEtapaId }, ...etapa.tarefas] };
-            }
-            return etapa;
-        });
+        const novasEtapas = [...projeto.etapas];
 
-        setProjeto({ ...projeto, etapas: novasEtapas });
+        const etapaOrigemIndex = novasEtapas.findIndex(e => String(e.id) === source.droppableId);
+        const etapaDestinoIndex = novasEtapas.findIndex(e => String(e.id) === destination.droppableId);
 
-        try {
-            await api.patch(`/projetos/tarefas/${draggedTarefa.id}/mover`, { nova_etapa_id: novaEtapaId });
-        } catch (error) {
-            setProjeto(projetoAntigo);
-            alert("Erro ao mover a tarefa.");
+        const etapaOrigem = { ...novasEtapas[etapaOrigemIndex] };
+        const etapaDestino = source.droppableId === destination.droppableId ? etapaOrigem : { ...novasEtapas[etapaDestinoIndex] };
+
+        const tarefasOrigem = [...(etapaOrigem.tarefas || [])];
+        const [tarefaMovida] = tarefasOrigem.splice(source.index, 1);
+
+        if (source.droppableId === destination.droppableId) {
+            tarefasOrigem.splice(destination.index, 0, tarefaMovida);
+            etapaOrigem.tarefas = tarefasOrigem;
+            novasEtapas[etapaOrigemIndex] = etapaOrigem;
+            setProjeto({ ...projeto, etapas: novasEtapas });
+            // Se for estar salvando a ordem exata no banco no futuro, o endpoint entra aqui
+        } else {
+            const tarefasDestino = [...(etapaDestino.tarefas || [])];
+            tarefasDestino.splice(destination.index, 0, { ...tarefaMovida, etapa_id: destination.droppableId });
+
+            etapaOrigem.tarefas = tarefasOrigem;
+            etapaDestino.tarefas = tarefasDestino;
+
+            novasEtapas[etapaOrigemIndex] = etapaOrigem;
+            novasEtapas[etapaDestinoIndex] = etapaDestino;
+
+            setProjeto({ ...projeto, etapas: novasEtapas });
+
+            try {
+                await api.patch(`/projetos/tarefas/${draggableId}/mover`, { nova_etapa_id: destination.droppableId });
+            } catch (error) {
+                setProjeto(projetoAntigo);
+                alert("Erro ao estar movendo a tarefa.");
+            }
         }
-        setDraggedTarefa(null);
     };
 
     const toggleTimer = async (tarefa, isRunning) => {
@@ -90,7 +102,7 @@ export default function ProjetoDashboard() {
             }
             carregarProjeto();
         } catch (error) {
-            alert('Falha ao processar o apontamento de horas.');
+            alert('Falha ao estar processando o apontamento de horas.');
         }
     };
 
@@ -143,64 +155,89 @@ export default function ProjetoDashboard() {
             </header>
 
             {activeTab === 'board' && (
-                <div className="flex space-x-4 overflow-x-auto h-full pb-4 items-start">
-                    {projeto.etapas?.map(etapa => (
-                        <div
-                            key={etapa.id}
-                            className="bg-slate-900 border border-slate-800 rounded-xl min-w-[320px] max-w-[320px] flex flex-col max-h-[75vh]"
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, etapa.id)}
-                        >
-                            <div className="p-3 font-bold text-slate-100 rounded-t-xl flex justify-between items-center border-b border-slate-800 bg-slate-950/40">
-                                <div className="flex items-center gap-2">
-                                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#3b82f6' }}></span>
-                                    {etapa.nome}
-                                </div>
-                                <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
-                                    {etapa.tarefas?.length || 0}
-                                </span>
-                            </div>
-                            <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[150px]">
-                                {etapa.tarefas?.map(tarefa => (
-                                    <div
-                                        key={tarefa.id} draggable onDragStart={(e) => handleDragStart(e, tarefa)}
-                                        className="bg-slate-950 p-4 rounded-xl border border-slate-800 cursor-grab hover:border-indigo-500/50 transition-colors relative group"
-                                        style={{ borderLeftWidth: '4px', borderLeftColor: etapa.cor_hex || '#3b82f6' }}
-                                    >
-                                        <h3 className="font-semibold text-slate-200 text-sm">{tarefa.titulo}</h3>
-                                        <div className="mt-4 flex justify-between items-center">
-                                            <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 border border-slate-700 rounded font-mono">
-                                                Prio: {tarefa.prioridade}
-                                            </span>
-                                            {(() => {
-                                                const isRunning = tarefa.apontamentos && tarefa.apontamentos.length > 0;
-                                                return (
-                                                    <button
-                                                        onClick={() => toggleTimer(tarefa, isRunning)}
-                                                        className={`flex items-center justify-center w-8 h-8 rounded-lg border transition shadow-md cursor-pointer ${
-                                                            isRunning
-                                                            ? 'bg-rose-950/60 border-rose-600 text-rose-400 animate-pulse'
-                                                            : 'bg-emerald-950/40 border-emerald-800 text-emerald-400 hover:bg-emerald-900'
-                                                        }`}
-                                                        title={isRunning ? "Parar Cronômetro" : "Iniciar Cronômetro"}
-                                                    >
-                                                        {isRunning ? '⏹' : '▶'}
-                                                    </button>
-                                                );
-                                            })()}
-                                        </div>
+                <DragDropContext onDragEnd={handleDragEnd}>
+                    <div className="flex space-x-4 overflow-x-auto h-full pb-4 items-start">
+                        {projeto.etapas?.map(etapa => (
+                            <div
+                                key={etapa.id}
+                                className="bg-slate-900 border border-slate-800 rounded-xl min-w-[320px] max-w-[320px] flex flex-col max-h-[75vh]"
+                            >
+                                <div className="p-3 font-bold text-slate-100 rounded-t-xl flex justify-between items-center border-b border-slate-800 bg-slate-950/40">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#3b82f6' }}></span>
+                                        {etapa.nome}
                                     </div>
-                                ))}
-                                <button
-                                    onClick={() => adicionarTarefa(etapa.id)}
-                                    className="w-full py-2 rounded-lg border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-xs font-bold"
-                                >
-                                    + Nova Tarefa
-                                </button>
+                                    <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
+                                        {etapa.tarefas?.length || 0}
+                                    </span>
+                                </div>
+
+                                <Droppable droppableId={String(etapa.id)}>
+                                    {(provided, snapshot) => (
+                                        <div
+                                            ref={provided.innerRef}
+                                            {...provided.droppableProps}
+                                            className={`p-3 flex-1 overflow-y-auto space-y-3 min-h-[150px] transition-colors ${snapshot.isDraggingOver ? 'bg-slate-800/30' : ''}`}
+                                        >
+                                            {etapa.tarefas?.map((tarefa, index) => (
+                                                <Draggable key={tarefa.id} draggableId={String(tarefa.id)} index={index}>
+                                                    {(provided, snapshot) => (
+                                                        <div
+                                                            ref={provided.innerRef}
+                                                            {...provided.draggableProps}
+                                                            {...provided.dragHandleProps}
+                                                            className={`bg-slate-950 p-4 rounded-xl border relative group transition-shadow ${
+                                                                snapshot.isDragging
+                                                                ? 'border-indigo-500 shadow-xl shadow-indigo-500/20 z-50'
+                                                                : 'border-slate-800 hover:border-indigo-500/50'
+                                                            }`}
+                                                            style={{
+                                                                ...provided.draggableProps.style,
+                                                                borderLeftWidth: '4px',
+                                                                borderLeftColor: etapa.cor_hex || '#3b82f6'
+                                                            }}
+                                                        >
+                                                            <h3 className="font-semibold text-slate-200 text-sm">{tarefa.titulo}</h3>
+                                                            <div className="mt-4 flex justify-between items-center">
+                                                                <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 border border-slate-700 rounded font-mono">
+                                                                    Prio: {tarefa.prioridade}
+                                                                </span>
+                                                                {(() => {
+                                                                    const isRunning = tarefa.apontamentos && tarefa.apontamentos.length > 0;
+                                                                    return (
+                                                                        <button
+                                                                            onClick={() => toggleTimer(tarefa, isRunning)}
+                                                                            className={`flex items-center justify-center w-8 h-8 rounded-lg border transition shadow-md cursor-pointer ${
+                                                                                isRunning
+                                                                                ? 'bg-rose-950/60 border-rose-600 text-rose-400 animate-pulse'
+                                                                                : 'bg-emerald-950/40 border-emerald-800 text-emerald-400 hover:bg-emerald-900'
+                                                                            }`}
+                                                                            title={isRunning ? "Parar Cronômetro" : "Iniciar Cronômetro"}
+                                                                        >
+                                                                            {isRunning ? '⏹' : '▶'}
+                                                                        </button>
+                                                                    );
+                                                                })()}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </Draggable>
+                                            ))}
+                                            {provided.placeholder}
+
+                                            <button
+                                                onClick={() => adicionarTarefa(etapa.id)}
+                                                className="w-full py-2 mt-2 rounded-lg border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-xs font-bold"
+                                            >
+                                                + Nova Tarefa
+                                            </button>
+                                        </div>
+                                    )}
+                                </Droppable>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                </DragDropContext>
             )}
 
             {activeTab === 'equipe' && projeto && <TabEquipe projetoId={projetoId} api={api} />}
