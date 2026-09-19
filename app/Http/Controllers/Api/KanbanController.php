@@ -1,8 +1,10 @@
-<php
+<?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Projetos\Projeto;
+use App\Models\Projeto;
+use App\Models\Tarefa;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -13,9 +15,6 @@ class KanbanController extends Controller
      */
     public function board(Request $request, string $projetoId): JsonResponse
     {
-        $user = $request->user();
-
-        // O GlobalScopeTenant garante que o usuário só veja projetos do seu tenant[cite: 5]
         $projeto = Projeto::with(['etapas.tarefas' => function($query) {
             $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
         }])->findOrFail($projetoId);
@@ -32,7 +31,7 @@ class KanbanController extends Controller
             'nova_etapa_id' => 'required|uuid|exists:prj_etapas,id'
         ]);
 
-        $tarefa = \App\Models\Projetos\Tarefa::findOrFail($tarefaId);
+        $tarefa = Tarefa::findOrFail($tarefaId);
         $tarefa->update(['etapa_id' => $validated['nova_etapa_id']]);
 
         return response()->json(['message' => 'Tarefa movida com sucesso!', 'tarefa' => $tarefa]);

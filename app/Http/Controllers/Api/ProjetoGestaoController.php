@@ -16,8 +16,8 @@ class ProjetoGestaoController extends Controller
     // === EQUIPE ===
     public function listarEquipe(Request $request, string $projetoId): JsonResponse {
         $tenantId = $request->user()->tenant_id;
-        $equipe = ProjetoEquipe::where('tenant_id', $tenantId)
-            ->where('projeto_id', $projetoId)
+        $equipe = ProjetoEquipe::where('prj_projeto_equipe.tenant_id', $tenantId) // <-- Correção aqui
+            ->where('prj_projeto_equipe.projeto_id', $projetoId) // <-- Correção aqui
             ->leftJoin('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
             ->select('prj_projeto_equipe.*', 'users.name as nome_usuario')
             ->get();
