@@ -28,6 +28,24 @@ export default function ProjetoDashboard() {
         }
     };
 
+    const atualizarBudget = async () => {
+        const novoValor = window.prompt("Digite o novo valor do Orçamento (Budget):", projeto?.orcamento_previsto);
+        if (!novoValor || isNaN(novoValor)) return;
+        try {
+            await api.put(`/projetos/${projetoId}/orcamento`, { orcamento_previsto: parseFloat(novoValor) });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao atualizar budget."); }
+    };
+
+    const adicionarTarefa = async (etapaId) => {
+        const titulo = window.prompt("Qual o título da nova tarefa?");
+        if (!titulo) return;
+        try {
+            await api.post(`/projetos/etapas/${etapaId}/tarefas`, { titulo, prioridade: 'MEDIA' });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao criar tarefa."); }
+    };
+
     const handleDragStart = (e, tarefa) => {
         setDraggedTarefa(tarefa);
         e.dataTransfer.effectAllowed = "move";
@@ -90,8 +108,9 @@ export default function ProjetoDashboard() {
                     </button>
                     <div>
                         <h1 className="text-2xl font-bold text-white">{projeto.nome}</h1>
-                        <p className="text-xs text-slate-400 mt-1 font-mono">
+                        <p className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-2">
                             Budget: R$ {Number(projeto.orcamento_previsto).toLocaleString('pt-BR')}
+                            <button onClick={atualizarBudget} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
                             &nbsp; • &nbsp; Custo: <span className="text-rose-400">R$ {Number(projeto.custo_total_real || 0).toLocaleString('pt-BR')}</span>
                         </p>
                     </div>
@@ -162,6 +181,12 @@ export default function ProjetoDashboard() {
                                         </div>
                                     </div>
                                 ))}
+                                <button
+                                    onClick={() => adicionarTarefa(etapa.id)}
+                                    className="w-full py-2 rounded-lg border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-xs font-bold"
+                                >
+                                    + Nova Tarefa
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -337,6 +362,10 @@ function TabEntregaveis({ projetoId, api }) {
         } catch (err) { alert("Erro ao criar entregável."); }
     };
 
+    const faturar = (entregavel) => {
+        alert(`O entregável "${entregavel.titulo}" de R$ ${entregavel.valor_faturamento} foi enviado para a fila de faturamento!\n\nA emissão real do Pedido de Venda e NFS-e ocorrerá após a homologação do Motor Fiscal (Sprint 3).`);
+    };
+
     return (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
             <div className="flex justify-between items-center mb-4">
@@ -354,7 +383,7 @@ function TabEntregaveis({ projetoId, api }) {
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="font-mono font-bold text-emerald-400">R$ {Number(e.valor_faturamento).toLocaleString('pt-BR')}</span>
-                            <button className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 border border-slate-700 text-xs font-bold rounded-lg cursor-pointer">Gerar Fatura</button>
+                            <button onClick={() => faturar(e)} className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 border border-slate-700 text-xs font-bold rounded-lg cursor-pointer">Gerar Fatura</button>
                         </div>
                     </div>
                 ))}

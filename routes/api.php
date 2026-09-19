@@ -376,5 +376,7 @@ Route::prefix('projetos')->group(function () {
 
     Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
     Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
+    Route::put('/{projetoId}/orcamento', [\App\Http\Controllers\Api\ProjetoController::class, 'atualizarOrcamento']);
+    Route::post('/etapas/{etapaId}/tarefas', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarTarefa']);
 });
 });

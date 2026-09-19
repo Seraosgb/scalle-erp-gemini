@@ -75,4 +75,10 @@ class ProjetoController extends Controller
             ]
         ], 201);
     }
+    public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse {
+        $validated = $request->validate(['orcamento_previsto' => 'required|numeric|min:0']);
+        $projeto = Projeto::where('tenant_id', $request->user()->tenant_id)->findOrFail($projetoId);
+        $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
+        return response()->json(['data' => $projeto]);
+    }
 }

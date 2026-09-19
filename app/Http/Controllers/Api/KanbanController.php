@@ -36,4 +36,20 @@ class KanbanController extends Controller
 
         return response()->json(['message' => 'Tarefa movida com sucesso!', 'tarefa' => $tarefa]);
     }
+    public function adicionarTarefa(Request $request, string $etapaId): JsonResponse {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:200',
+            'prioridade' => 'nullable|string|in:BAIXA,MEDIA,ALTA,CRITICA'
+        ]);
+        $etapa = \App\Models\Etapa::findOrFail($etapaId);
+        $tarefa = \App\Models\Projetos\Tarefa::create([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'tenant_id' => $request->user()->tenant_id,
+            'projeto_id' => $etapa->projeto_id,
+            'etapa_id' => $etapa->id,
+            'titulo' => $validated['titulo'],
+            'prioridade' => $validated['prioridade'] ?? 'MEDIA',
+        ]);
+        return response()->json(['data' => $tarefa], 201);
+    }
 }
