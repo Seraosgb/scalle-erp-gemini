@@ -50,13 +50,22 @@ class KanbanController extends Controller
 
         $etapa = Etapa::findOrFail($etapaId);
 
+        // Converte a string do React para o integer que o banco espera
+        $prioridadeInt = match ($validated['prioridade'] ?? 'MEDIA') {
+            'CRITICA' => 1,
+            'ALTA' => 2,
+            'MEDIA' => 3,
+            'BAIXA' => 4,
+            default => 3,
+        };
+
         $tarefa = Tarefa::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $request->user()->tenant_id,
             'projeto_id' => $etapa->projeto_id,
             'etapa_id' => $etapa->id,
             'titulo' => $validated['titulo'],
-            'prioridade' => $validated['prioridade'] ?? 'MEDIA',
+            'prioridade' => $prioridadeInt,
         ]);
 
         return response()->json(['data' => $tarefa], 201);
