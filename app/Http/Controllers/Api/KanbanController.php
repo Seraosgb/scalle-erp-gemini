@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Projeto;
 use App\Models\Tarefa;
+use App\Models\Etapa;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
 
 class KanbanController extends Controller
 {
@@ -36,20 +38,27 @@ class KanbanController extends Controller
 
         return response()->json(['message' => 'Tarefa movida com sucesso!', 'tarefa' => $tarefa]);
     }
+
+    /**
+     * Adiciona uma nova tarefa ao final da coluna do Kanban.
+     */
     public function adicionarTarefa(Request $request, string $etapaId): JsonResponse {
         $validated = $request->validate([
             'titulo' => 'required|string|max:200',
             'prioridade' => 'nullable|string|in:BAIXA,MEDIA,ALTA,CRITICA'
         ]);
-        $etapa = \App\Models\Etapa::findOrFail($etapaId);
-        $tarefa = \App\Models\Projetos\Tarefa::create([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+
+        $etapa = Etapa::findOrFail($etapaId);
+
+        $tarefa = Tarefa::create([
+            'id' => (string) Str::uuid(),
             'tenant_id' => $request->user()->tenant_id,
             'projeto_id' => $etapa->projeto_id,
             'etapa_id' => $etapa->id,
             'titulo' => $validated['titulo'],
             'prioridade' => $validated['prioridade'] ?? 'MEDIA',
         ]);
+
         return response()->json(['data' => $tarefa], 201);
     }
 }
