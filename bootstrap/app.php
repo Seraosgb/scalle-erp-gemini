@@ -19,6 +19,11 @@ return Application::configure(basePath: dirname(__DIR__))
             IdentifyTenant::class,
             CheckSubscriptionStatus::class,
         ]);
+         $middleware->alias([
+            'check.master' => \App\Http\Middleware\CheckMaster::class,
+            // Adicione a linha abaixo:
+            'check.projeto.status' => \App\Http\Middleware\CheckProjetoStatus::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

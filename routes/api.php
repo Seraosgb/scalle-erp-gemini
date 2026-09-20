@@ -339,7 +339,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
     // ==========================================
-    Route::prefix('projetos')->group(function () {
+Route::prefix('projetos')->middleware('check.projeto.status')->group(function () {
         Route::get('/', [ProjetoController::class, 'index']);
         Route::post('/', [ProjetoController::class, 'store']);
         Route::put('/{id}', [ProjetoController::class, 'update']); // <== ROTA CORRIGIDA (/api/projetos/{id})
