@@ -12632,10 +12632,9 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\consolidado_DOCUMENTOS_BASE.txt
 ARQUIVO: C:\Projetos\scalle-erp-gemini\GO-LIVE ROADMAP.md
 ========================================
 
-=========================================================
 ===========================================================================================================================
-
-📄 **GO-LIVE ROADMAP - SCALLE ERP (V3.3 - FISCAL ASYNC COMPLETED)**
+📄 **GO-LIVE ROADMAP - SCALLE ERP (V3.5 - PMO ENTERPRISE GAP ADDED)**
+===========================================================================================================================
 ===========================================================================================================================
 
 **⚠️ IMPORTANT DISCLAIMER:** _This roadmap is intended strictly as a memory refresher for the final Go-Live stages. It DOES NOT represent the current active development sprint or the immediate next steps. It is a macro-view of the finish line._
@@ -12655,14 +12654,17 @@ The engine is already built and tested in the following areas, respecting the `t
 * **Fleets:** Gestão de veículos, motoristas, e controle atômico de abastecimentos integrado ao financeiro.
 * **Governance:** All dropdown lists are already running dynamically in the `sis_tabelas_dominio` table.
 * **Fiscal Engine (Async & Base):** Upload de certificado A1 com criptografia simétrica (AES-256) no cofre do tenant. Geração de XML de NF-e e orquestração de transmissão **assíncrona (via Filas/Jobs)** implementadas e testadas. API base para Eventos Fiscais (Cancelamento e CC-e) estruturada e orquestrada. Base de dados preparada para Reforma Tributária (CBS/IBS e Split Payment).
+* **Gestão de Projetos (PMO):** Kanban corporativo com reordenação fluida (DnD), Timesheet integrado para apropriação de custos, gestão de budget e milestones de faturamento concluídos.
 
 ### 2. THE GAP (FINAL STAGES REMINDER 🔴)
 
 Crossing the code with the base document specifications, these are the remaining puzzle pieces to keep on the radar for the future:
 
-1. **Front-End (The Face of the ERP):** Mapeamento do layout Backoffice em React/Vite já iniciado, mas as telas operacionais (Projetos, GED, Dashboard Fiscal) e o PWA Offline-First precisam ser consolidados.
-2. **Missing Core Modules:** Project Management (Kanban) e EDMS (Electronic Document Management System - GED).
-3. **Fiscal Engine (Homologação Real):** O motor assíncrono está pronto, mas falta homologar a autorização de emissão (cStat 100) na SEFAZ utilizando um Certificado A1 e-CNPJ válido, além de plugar os drivers específicos para NFC-e (Balcão) e NFS-e (Prefeituras).
+1. **Front-End (The Face of the ERP):** Mapeamento do layout Backoffice em React/Vite já iniciado (Dashboard PMO funcional), mas as telas operacionais restantes e o PWA Offline-First precisam ser consolidados.
+2. **Missing Core Modules:** Apenas o **EDMS (Electronic Document Management System - GED)** para upload isolado e seguro de arquivos.
+3. **PMO Enterprise Features (Evolução Pós-MVP):** Implementar Dependências lógicas (Blockers) entre tarefas, Checklists (subtarefas) internas nos cards, Visão de Gantt/Cronogramas, Gestão de Capacidade (Resource Planning) e Taxonomia Dinâmica de prioridades.
+4. **Integração Cross-Module:** Plugar o faturamento de Entregáveis do PMO ao Motor Fiscal, apropriação de custos no Contas a Pagar e anexo de arquivos nos cards da equipe (requer o módulo GED concluído).
+5. **Fiscal Engine (Homologação Real):** Homologar a autorização de emissão (cStat 100) na SEFAZ utilizando um Certificado A1 e-CNPJ válido.
 
 ### 3. CHRONOLOGICAL SPRINT TIMELINE (FOR FUTURE REFERENCE)
 
@@ -12670,18 +12672,19 @@ Crossing the code with the base document specifications, these are the remaining
 
 * **Objective:** Bring the system to life by building the interfaces consuming the ready REST APIs.
 * **Steps:**
-  1. Develop the Administrative Backoffice layout in React/Tailwind.
+  1. Develop the Administrative Backoffice layout in React/Tailwind. *(EM ANDAMENTO)*
   2. Implement RBAC-based screens (each profile only sees what they have permission to).
-  3. Create the modular dashboards: Financial Dashboard, CRM Kanban, WMS, and PCP Grids.
+  3. Create the modular dashboards: Financial Dashboard, CRM Kanban, WMS, and PCP Grids. *(PMO CONCLUÍDO)*
   4. Configure the Service Worker to transform the technician portal into an **Offline-First PWA** (Work Orders in areas without 4G using `IndexedDB`).
 
 #### 🚀 Sprint 2: Filling the Core Gaps (Projects and EDMS)
 
 * **Objective:** Code the modules described in the specification that do not yet exist in the database.
 * **Steps:**
-  1. **Projects:** Structure task management, team time tracking, and project budgets com visão Kanban.
+  1. ~~**Projects:** Structure task management, team time tracking, and project budgets com visão Kanban.~~ *(CONCLUÍDO)*
   2. **EDMS (GED):** Implement a secure file repository (S3 ou disco local via Storage Facade) isolated by tenant for contracts, reports, and financial attachments.
-  3. _Database Note:_ Use only incremental migrations (`add column` or `create table`) without destructive actions.
+  3. **PMO Enterprise:** Desenvolver lógicas de Blockers, Checklists, Gantt e amarrar os anexos do GED diretamente nos cards de tarefas.
+  4. _Database Note:_ Use only incremental migrations (`add column` or `create table`) without destructive actions.
 
 #### 🚀 Sprint 3: The Fiscal Engine Trial by Fire (SEFAZ)
 
@@ -12691,6 +12694,7 @@ Crossing the code with the base document specifications, these are the remaining
   2. ~~Preparar a estrutura do banco de dados para Split Payment e coexistência tributária (CBS/IBS).~~ *(CONCLUÍDO)*
   3. Homologar a autorização de emissão (cStat 100) utilizando um Certificado A1 e-CNPJ (ICP-Brasil) válido na Hostoo.
   4. Homologar os fluxos reais de rejeição, cancelamento, inutilização e CC-e com a SEFAZ.
+  5. Plugar a emissão automática no gatilho de "Gerar Fatura" do Kanban de Projetos.
 
 #### 🚀 Sprint 4: Multi-Pipeline Refinement and SaaS Onboarding
 
@@ -25312,6 +25316,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Projeto;
 use App\Models\Tarefa;
 use App\Models\Etapa;
+use App\Models\PrjTarefaChecklist;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
@@ -25321,7 +25326,7 @@ class KanbanController extends Controller
     /**
      * Retorna o quadro completo com Etapas e Tarefas aninhadas.
      */
-   public function board(Request $request, string $projetoId): JsonResponse
+    public function board(Request $request, string $projetoId): JsonResponse
     {
         $usuarioId = $request->user()->id;
 
@@ -25340,6 +25345,7 @@ class KanbanController extends Controller
 
         return response()->json(['data' => $projeto]);
     }
+
     /**
      * Move uma tarefa dinamicamente entre as etapas (Drag and Drop).
      */
@@ -25358,7 +25364,8 @@ class KanbanController extends Controller
     /**
      * Adiciona uma nova tarefa ao final da coluna do Kanban.
      */
-    public function adicionarTarefa(Request $request, string $etapaId): JsonResponse {
+    public function adicionarTarefa(Request $request, string $etapaId): JsonResponse
+    {
         $validated = $request->validate([
             'titulo' => 'required|string|max:200',
             'prioridade' => 'nullable|string|in:BAIXA,MEDIA,ALTA,CRITICA'
@@ -25386,6 +25393,7 @@ class KanbanController extends Controller
 
         return response()->json(['data' => $tarefa], 201);
     }
+
     /**
      * ==========================================
      * MICRO-GESTÃO DO CARD (Enterprise)
@@ -25399,7 +25407,7 @@ class KanbanController extends Controller
         ]);
 
         $item = PrjTarefaChecklist::create([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'tarefa_id' => $tarefaId,
             'descricao' => $validated['descricao'],
             'concluido' => false,
@@ -27357,11 +27365,152 @@ class ProjetoController extends Controller
             ]
         ], 201);
     }
-    public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse {
+
+    public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse
+    {
         $validated = $request->validate(['orcamento_previsto' => 'required|numeric|min:0']);
         $projeto = Projeto::where('tenant_id', $request->user()->tenant_id)->findOrFail($projetoId);
         $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
+
         return response()->json(['data' => $projeto]);
+    }
+
+    // ==========================================
+    // ABA: ALOCAÇÃO DE EQUIPA
+    // ==========================================
+    public function equipe(Request $request, string $projetoId): JsonResponse
+    {
+        $equipe = DB::table('prj_projeto_equipe')
+            ->join('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
+            ->where('prj_projeto_equipe.projeto_id', $projetoId)
+            ->select('prj_projeto_equipe.*', 'users.name as nome_usuario')
+            ->get();
+
+        return response()->json(['data' => $equipe]);
+    }
+
+    public function storeEquipe(Request $request, string $projetoId): JsonResponse
+    {
+        $validated = $request->validate([
+            'usuario_id' => 'required|uuid',
+            'custo_hora' => 'required|numeric|min:0'
+        ]);
+
+        DB::table('prj_projeto_equipe')->updateOrInsert(
+            ['projeto_id' => $projetoId, 'usuario_id' => $validated['usuario_id']],
+            [
+                'id' => (string) Str::uuid(),
+                'custo_hora' => $validated['custo_hora'],
+                'created_at' => now(),
+                'updated_at' => now()
+            ]
+        );
+
+        return response()->json(['data' => ['message' => 'Membro alocado ao projeto com sucesso!']]);
+    }
+
+    // ==========================================
+    // ABA: CUSTOS E DESPESAS EXTERNAS
+    // ==========================================
+    public function custos(Request $request, string $projetoId): JsonResponse
+    {
+        $custos = DB::table('prj_projeto_custos')
+            ->where('projeto_id', $projetoId)
+            ->orderByDesc('data_custo')
+            ->get();
+
+        return response()->json(['data' => $custos]);
+    }
+
+    public function storeCusto(Request $request, string $projetoId): JsonResponse
+    {
+        $validated = $request->validate([
+            'descricao' => 'required|string|max:255',
+            'valor' => 'required|numeric|min:0',
+            'data_custo' => 'required|date'
+        ]);
+
+        DB::table('prj_projeto_custos')->insert([
+            'id' => (string) Str::uuid(),
+            'projeto_id' => $projetoId,
+            'descricao' => $validated['descricao'],
+            'valor' => $validated['valor'],
+            'data_custo' => $validated['data_custo'],
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // GATILHO ENTERPRISE: Recalcula o Custo Total Real do Projeto imediatamente
+        \App\Http\Controllers\Api\TimesheetController::recalcularCustoProjeto($projetoId);
+
+        return response()->json(['data' => ['message' => 'Despesa externa lançada com sucesso!']]);
+    }
+
+    // ==========================================
+    // ABA: ENTREGÁVEIS / MARCOS DE FATURAMENTO
+    // ==========================================
+    public function entregaveis(Request $request, string $projetoId): JsonResponse
+    {
+        $entregaveis = DB::table('prj_projeto_entregaveis')
+            ->where('projeto_id', $projetoId)
+            ->orderBy('data_prevista')
+            ->get();
+
+        return response()->json(['data' => $entregaveis]);
+    }
+
+    public function storeEntregavel(Request $request, string $projetoId): JsonResponse
+    {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:255',
+            'valor_faturamento' => 'required|numeric|min:0',
+            'data_prevista' => 'nullable|date'
+        ]);
+
+        DB::table('prj_projeto_entregaveis')->insert([
+            'id' => (string) Str::uuid(),
+            'projeto_id' => $projetoId,
+            'titulo' => $validated['titulo'],
+            'valor_faturamento' => $validated['valor_faturamento'],
+            'data_prevista' => $validated['data_prevista'],
+            'status' => 'PENDENTE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['data' => ['message' => 'Marco de faturamento mapeado com sucesso!']]);
+    }
+
+    // ==========================================
+    // KANBAN: ADICIONAR TAREFA NA ETAPA
+    // ==========================================
+    public function storeTarefa(Request $request, string $etapaId): JsonResponse
+    {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:255',
+            'prioridade' => 'required|string|in:BAIXA,MEDIA,ALTA,URGENTE'
+        ]);
+
+        $etapa = DB::table('prj_etapas')->where('id', $etapaId)->first();
+
+        if (!$etapa) {
+            return response()->json(['error' => ['message' => 'Etapa não encontrada no Kanban.']], 404);
+        }
+
+        $tarefaId = (string) Str::uuid();
+
+        DB::table('prj_tarefas')->insert([
+            'id' => $tarefaId,
+            'tenant_id' => $etapa->tenant_id,
+            'projeto_id' => $etapa->projeto_id,
+            'etapa_id' => $etapaId,
+            'titulo' => $validated['titulo'],
+            'prioridade' => $validated['prioridade'],
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+
+        return response()->json(['data' => ['message' => 'Tarefa criada com sucesso no quadro!']]);
     }
 }
 
@@ -27839,6 +27988,8 @@ use App\Models\Tarefa;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class TimesheetController extends Controller
 {
@@ -27888,7 +28039,85 @@ class TimesheetController extends Controller
             'descricao' => $validated['descricao'] ?? 'Apontamento finalizado via cronômetro.'
         ]);
 
-        return response()->json(['data' => ['message' => 'Cronômetro parado com sucesso!', 'apontamento' => $apontamento]]);
+        // GATILHO ENTERPRISE: Injeta a re-apuração financeira
+        $tarefa = Tarefa::find($tarefaId);
+        $novoCustoTotal = 0;
+
+        if ($tarefa) {
+            $novoCustoTotal = self::recalcularCustoProjeto($tarefa->projeto_id);
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => 'Cronômetro parado! Custo atual do projeto subiu para R$ ' . number_format($novoCustoTotal, 2, ',', '.'),
+                'apontamento' => $apontamento
+            ]
+        ]);
+    }
+
+    /**
+     * Motor Financeiro Absoluto: Soma Horas + Despesas
+     */
+    public static function recalcularCustoProjeto(string $projetoId)
+    {
+        // 1. Somatório das Despesas Externas (Aba Custos)
+        $totalDespesas = DB::table('prj_projeto_custos')
+            ->where('projeto_id', $projetoId)
+            ->sum('valor');
+
+        $totalDespesas = is_numeric($totalDespesas) ? (float) $totalDespesas : 0.00;
+
+        // 2. Cálculo da Mão de Obra (Apenas apontamentos válidos)
+        $apontamentos = DB::table('prj_apontamentos')
+            ->join('prj_tarefas', 'prj_apontamentos.tarefa_id', '=', 'prj_tarefas.id')
+            ->where('prj_tarefas.projeto_id', $projetoId)
+            ->whereNotNull('prj_apontamentos.fim')
+            ->whereNull('prj_apontamentos.deleted_at')
+            ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim')
+            ->get();
+
+        // 3. Mapeamento Primitivo e Seguro de Custos da Equipe
+        $membros = DB::table('prj_projeto_equipe')
+            ->where('projeto_id', $projetoId)
+            ->get();
+
+        $mapaCustos = [];
+        foreach ($membros as $m) {
+            $mapaCustos[$m->usuario_id] = (float) $m->custo_hora;
+        }
+
+        $custoMaoDeObra = 0.00;
+
+        foreach ($apontamentos as $ap) {
+            if (empty($ap->inicio) || empty($ap->fim)) continue;
+
+            $inicio = Carbon::parse($ap->inicio);
+            $fim = Carbon::parse($ap->fim);
+
+            // Força a diferença absoluta para evitar tempos negativos
+            $minutos = $inicio->diffInMinutes($fim);
+
+            // Garante o tempo mínimo de 1 minuto para validações e testes rápidos
+            if ($minutos < 1) {
+                $minutos = 1;
+            }
+
+            $horas = $minutos / 60.0;
+
+            // Busca segura via array nativo do PHP
+            $custoHora = isset($mapaCustos[$ap->usuario_id]) ? $mapaCustos[$ap->usuario_id] : 0.00;
+
+            $custoMaoDeObra += ($horas * $custoHora);
+        }
+
+        $custoTotalReal = $totalDespesas + $custoMaoDeObra;
+
+        // 4. Atualiza o Totalizador do Projeto
+        DB::table('prj_projetos')
+            ->where('id', $projetoId)
+            ->update(['custo_total_real' => $custoTotalReal]);
+
+        return $custoTotalReal;
     }
 }
 
@@ -30459,6 +30688,35 @@ class FrotaVeiculo extends Model
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\GedDocumento.php
+========================================
+
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class GedDocumento extends Model
+{
+    protected $table = 'ged_documentos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $guarded = [];
+
+    /**
+     * Ligação Polimórfica (Permite que o documento seja anexado a Projetos, OS, DP, etc)
+     */
+    public function entidade_vinculada()
+    {
+        return $this->morphTo();
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Holerite.php
 ========================================
 
@@ -32249,6 +32507,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\GedDocumento;
 
 class Tarefa extends Model
 {
@@ -40855,6 +41114,148 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('prj_tarefa_dependencias');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_19_183200_create_ged_pastas_table.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('ged_pastas', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id')->index();
+            $table->uuid('empresa_id')->nullable()->index();
+            $table->uuid('pasta_pai_id')->nullable()->index();
+            $table->string('nome', 150);
+            $table->string('cor_hex', 10)->nullable();
+            $table->boolean('is_sistema')->default(false); // Ex: Pasta nativa "Notas Fiscais"
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->foreign('tenant_id')->references('id')->on('sis_tenants')->onDelete('cascade');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('ged_pastas');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_19_183201_create_ged_documentos_table.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('ged_documentos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id')->index();
+            $table->uuid('pasta_id')->nullable()->index();
+            $table->uuid('usuario_id')->index();
+            $table->string('nome_original');
+            $table->string('caminho_s3');
+            $table->string('extensao', 10);
+            $table->bigInteger('tamanho_bytes');
+            $table->string('hash_arquivo')->nullable();
+
+            // Relacionamento Polimórfico (Onde a mágica acontece com o Kanban e OS)
+            $table->uuid('entidade_vinculada_id')->nullable()->index();
+            $table->string('entidade_vinculada_type')->nullable()->index();
+
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->foreign('tenant_id')->references('id')->on('sis_tenants')->onDelete('cascade');
+            $table->foreign('usuario_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('pasta_id')->references('id')->on('ged_pastas')->onDelete('set null');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('ged_documentos');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_010722_create_prj_tabelas_secundarias_table.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('prj_projeto_equipe', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('projeto_id')->index();
+            $table->uuid('usuario_id')->index();
+            $table->decimal('custo_hora', 10, 2)->default(0);
+            $table->timestamps();
+
+            $table->foreign('projeto_id')->references('id')->on('prj_projetos')->onDelete('cascade');
+            $table->foreign('usuario_id')->references('id')->on('users')->onDelete('cascade');
+        });
+
+        Schema::create('prj_projeto_custos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('projeto_id')->index();
+            $table->string('descricao', 255);
+            $table->decimal('valor', 15, 2);
+            $table->date('data_custo');
+            $table->timestamps();
+
+            $table->foreign('projeto_id')->references('id')->on('prj_projetos')->onDelete('cascade');
+        });
+
+        Schema::create('prj_projeto_entregaveis', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('projeto_id')->index();
+            $table->string('titulo', 255);
+            $table->decimal('valor_faturamento', 15, 2);
+            $table->date('data_prevista')->nullable();
+            $table->string('status', 50)->default('PENDENTE');
+            $table->timestamps();
+
+            $table->foreign('projeto_id')->references('id')->on('prj_projetos')->onDelete('cascade');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('prj_projeto_entregaveis');
+        Schema::dropIfExists('prj_projeto_custos');
+        Schema::dropIfExists('prj_projeto_equipe');
     }
 };
 

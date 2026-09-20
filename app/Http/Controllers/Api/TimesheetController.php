@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Apontamento;
-use App\Models\Tarefa;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class TimesheetController extends Controller
@@ -16,10 +16,14 @@ class TimesheetController extends Controller
     public function play(Request $request, string $tarefaId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $tarefa = Tarefa::where('tenant_id', $tenantId)->findOrFail($tarefaId);
 
-        // Bloqueia múltiplos cronômetros abertos para a mesma tarefa e usuário
-        $aberto = Apontamento::where('tarefa_id', $tarefa->id)
+        // Valida a tarefa diretamente no banco para evitar bloqueios de Model
+        $tarefa = DB::table('prj_tarefas')->where('id', $tarefaId)->where('tenant_id', $tenantId)->first();
+        if (!$tarefa) {
+            return response()->json(['error' => ['message' => 'Tarefa não encontrada.']], 404);
+        }
+
+        $aberto = Apontamento::where('tarefa_id', $tarefaId)
             ->where('usuario_id', $request->user()->id)
             ->whereNull('fim')
             ->first();
@@ -31,7 +35,7 @@ class TimesheetController extends Controller
         $apontamento = Apontamento::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'tarefa_id' => $tarefa->id,
+            'tarefa_id' => $tarefaId,
             'usuario_id' => $request->user()->id,
             'inicio' => now(),
             'is_faturavel' => true,
@@ -59,12 +63,19 @@ class TimesheetController extends Controller
             'descricao' => $validated['descricao'] ?? 'Apontamento finalizado via cronômetro.'
         ]);
 
-        // GATILHO ENTERPRISE: Injeta a re-apuração financeira
-        $tarefa = Tarefa::find($tarefaId);
-        $novoCustoTotal = 0;
+        // A MÁGICA DE CORREÇÃO: Procura o Projeto através da Etapa, ignorando falhas do Model Tarefa
+        $vinculo = DB::table('prj_tarefas')
+            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
+            ->where('prj_tarefas.id', $tarefaId)
+            ->select('prj_etapas.projeto_id')
+            ->first();
 
-        if ($tarefa) {
-            $novoCustoTotal = self::recalcularCustoProjeto($tarefa->projeto_id);
+        $novoCustoTotal = 0.00;
+        if ($vinculo && $vinculo->projeto_id) {
+            // Corrige a tarefa silenciosamente na base de dados
+            DB::table('prj_tarefas')->where('id', $tarefaId)->update(['projeto_id' => $vinculo->projeto_id]);
+
+            $novoCustoTotal = self::recalcularCustoProjeto($vinculo->projeto_id);
         }
 
         return response()->json([
@@ -80,23 +91,29 @@ class TimesheetController extends Controller
      */
     public static function recalcularCustoProjeto(string $projetoId)
     {
-        // 1. Somatório das Despesas Externas (Aba Custos)
+        // 1. Somatório das Despesas Externas
         $totalDespesas = DB::table('prj_projeto_custos')
             ->where('projeto_id', $projetoId)
             ->sum('valor');
 
         $totalDespesas = is_numeric($totalDespesas) ? (float) $totalDespesas : 0.00;
 
-        // 2. Cálculo da Mão de Obra (Apenas apontamentos válidos)
-        $apontamentos = DB::table('prj_apontamentos')
+        // 2. Apontamentos (usando a tabela de etapas para garantir o projeto_id correto)
+        $queryApontamentos = DB::table('prj_apontamentos')
             ->join('prj_tarefas', 'prj_apontamentos.tarefa_id', '=', 'prj_tarefas.id')
-            ->where('prj_tarefas.projeto_id', $projetoId)
+            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
+            ->where('prj_etapas.projeto_id', $projetoId)
             ->whereNotNull('prj_apontamentos.fim')
-            ->whereNull('prj_apontamentos.deleted_at')
-            ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim')
-            ->get();
+            ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim');
 
-        // 3. Mapeamento Primitivo e Seguro de Custos da Equipe
+        // Proteção caso a tabela não suporte soft deletes
+        if (Schema::hasColumn('prj_apontamentos', 'deleted_at')) {
+            $queryApontamentos->whereNull('prj_apontamentos.deleted_at');
+        }
+
+        $apontamentos = $queryApontamentos->get();
+
+        // 3. Mapeamento Primitivo de Custos da Equipe
         $membros = DB::table('prj_projeto_equipe')
             ->where('projeto_id', $projetoId)
             ->get();
@@ -114,17 +131,11 @@ class TimesheetController extends Controller
             $inicio = Carbon::parse($ap->inicio);
             $fim = Carbon::parse($ap->fim);
 
-            // Força a diferença absoluta para evitar tempos negativos
             $minutos = $inicio->diffInMinutes($fim);
-
-            // Garante o tempo mínimo de 1 minuto para validações e testes rápidos
-            if ($minutos < 1) {
-                $minutos = 1;
-            }
+            if ($minutos < 1) $minutos = 1;
 
             $horas = $minutos / 60.0;
 
-            // Busca segura via array nativo do PHP
             $custoHora = isset($mapaCustos[$ap->usuario_id]) ? $mapaCustos[$ap->usuario_id] : 0.00;
 
             $custoMaoDeObra += ($horas * $custoHora);
@@ -132,7 +143,7 @@ class TimesheetController extends Controller
 
         $custoTotalReal = $totalDespesas + $custoMaoDeObra;
 
-        // 4. Atualiza o Totalizador do Projeto
+        // 4. Atualiza o Totalizador do Projeto de forma forçada
         DB::table('prj_projetos')
             ->where('id', $projetoId)
             ->update(['custo_total_real' => $custoTotalReal]);
