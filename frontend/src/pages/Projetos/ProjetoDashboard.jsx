@@ -293,8 +293,7 @@ export default function ProjetoDashboard() {
                                                                     borderLeftColor: etapa.cor_hex || '#3b82f6'
                                                                 }}
                                                             >
-                                                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                                                    <button onClick={() => setModalBlocker(tarefa)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Dependência (Blocker)">
+                                                                <div className="absolute top-2 right-2 flex gap-1 transition-opacity duration-200">                                                                    <button onClick={() => setModalBlocker(tarefa)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Dependência (Blocker)">
                                                                         <LinkIcon size={14}/>
                                                                     </button>
                                                                     <label className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Anexar Arquivo (GED)">
