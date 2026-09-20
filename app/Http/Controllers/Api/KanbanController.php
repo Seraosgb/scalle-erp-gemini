@@ -6,17 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Projeto;
 use App\Models\Tarefa;
 use App\Models\Etapa;
+use App\Models\PrjTarefaChecklist;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
-use App\Models\PrjTarefaChecklist;
 
 class KanbanController extends Controller
 {
     /**
      * Retorna o quadro completo com Etapas e Tarefas aninhadas.
      */
-   public function board(Request $request, string $projetoId): JsonResponse
+    public function board(Request $request, string $projetoId): JsonResponse
     {
         $usuarioId = $request->user()->id;
 
@@ -35,6 +35,7 @@ class KanbanController extends Controller
 
         return response()->json(['data' => $projeto]);
     }
+
     /**
      * Move uma tarefa dinamicamente entre as etapas (Drag and Drop).
      */
@@ -53,7 +54,8 @@ class KanbanController extends Controller
     /**
      * Adiciona uma nova tarefa ao final da coluna do Kanban.
      */
-    public function adicionarTarefa(Request $request, string $etapaId): JsonResponse {
+    public function adicionarTarefa(Request $request, string $etapaId): JsonResponse
+    {
         $validated = $request->validate([
             'titulo' => 'required|string|max:200',
             'prioridade' => 'nullable|string|in:BAIXA,MEDIA,ALTA,CRITICA'
@@ -81,6 +83,7 @@ class KanbanController extends Controller
 
         return response()->json(['data' => $tarefa], 201);
     }
+
     /**
      * ==========================================
      * MICRO-GESTÃO DO CARD (Enterprise)
@@ -93,8 +96,8 @@ class KanbanController extends Controller
             'descricao' => 'required|string|max:255'
         ]);
 
-        $item = \App\Models\PrjTarefaChecklist::create([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+        $item = PrjTarefaChecklist::create([
+            'id' => (string) Str::uuid(),
             'tarefa_id' => $tarefaId,
             'descricao' => $validated['descricao'],
             'concluido' => false,
@@ -105,7 +108,7 @@ class KanbanController extends Controller
 
     public function toggleChecklist(Request $request, string $checklistId): JsonResponse
     {
-        $item = \App\Models\PrjTarefaChecklist::findOrFail($checklistId);
+        $item = PrjTarefaChecklist::findOrFail($checklistId);
         $item->concluido = !$item->concluido;
         $item->save();
 
