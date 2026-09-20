@@ -48,7 +48,7 @@ import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
 import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
 import FrotaPage from './pages/frota/FrotaDashboard';
 import ProjetosList from './pages/Projetos/ProjetosList';
-import CofreDigitalPage from './pages/ged/CofreDigitalPage';
+import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
 import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
 
 // Instância global do React Query Client
