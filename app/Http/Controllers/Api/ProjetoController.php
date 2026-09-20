@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Models\Tarefa;
 
 class ProjetoController extends Controller
 {
@@ -143,5 +144,61 @@ class ProjetoController extends Controller
         $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
 
         return response()->json(['data' => $projeto]);
+    }
+    public function gantt(Request $request, string $projetoId): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $tarefas = \App\Models\Projetos\Tarefa::where('tenant_id', $tenantId)
+            ->whereHas('etapa', function($q) use ($projetoId) {
+                $q->where('projeto_id', $projetoId);
+            })
+            ->whereNotNull('data_inicio_prevista')
+            ->whereNotNull('data_fim_prevista')
+            ->with('responsavel:id,name')
+            ->orderBy('data_inicio_prevista')
+            ->get(['id', 'titulo', 'data_inicio_prevista', 'data_fim_prevista', 'responsavel_id', 'status']);
+
+        return response()->json(['data' => $tarefas]);
+    }
+
+    public function capacidade(Request $request, string $projetoId): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // Puxa as horas apontadas agrupadas por usuário neste projeto
+        $apontamentos = \App\Models\Apontamento::where('tenant_id', $tenantId)
+            ->whereHas('tarefa.etapa', function($q) use ($projetoId) {
+                $q->where('projeto_id', $projetoId);
+            })
+            ->select('usuario_id', DB::raw('SUM(EXTRACT(EPOCH FROM (fim - inicio))/3600) as horas_realizadas'))
+            ->whereNotNull('fim')
+            ->groupBy('usuario_id')
+            ->get()
+            ->keyBy('usuario_id');
+
+        // Cruzamento com o limite do usuário no projeto (Resource Planning)
+        $equipe = DB::table('prj_projeto_usuarios')
+            ->join('users', 'prj_projeto_usuarios.usuario_id', '=', 'users.id')
+            ->where('prj_projeto_usuarios.projeto_id', $projetoId)
+            ->select('users.id', 'users.name', 'prj_projeto_usuarios.limite_horas_semanais')
+            ->get();
+
+        $capacidade = $equipe->map(function($membro) use ($apontamentos) {
+            $realizadas = $apontamentos->has($membro->id) ? (float) $apontamentos[$membro->id]->horas_realizadas : 0;
+            $limite = (float) $membro->limite_horas_semanais;
+            $percentual = $limite > 0 ? min(100, ($realizadas / $limite) * 100) : 0;
+
+            return [
+                'id' => $membro->id,
+                'nome' => $membro->name,
+                'limite_horas' => $limite,
+                'horas_realizadas' => round($realizadas, 2),
+                'percentual_uso' => round($percentual, 1),
+                'status' => $percentual > 90 ? 'OVERBOOKED' : ($percentual > 70 ? 'ATENCAO' : 'OK')
+            ];
+        });
+
+        return response()->json(['data' => $capacidade]);
     }
 }

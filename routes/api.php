@@ -339,11 +339,16 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
     // ==========================================
-Route::prefix('projetos')->middleware('check.projeto.status')->group(function () {
+    Route::prefix('projetos')->middleware('check.projeto.status')->group(function () {
         Route::get('/', [ProjetoController::class, 'index']);
         Route::post('/', [ProjetoController::class, 'store']);
-        Route::put('/{id}', [ProjetoController::class, 'update']); // <== ROTA CORRIGIDA (/api/projetos/{id})
+        Route::put('/{id}', [ProjetoController::class, 'update']);
         Route::put('/{projetoId}/orcamento', [ProjetoController::class, 'atualizarOrcamento']);
+
+        // --- Novas Rotas Nativas do Enterprise PMO ---
+        Route::get('/{projetoId}/gantt', [ProjetoController::class, 'gantt']);
+        Route::get('/{projetoId}/capacidade', [ProjetoController::class, 'capacidade']);
+        // ---------------------------------------------
 
         Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
         Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);

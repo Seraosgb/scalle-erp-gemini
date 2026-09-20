@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X } from 'lucide-react';
+import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export default function ProjetoDashboard() {
@@ -233,6 +233,7 @@ export default function ProjetoDashboard() {
                 <div className="flex flex-wrap gap-2 pt-4">
                     {[
                         { id: 'board', label: 'Kanban', icon: Kanban },
+                        { id: 'gantt', label: 'Gantt & Capacidade', icon: CalendarDays },
                         { id: 'entregaveis', label: 'Entregáveis', icon: PackageCheck },
                         { id: 'custos', label: 'Custos & Despesas', icon: DollarSign },
                         { id: 'equipe', label: 'Alocação Equipe', icon: Users }
@@ -293,7 +294,8 @@ export default function ProjetoDashboard() {
                                                                     borderLeftColor: etapa.cor_hex || '#3b82f6'
                                                                 }}
                                                             >
-                                                                <div className="absolute top-2 right-2 flex gap-1 transition-opacity duration-200">                                                                    <button onClick={() => setModalBlocker(tarefa)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Dependência (Blocker)">
+                                                                <div className="absolute top-2 right-2 flex gap-1 transition-opacity duration-200">
+                                                                    <button onClick={() => setModalBlocker(tarefa)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Dependência (Blocker)">
                                                                         <LinkIcon size={14}/>
                                                                     </button>
                                                                     <label className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Anexar Arquivo (GED)">
@@ -465,9 +467,11 @@ export default function ProjetoDashboard() {
                 </div>
             )}
 
+            {/* Renderização Dinâmica das Abas */}
             {activeTab === 'equipe' && projeto && <TabEquipe projeto={projeto} api={api} onReload={carregarProjeto} />}
             {activeTab === 'custos' && projeto && <TabCustos projeto={projeto} api={api} onReload={carregarProjeto} />}
             {activeTab === 'entregaveis' && projeto && <TabEntregaveis projeto={projeto} api={api} onReload={carregarProjeto} />}
+            {activeTab === 'gantt' && projeto && <TabGanttCapacidade projetoId={projeto.id} api={api} />}
         </div>
     );
 }
@@ -476,11 +480,124 @@ export default function ProjetoDashboard() {
 // SUB-COMPONENTES DAS ABAS
 // ==========================================
 
+function TabGanttCapacidade({ projetoId, api }) {
+    return (
+        <div className="flex flex-col gap-6">
+            <GanttChart projetoId={projetoId} api={api} />
+            <ResourceCapacity projetoId={projetoId} api={api} />
+        </div>
+    );
+}
+
+function GanttChart({ projetoId, api }) {
+    const [tarefas, setTarefas] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get(`/projetos/${projetoId}/gantt`).then(res => {
+            setTarefas(res.data.data);
+            setLoading(false);
+        }).catch(() => setLoading(false));
+    }, [projetoId, api]);
+
+    if (loading) return <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-400">Carregando cronograma...</div>;
+    if (tarefas.length === 0) return <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-500">Nenhuma tarefa com datas definidas (Início e Fim) para compor o Gantt.</div>;
+
+    const minDate = new Date(Math.min(...tarefas.map(t => new Date(t.data_inicio_prevista))));
+    const maxDate = new Date(Math.max(...tarefas.map(t => new Date(t.data_fim_prevista))));
+    const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 overflow-x-auto shadow-sm">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><CalendarDays className="h-5 w-5 text-indigo-400" /> Cronograma (Gantt)</h3>
+            <div className="min-w-[800px]">
+                <div className="flex border-b border-slate-800 pb-2 mb-4 text-xs text-slate-400 font-mono">
+                    <div className="w-64 shrink-0 font-bold">Tarefa & Responsável</div>
+                    <div className="flex-1 flex justify-between px-2">
+                        <span>{minDate.toLocaleDateString('pt-BR')}</span>
+                        <span>{maxDate.toLocaleDateString('pt-BR')}</span>
+                    </div>
+                </div>
+                {tarefas.map(t => {
+                    const tStart = new Date(t.data_inicio_prevista);
+                    const tEnd = new Date(t.data_fim_prevista);
+                    const offsetDays = Math.ceil((tStart - minDate) / (1000 * 60 * 60 * 24));
+                    const durationDays = Math.ceil((tEnd - tStart) / (1000 * 60 * 60 * 24)) + 1;
+
+                    const leftPercent = (offsetDays / totalDays) * 100;
+                    const widthPercent = (durationDays / totalDays) * 100;
+
+                    return (
+                        <div key={t.id} className="flex items-center mb-3 text-sm group">
+                            <div className="w-64 shrink-0 pr-4">
+                                <div className="text-slate-200 truncate font-semibold" title={t.titulo}>{t.titulo}</div>
+                                <div className="text-[10px] text-slate-500 truncate">{t.responsavel?.name || 'Sem responsável'}</div>
+                            </div>
+                            <div className="flex-1 relative h-7 bg-slate-950 rounded-md border border-slate-800">
+                                <div
+                                    className="absolute top-0 h-full rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-md cursor-pointer flex items-center justify-center px-2 text-[10px] text-white font-bold whitespace-nowrap overflow-hidden"
+                                    style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+                                    title={`${t.titulo} (${durationDays} dias)`}
+                                >
+                                    {durationDays}d
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function ResourceCapacity({ projetoId, api }) {
+    const [capacidade, setCapacidade] = useState([]);
+
+    useEffect(() => {
+        api.get(`/projetos/${projetoId}/capacidade`).then(res => setCapacidade(res.data.data));
+    }, [projetoId, api]);
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Activity className="h-5 w-5 text-emerald-400" /> Gestão de Capacidade da Equipe</h3>
+            <div className="space-y-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {capacidade.length === 0 ? <p className="text-slate-500 text-sm">Nenhum membro com horas alocadas neste projeto.</p> : capacidade.map(membro => (
+                    <div key={membro.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                        <div className="flex justify-between items-end mb-2">
+                            <div>
+                                <span className="font-bold text-slate-200">{membro.nome}</span>
+                                <p className="text-xs text-slate-400 mt-0.5">Limite: {membro.limite_horas}h / semana</p>
+                            </div>
+                            <div className="text-right">
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                    membro.status === 'OVERBOOKED' ? 'bg-rose-950 text-rose-400 border border-rose-900' :
+                                    membro.status === 'ATENCAO' ? 'bg-amber-950 text-amber-400 border border-amber-900' :
+                                    'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                                }`}>
+                                    {membro.horas_realizadas}h consumidas ({membro.percentual_uso}%)
+                                </span>
+                            </div>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                    membro.percentual_uso > 90 ? 'bg-rose-500' : membro.percentual_uso > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                                }`}
+                                style={{ width: `${Math.min(membro.percentual_uso, 100)}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function TabEquipe({ projeto, api, onReload }) {
     const [equipe, setEquipe] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
     const [modal, setModal] = useState(false);
-    const [form, setForm] = useState({ usuario_id: '', custo_hora: '' });
+    const [form, setForm] = useState({ usuario_id: '', custo_hora: '', limite_horas_semanais: '40' }); // Campo novo adicionado
 
     const carregar = () => api.get(`/projetos/${projeto.id}/equipe`).then(res => setEquipe(res.data.data));
 
@@ -506,14 +623,19 @@ function TabEquipe({ projeto, api, onReload }) {
             </div>
             <table className="w-full text-left text-sm text-slate-300">
                 <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-                    <tr><th className="p-4">Membro da Equipe</th><th className="p-4 text-right">Custo Hora (R$)</th></tr>
+                    <tr>
+                        <th className="p-4">Membro da Equipe</th>
+                        <th className="p-4 text-center">Carga Máxima</th>
+                        <th className="p-4 text-right">Custo Hora (R$)</th>
+                    </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                     {equipe.length === 0 ? (
-                        <tr><td colSpan="2" className="p-8 text-center text-slate-500">Nenhum membro alocado ao projeto.</td></tr>
+                        <tr><td colSpan="3" className="p-8 text-center text-slate-500">Nenhum membro alocado ao projeto.</td></tr>
                     ) : equipe.map(m => (
                         <tr key={m.id} className="hover:bg-slate-800/40 transition">
                             <td className="p-4 text-white font-medium">{m.nome_usuario || 'Usuário do Sistema'}</td>
+                            <td className="p-4 text-center text-slate-400 font-mono">{m.limite_horas_semanais || '40.00'}h / sem</td>
                             <td className="p-4 text-right font-mono font-bold text-emerald-400">R$ {Number(m.custo_hora).toFixed(2)}</td>
                         </tr>
                     ))}
@@ -522,7 +644,7 @@ function TabEquipe({ projeto, api, onReload }) {
 
             {modal && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <form onSubmit={salvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                    <form onSubmit={salvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-md space-y-4 shadow-2xl">
                         <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alocar Novo Membro</h3>
                         <div>
                             <label className="text-xs font-bold text-slate-400 mb-1 block">Usuário do Sistema</label>
@@ -531,9 +653,15 @@ function TabEquipe({ projeto, api, onReload }) {
                                 {usuarios.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 mb-1 block">Custo Hora (R$)</label>
-                            <input type="number" step="0.01" required value={form.custo_hora} onChange={e => setForm({...form, custo_hora: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Custo Hora (R$)</label>
+                                <input type="number" step="0.01" required value={form.custo_hora} onChange={e => setForm({...form, custo_hora: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Limite (Horas/Semana)</label>
+                                <input type="number" step="1" required value={form.limite_horas_semanais} onChange={e => setForm({...form, limite_horas_semanais: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                            </div>
                         </div>
                         <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                             <button type="button" onClick={() => setModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
