@@ -48,8 +48,10 @@ import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
 import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
 import FrotaPage from './pages/frota/FrotaDashboard';
 import ProjetosList from './pages/Projetos/ProjetosList';
-import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
 import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
+
+// GED (Cofre Digital)
+import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -118,7 +120,6 @@ export default function App() {
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="fiscal/test" element={<FiscalTestScreen />} />
-            <Route path="FiscalTestScreen" element={<FiscalTestScreen />} />
 
             {/* Governança, Equipe & Billing */}
             <Route path="usuarios" element={<UsuariosPage />} />
@@ -138,7 +139,6 @@ export default function App() {
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
             <Route path="master/auditoria" element={<AuditoriaE2EView />} />
-            <Route path="master/auditoria-e2e" element={<Navigate to="/app/master/auditoria" replace />} />
           </Route>
 
           {/* Fallback Global */}
