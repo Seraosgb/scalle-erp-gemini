@@ -9,6 +9,7 @@ use App\Models\Etapa;
 use App\Models\PrjTarefaChecklist;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class KanbanController extends Controller
@@ -19,12 +20,14 @@ class KanbanController extends Controller
     public function board(Request $request, string $projetoId): JsonResponse
     {
         $user = $request->user();
+        $usuarioId = $user->id;
 
-        $projeto = \App\Models\Projetos\Projeto::with(['etapas.tarefas' => function($query) {
+        $projeto = Projeto::with(['etapas.tarefas' => function($query) {
             $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
         }])->findOrFail($projetoId);
 
-        // MÁGICA: Injeta os anexos (GED), checklists e apontamentos diretamente na resposta
+        // MÁGICA: Injeta os anexos (GED), checklists, dependências e apontamentos diretamente na resposta
+        // Isso evita erros 500 por falta de mapeamento de relacionamentos complexos nos Models.
         $tarefaIds = [];
         foreach ($projeto->etapas as $etapa) {
             foreach ($etapa->tarefas as $tarefa) {
@@ -33,30 +36,37 @@ class KanbanController extends Controller
         }
 
         if (count($tarefaIds) > 0) {
+            // Anexos do Cofre Digital (GED)
             $anexos = \App\Models\GedDocumento::where('tenant_id', $user->tenant_id)
                 ->where('entidade_vinculada_type', 'App\Models\Tarefa')
                 ->whereIn('entidade_vinculada_id', $tarefaIds)
                 ->get()
                 ->groupBy('entidade_vinculada_id');
 
-            $checklists = \Illuminate\Support\Facades\DB::table('prj_tarefa_checklists')
+            // Checklists
+            $checklists = DB::table('prj_tarefa_checklists')
                 ->whereIn('tarefa_id', $tarefaIds)
                 ->get()
                 ->groupBy('tarefa_id');
 
-            $apontamentos = \Illuminate\Support\Facades\DB::table('prj_apontamentos')
+            // Apontamentos (lê os cronômetros ativos do próprio usuário logado)
+            $apontamentos = DB::table('prj_apontamentos')
                 ->whereIn('tarefa_id', $tarefaIds)
+                ->where('usuario_id', $usuarioId)
+                ->whereNull('fim')
                 ->whereNull('deleted_at')
                 ->get()
                 ->groupBy('tarefa_id');
 
-            $dependencias = \Illuminate\Support\Facades\DB::table('prj_tarefa_dependencias')
+            // Dependências (Blockers)
+            $dependencias = DB::table('prj_tarefa_dependencias')
                 ->join('prj_tarefas', 'prj_tarefa_dependencias.depende_de_id', '=', 'prj_tarefas.id')
                 ->whereIn('prj_tarefa_dependencias.tarefa_id', $tarefaIds)
-                ->select('prj_tarefa_dependencias.tarefa_id', 'prj_tarefas.titulo')
+                ->select('prj_tarefa_dependencias.tarefa_id', 'prj_tarefas.titulo', 'prj_tarefa_dependencias.depende_de_id as id')
                 ->get()
                 ->groupBy('tarefa_id');
 
+            // Amarração em Memória
             foreach ($projeto->etapas as $etapa) {
                 foreach ($etapa->tarefas as $tarefa) {
                     $tarefa->anexos = $anexos->get($tarefa->id, []);
