@@ -18,20 +18,54 @@ class KanbanController extends Controller
      */
     public function board(Request $request, string $projetoId): JsonResponse
     {
-        $usuarioId = $request->user()->id;
+        $user = $request->user();
 
-        $projeto = Projeto::with(['etapas.tarefas' => function($query) use ($usuarioId) {
-            $query->orderBy('prioridade', 'desc')
-                  ->orderBy('created_at', 'desc')
-                  ->with([
-                      'checklists',
-                      'dependencias',
-                      'anexos', // Prepara o terreno para o GED
-                      'apontamentos' => function($q) use ($usuarioId) {
-                          $q->whereNull('fim')->where('usuario_id', $usuarioId);
-                      }
-                  ]);
+        $projeto = \App\Models\Projetos\Projeto::with(['etapas.tarefas' => function($query) {
+            $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
         }])->findOrFail($projetoId);
+
+        // MÁGICA: Injeta os anexos (GED), checklists e apontamentos diretamente na resposta
+        $tarefaIds = [];
+        foreach ($projeto->etapas as $etapa) {
+            foreach ($etapa->tarefas as $tarefa) {
+                $tarefaIds[] = $tarefa->id;
+            }
+        }
+
+        if (count($tarefaIds) > 0) {
+            $anexos = \App\Models\GedDocumento::where('tenant_id', $user->tenant_id)
+                ->where('entidade_vinculada_type', 'App\Models\Tarefa')
+                ->whereIn('entidade_vinculada_id', $tarefaIds)
+                ->get()
+                ->groupBy('entidade_vinculada_id');
+
+            $checklists = \Illuminate\Support\Facades\DB::table('prj_tarefa_checklists')
+                ->whereIn('tarefa_id', $tarefaIds)
+                ->get()
+                ->groupBy('tarefa_id');
+
+            $apontamentos = \Illuminate\Support\Facades\DB::table('prj_apontamentos')
+                ->whereIn('tarefa_id', $tarefaIds)
+                ->whereNull('deleted_at')
+                ->get()
+                ->groupBy('tarefa_id');
+
+            $dependencias = \Illuminate\Support\Facades\DB::table('prj_tarefa_dependencias')
+                ->join('prj_tarefas', 'prj_tarefa_dependencias.depende_de_id', '=', 'prj_tarefas.id')
+                ->whereIn('prj_tarefa_dependencias.tarefa_id', $tarefaIds)
+                ->select('prj_tarefa_dependencias.tarefa_id', 'prj_tarefas.titulo')
+                ->get()
+                ->groupBy('tarefa_id');
+
+            foreach ($projeto->etapas as $etapa) {
+                foreach ($etapa->tarefas as $tarefa) {
+                    $tarefa->anexos = $anexos->get($tarefa->id, []);
+                    $tarefa->checklists = $checklists->get($tarefa->id, []);
+                    $tarefa->apontamentos = $apontamentos->get($tarefa->id, []);
+                    $tarefa->dependencias = $dependencias->get($tarefa->id, []);
+                }
+            }
+        }
 
         return response()->json(['data' => $projeto]);
     }
