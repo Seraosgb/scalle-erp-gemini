@@ -86,28 +86,31 @@ class TimesheetController extends Controller
             ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim')
             ->get();
 
+        // 3. Membros da Equipe Alocados
         $equipe = DB::table('prj_projeto_equipe')
             ->where('projeto_id', $projetoId)
-            ->get()
-            ->keyBy('usuario_id');
+            ->get();
 
         $custoMaoDeObra = 0;
 
         foreach ($apontamentos as $ap) {
             $inicio = Carbon::parse($ap->inicio);
             $fim = Carbon::parse($ap->fim);
+
+            // Pega os minutos exatos (mínimo de 1 minuto para não zerar em testes rápidos de cliques)
             $minutos = max(1, $fim->diffInMinutes($inicio));
             $horas = $minutos / 60;
 
-            // Coleta o Custo-Hora do profissional (se não existir na equipe, assume R$ 0,00)
-            $custoHora = isset($equipe[$ap->usuario_id]) ? (float) $equipe[$ap->usuario_id]->custo_hora : 0.00;
+            // Procura o usuário na equipe. Se não achar, o custo dele é zero.
+            $membro = $equipe->firstWhere('usuario_id', $ap->usuario_id);
+            $custoHora = $membro ? (float) $membro->custo_hora : 0.00;
 
             $custoMaoDeObra += ($horas * $custoHora);
         }
 
-        $custoTotalReal = (float) $totalDespesas + $custoMaoDeObra;
+        $custoTotalReal = (float) $totalDespesas + (float) $custoMaoDeObra;
 
-        // 3. Atualiza o Totalizador do Projeto
+        // 4. Atualiza o Totalizador do Projeto
         DB::table('prj_projetos')
             ->where('id', $projetoId)
             ->update(['custo_total_real' => $custoTotalReal]);
