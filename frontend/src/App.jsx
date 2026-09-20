@@ -48,6 +48,7 @@ import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
 import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
 import FrotaPage from './pages/frota/FrotaDashboard';
 import ProjetosList from './pages/Projetos/ProjetosList';
+import CofreDigitalPage from './pages/ged/CofreDigitalPage';
 import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
 
 // Instância global do React Query Client
@@ -130,6 +131,9 @@ export default function App() {
             <Route path="holerites" element={<HoleritesPage />} />
             <Route path="recrutamento" element={<RecrutamentoPage />} />
             <Route path="desempenho-clima" element={<DesempenhoClimaPage />} />
+
+            {/* GED & Documentos */}
+            <Route path="ged" element={<CofreDigitalPage />} />
 
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />

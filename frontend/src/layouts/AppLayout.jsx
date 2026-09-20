@@ -109,6 +109,7 @@ export default function AppLayout() {
     { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint },
     { name: 'Folha & Holerites', path: '/app/holerites', icon: FileText },
     { name: 'Recrutamento & Candidatos', path: '/app/recrutamento', icon: Users },
+    { name: 'Cofre Digital (GED)', path: '/app/ged', icon: ShieldCheck },
     { name: 'Desempenho & Clima Organizacional', path: '/app/desempenho-clima', icon: UserCheck, end: true },
     ...(usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin ? [
       { name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }
