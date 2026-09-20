@@ -41,6 +41,7 @@ use App\Http\Controllers\Api\KanbanController;
 use App\Http\Controllers\Api\ProjetoController;
 use App\Http\Controllers\Api\TimesheetController;
 use App\Http\Controllers\Api\ProjetoGestaoController;
+use App\Http\Controllers\Api\GedController; // <== Adicionado o import do GED
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -251,18 +252,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // ==========================================
     // CRM & FUNIL DE VENDAS
     // ==========================================
-    // Pipelines
     Route::get('/crm/pipelines', [CrmController::class, 'listarPipelines']);
     Route::post('/crm/pipelines', [CrmController::class, 'storePipeline']);
     Route::put('/crm/pipelines/{id}', [CrmController::class, 'atualizarPipeline']);
     Route::put('/crm/pipelines/{pipelineId}/reordenar-etapas', [CrmController::class, 'reordenarEtapas']);
 
-    // Gestão Dinâmica de Etapas (RBAC Admin/Gestor)
     Route::post('/crm/pipelines/{pipelineId}/etapas', [CrmController::class, 'storeEtapa']);
     Route::put('/crm/etapas/{id}', [CrmController::class, 'updateEtapa']);
     Route::delete('/crm/etapas/{id}', [CrmController::class, 'destroyEtapa']);
 
-    // Operação do Kanban
     Route::get('/crm/board', [CrmController::class, 'board']);
     Route::post('/crm/oportunidades', [CrmController::class, 'storeOportunidade']);
     Route::put('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
@@ -270,20 +268,16 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/crm/oportunidades/{id}/marcar-perdido', [CrmController::class, 'marcarPerdido']);
     Route::post('/crm/oportunidades/{id}/converter-orcamento', [CrmController::class, 'converterParaOrcamento']);
 
-    // Itens e Grade de Produtos da Oportunidade
     Route::post('/crm/oportunidades/{id}/itens', [CrmController::class, 'adicionarItemOportunidade']);
     Route::delete('/crm/oportunidades/{id}/itens/{itemId}', [CrmController::class, 'removerItemOportunidade']);
 
-    // Follow-ups e Atividades
     Route::post('/crm/oportunidades/{id}/atividades', [CrmController::class, 'adicionarAtividade']);
     Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [CrmController::class, 'toggleAtividade']);
 
-    // Motivos de Perda (Tabela de Domínio Parametrizável)
     Route::post('/crm/motivos-perda', [CrmController::class, 'storeMotivoPerda']);
     Route::put('/crm/motivos-perda/{id}', [CrmController::class, 'updateMotivoPerda']);
     Route::delete('/crm/motivos-perda/{id}', [CrmController::class, 'destroyMotivoPerda']);
 
-    // Métricas analíticas do CRM
     Route::get('/crm/metricas', [CrmController::class, 'metricasAnaliticas']);
 
     // --- GESTÃO DE ASSINATURA (PORTAL DO INQUILINO) ---
@@ -294,62 +288,46 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/rh/ponto/registrar', [PontoController::class, 'registrar']);
     Route::get('/rh/ponto/hoje', [PontoController::class, 'historicoHoje']);
 
-    // Gestão de RH
     Route::get('/rh/colaboradores', [ColaboradorController::class, 'index']);
     Route::post('/rh/colaboradores', [ColaboradorController::class, 'store']);
     Route::put('/rh/colaboradores/{id}', [ColaboradorController::class, 'update']);
     Route::get('/rh/colaboradores/{id}/espelho', [ColaboradorController::class, 'espelhoPonto']);
 
-    // Tabela de Domínio Dinâmica para o RH
     Route::get('/rh/departamentos', [ColaboradorController::class, 'departamentos']);
     Route::post('/rh/departamentos', [ColaboradorController::class, 'storeDepartamento']);
     Route::delete('/rh/departamentos/{id}', [ColaboradorController::class, 'destroyDepartamento']);
 
-    // Gestão de Escalas de Trabalho
     Route::get('/rh/escalas', [EscalaTrabalhoController::class, 'index']);
     Route::post('/rh/escalas', [EscalaTrabalhoController::class, 'store']);
     Route::delete('/rh/escalas/{id}', [EscalaTrabalhoController::class, 'destroy']);
 
-    // ==========================================
-    // Rotas de Holerites
-    // ==========================================
-    Route::get('/rh/holerites/meus', [App\Http\Controllers\Api\HoleriteController::class, 'meusHolerites']);
-    Route::get('/rh/holerites/meus/{id}/pdf', [App\Http\Controllers\Api\HoleriteController::class, 'baixarMeuPdf'])->whereUuid('id');
+    Route::get('/rh/holerites/meus', [HoleriteController::class, 'meusHolerites']);
+    Route::get('/rh/holerites/meus/{id}/pdf', [HoleriteController::class, 'baixarMeuPdf'])->whereUuid('id');
+    Route::get('/rh/holerites', [HoleriteController::class, 'index']);
+    Route::post('/rh/holerites', [HoleriteController::class, 'store']);
+    Route::get('/rh/holerites/{id}', [HoleriteController::class, 'show'])->whereUuid('id');
 
-    Route::get('/rh/holerites', [App\Http\Controllers\Api\HoleriteController::class, 'index']);
-    Route::post('/rh/holerites', [App\Http\Controllers\Api\HoleriteController::class, 'store']);
-    Route::get('/rh/holerites/{id}', [App\Http\Controllers\Api\HoleriteController::class, 'show'])->whereUuid('id');
-
-    // Rotas do Recrutamento
     Route::get('/rh/vagas', [RecrutamentoController::class, 'indexVagas']);
     Route::post('/rh/vagas', [RecrutamentoController::class, 'storeVaga']);
     Route::get('/rh/vagas/{vagaId}/kanban', [RecrutamentoController::class, 'boardKanban']);
     Route::post('/rh/candidatos', [RecrutamentoController::class, 'storeCandidato']);
     Route::put('/rh/candidatos/{id}/mover', [RecrutamentoController::class, 'moverCandidato']);
 
-    // Rotas do Recrutamento - Etapas
     Route::get('/rh/etapas', [RecrutamentoController::class, 'indexEtapas']);
     Route::post('/rh/etapas', [RecrutamentoController::class, 'storeEtapa']);
     Route::delete('/rh/etapas/{id}', [RecrutamentoController::class, 'destroyEtapa']);
 
-    // RH Estratégico - eNPS e Avaliação
     Route::post('/rh/enps/campanhas', [DesempenhoClimaController::class, 'storeCampanha']);
     Route::post('/rh/enps/campanhas/{campanhaId}/responder', [DesempenhoClimaController::class, 'responderEnps']);
     Route::get('/rh/enps/campanhas/{campanhaId}/resultados', [DesempenhoClimaController::class, 'resultadosEnps']);
 
-    // RH Estratégico - Nine-Box & PDI
     Route::post('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'storeEixo']);
     Route::get('/rh/enps/campanhas', [DesempenhoClimaController::class, 'indexCampanhas']);
     Route::get('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'indexEixos']);
 
-    // ==========================================
     // MÓDULO DE FROTAS & TELEMETRIA
-    // ==========================================
     Route::prefix('frota')->group(function () {
-        // Listas dinâmicas de apoio (Status, Combustível)
         Route::get('/dominios', [FrotaVeiculoController::class, 'dominios']);
-
-        // Gestão de Veículos
         Route::get('/veiculos', [FrotaVeiculoController::class, 'index']);
         Route::post('/veiculos', [FrotaVeiculoController::class, 'store']);
         Route::get('/veiculos/{id}', [FrotaVeiculoController::class, 'show']);
@@ -358,39 +336,52 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
 
+    // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
-Route::prefix('projetos')->group(function () {
-    Route::get('/', [ProjetoController::class, 'index']);
-    Route::put('/projetos/{id}', [ProjetoController::class, 'update']);
-    Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
-    Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
-    Route::post('/', [ProjetoController::class, 'store']);
-    // Timesheet
-    Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
-    Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);
-    // Rotas de Gestão Interna (Abas)
-    Route::get('/{projetoId}/equipe', [ProjetoGestaoController::class, 'listarEquipe']);
-    Route::post('/{projetoId}/equipe', [ProjetoGestaoController::class, 'adicionarEquipe']);
+    // ==========================================
+    Route::prefix('projetos')->group(function () {
+        Route::get('/', [ProjetoController::class, 'index']);
+        Route::post('/', [ProjetoController::class, 'store']);
+        Route::put('/{id}', [ProjetoController::class, 'update']); // <== ROTA CORRIGIDA (/api/projetos/{id})
+        Route::put('/{projetoId}/orcamento', [ProjetoController::class, 'atualizarOrcamento']);
 
-    Route::get('/{projetoId}/custos', [ProjetoGestaoController::class, 'listarCustos']);
-    Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
+        Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
+        Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
+        Route::post('/etapas/{etapaId}/tarefas', [KanbanController::class, 'adicionarTarefa']);
 
-    Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
-    Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
-    Route::put('/{projetoId}/orcamento', [\App\Http\Controllers\Api\ProjetoController::class, 'atualizarOrcamento']);
-    Route::post('/etapas/{etapaId}/tarefas', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarTarefa']);
-    // Micro-Gestão da Tarefa (Checklists e Blockers)
-        Route::post('/tarefas/{tarefaId}/checklists', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarChecklist']);
-        Route::patch('/tarefas/checklists/{checklistId}/toggle', [\App\Http\Controllers\Api\KanbanController::class, 'toggleChecklist']);
+        Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
+        Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);
 
-        Route::post('/tarefas/{tarefaId}/dependencias', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarDependencia']);
-        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [\App\Http\Controllers\Api\KanbanController::class, 'removerDependencia']);
-});
+        Route::get('/{projetoId}/equipe', [ProjetoGestaoController::class, 'listarEquipe']);
+        Route::post('/{projetoId}/equipe', [ProjetoGestaoController::class, 'adicionarEquipe']);
+
+        Route::get('/{projetoId}/custos', [ProjetoGestaoController::class, 'listarCustos']);
+        Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
+
+        Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
+        Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
+
+        Route::post('/tarefas/{tarefaId}/checklists', [KanbanController::class, 'adicionarChecklist']);
+        Route::patch('/tarefas/checklists/{checklistId}/toggle', [KanbanController::class, 'toggleChecklist']);
+
+        Route::post('/tarefas/{tarefaId}/dependencias', [KanbanController::class, 'adicionarDependencia']);
+        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [KanbanController::class, 'removerDependencia']);
+    });
 
     // ==========================================
     // MÓDULO GED (Cofre Digital)
     // ==========================================
     Route::prefix('ged')->group(function () {
-        Route::post('/upload', [\App\Http\Controllers\Api\GedController::class, 'upload']);
+        Route::get('/listar', [GedController::class, 'listar']);
+        Route::post('/pastas', [GedController::class, 'criarPasta']);
+        Route::post('/upload', [GedController::class, 'upload']);
+
+        Route::post('/upload/tarefa/{tarefaId}', function(\Illuminate\Http\Request $request, $tarefaId) {
+            $request->merge([
+                'entidade_type' => 'App\Models\Tarefa',
+                'entidade_id' => $tarefaId
+            ]);
+            return app(GedController::class)->upload($request);
+        });
     });
 });
