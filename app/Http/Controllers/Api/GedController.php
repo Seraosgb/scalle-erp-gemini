@@ -84,14 +84,14 @@ class GedController extends Controller
         $nomeOriginal = $arquivo->getClientOriginalName();
         $tamanhoBytes = $arquivo->getSize();
         $mimeType = $arquivo->getMimeType();
+        $extensao = $arquivo->getClientOriginalExtension() ?: 'bin'; // Extrai a extensão e previne nulos
         $caminho = $arquivo->store("ged/{$tenantId}", 'public');
 
-        $doc = DB::transaction(function () use ($validated, $tenantId, $userId, $empresaId, $nomeOriginal, $tamanhoBytes, $caminho, $mimeType) {
+        $doc = DB::transaction(function () use ($validated, $tenantId, $userId, $empresaId, $nomeOriginal, $tamanhoBytes, $caminho, $mimeType, $extensao) {
 
             $documentoId = (string) Str::uuid();
 
-            // Blindagem: Injetando o $userId tanto no usuario_upload_id quanto no usuario_id
-            // para satisfazer a constraint não mapeada do PostgreSQL.
+            // Mapeamento corretivo exaustivo para contornar restrições Not Null da base legada
             DB::table('ged_documentos')->insert([
                 'id' => $documentoId,
                 'tenant_id' => $tenantId,
@@ -103,8 +103,9 @@ class GedController extends Controller
                 'caminho_s3' => $caminho,
                 'mime_type' => $mimeType,
                 'tamanho_bytes' => $tamanhoBytes,
+                'extensao' => $extensao, // <-- Coluna adicionada para satisfazer a restrição
                 'usuario_upload_id' => $userId,
-                'usuario_id' => $userId, // <-- Mapeamento corretivo para evitar falha Not Null Constraint
+                'usuario_id' => $userId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
