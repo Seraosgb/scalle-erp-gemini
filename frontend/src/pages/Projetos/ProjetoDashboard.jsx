@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square } from 'lucide-react';
+import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export default function ProjetoDashboard() {
@@ -12,23 +12,48 @@ export default function ProjetoDashboard() {
     const [activeTab, setActiveTab] = useState('board');
     const [loading, setLoading] = useState(true);
 
-    // Controle do Modal de Dependências (Blockers)
+    // Clientes para o Modal de Configurações
+    const [clientes, setClientes] = useState([]);
+    const [modalConfig, setModalConfig] = useState(false);
+    const [formConfig, setFormConfig] = useState({ nome: '', descricao: '', cliente_id: '' });
+
     const [modalBlocker, setModalBlocker] = useState(null);
     const [dependenciaIdSelecionada, setDependenciaIdSelecionada] = useState('');
 
     useEffect(() => {
-        if (projetoId) carregarProjeto();
+        if (projetoId) {
+            carregarProjeto();
+            api.get('/pessoas?tipo=CLIENTE').then(res => setClientes(res.data?.data?.data || res.data?.data || []));
+        }
     }, [projetoId]);
 
     const carregarProjeto = async () => {
         try {
             setLoading(true);
             const response = await api.get(`/projetos/${projetoId}/board`);
-            setProjeto(response.data.data || response.data);
+            const projData = response.data.data || response.data;
+            setProjeto(projData);
+            setFormConfig({
+                nome: projData.nome,
+                descricao: projData.descricao || '',
+                cliente_id: projData.cliente_id || ''
+            });
         } catch (error) {
             console.error("Erro ao buscar o projeto:", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const salvarConfiguracoes = async (e) => {
+        e.preventDefault();
+        try {
+            await api.put(`/projetos/${projetoId}`, formConfig);
+            setModalConfig(false);
+            carregarProjeto();
+            alert("Projeto atualizado com sucesso!");
+        } catch (error) {
+            alert("Erro ao atualizar projeto.");
         }
     };
 
@@ -68,7 +93,6 @@ export default function ProjetoDashboard() {
         const tarefasOrigem = [...(etapaOrigem.tarefas || [])];
         const [tarefaMovida] = tarefasOrigem.splice(source.index, 1);
 
-        // BLOQUEIO ENTERPRISE: Impede movimentação se houver dependências ativas
         if (tarefaMovida.dependencias?.length > 0 && source.droppableId !== destination.droppableId) {
             alert(`⚠️ TAREFA BLOQUEADA\n\nEsta tarefa depende de ${tarefaMovida.dependencias.length} pré-requisito(s). Conclua as dependências primeiro.`);
             return;
@@ -107,15 +131,11 @@ export default function ProjetoDashboard() {
                 alert(res.data?.data?.message || 'Cronômetro parado e horas apropriadas!');
             } else {
                 await api.post(`/projetos/tarefas/${tarefa.id}/play`);
-                alert('Cronômetro iniciado!');
             }
             carregarProjeto();
         } catch (error) { alert('Falha ao processar apontamento.'); }
     };
 
-    // ==========================================
-    // MICRO-GESTÃO: CHECKLISTS E GED
-    // ==========================================
     const adicionarChecklist = async (tarefaId) => {
         const descricao = window.prompt("Qual o item de verificação para esta tarefa?");
         if (!descricao) return;
@@ -137,7 +157,6 @@ export default function ProjetoDashboard() {
             setProjeto({ ...projeto, etapas: novasEtapas });
             await api.patch(`/projetos/tarefas/checklists/${checklistId}/toggle`);
         } catch (error) {
-            alert("Erro ao atualizar checklist.");
             carregarProjeto();
         }
     };
@@ -153,16 +172,13 @@ export default function ProjetoDashboard() {
 
         try {
             await api.post('/ged/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
-            alert('Arquivo anexado com sucesso!');
+            alert('Arquivo anexado com sucesso ao Cofre Digital!');
             carregarProjeto();
         } catch (error) {
-            alert('A rota do Cofre Digital (GED) ainda será construída na próxima etapa.');
+            alert('Erro ao anexar arquivo ao GED.');
         }
     };
 
-    // ==========================================
-    // MICRO-GESTÃO: DEPENDÊNCIAS (BLOCKERS)
-    // ==========================================
     const adicionarDependencia = async (e) => {
         e.preventDefault();
         if (!dependenciaIdSelecionada) return;
@@ -190,18 +206,28 @@ export default function ProjetoDashboard() {
     return (
         <div className="min-h-screen flex flex-col space-y-4 relative text-slate-200">
             <header className="bg-slate-900 border border-slate-800 shadow-sm rounded-2xl p-5">
-                <div className="flex items-center gap-4 border-b border-slate-800 pb-4">
-                    <button onClick={() => navigate('/app/projetos')} className="p-2 bg-slate-950 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-400 hover:text-white transition cursor-pointer">
-                        <ArrowLeft className="h-5 w-5" />
-                    </button>
-                    <div>
-                        <h1 className="text-2xl font-bold text-white">{projeto.nome}</h1>
-                        <p className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-2">
-                            Budget: R$ {Number(projeto.orcamento_previsto).toLocaleString('pt-BR')}
-                            <button onClick={atualizarBudget} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
-                            &nbsp; • &nbsp; Custo: <span className="text-rose-400">R$ {Number(projeto.custo_total_real || 0).toLocaleString('pt-BR')}</span>
-                        </p>
+                <div className="flex justify-between items-start border-b border-slate-800 pb-4">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => navigate('/app/projetos')} className="p-2 bg-slate-950 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-400 hover:text-white transition cursor-pointer" title="Voltar aos Projetos">
+                            <ArrowLeft className="h-5 w-5" />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                                {projeto.nome}
+                                {!projeto.cliente_id && (
+                                    <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
+                                )}
+                            </h1>
+                            <p className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-2">
+                                Budget: R$ {Number(projeto.orcamento_previsto).toLocaleString('pt-BR')}
+                                <button onClick={atualizarBudget} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
+                                &nbsp; • &nbsp; Custo Real: <span className="text-rose-400">R$ {Number(projeto.custo_total_real || 0).toLocaleString('pt-BR')}</span>
+                            </p>
+                        </div>
                     </div>
+                    <button onClick={() => setModalConfig(true)} className="p-2 bg-slate-950 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-400 hover:text-white transition cursor-pointer" title="Configurações do Projeto">
+                        <Settings className="h-5 w-5" />
+                    </button>
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-4">
@@ -282,7 +308,6 @@ export default function ProjetoDashboard() {
 
                                                                 <h3 className="font-semibold text-slate-200 text-sm leading-tight pr-20">{tarefa.titulo}</h3>
 
-                                                                {/* Alerta de Blocker */}
                                                                 {tarefa.dependencias && tarefa.dependencias.length > 0 && (
                                                                     <div className="mt-2 text-[10px] bg-rose-950/40 text-rose-400 border border-rose-900/50 p-1.5 rounded font-bold flex flex-col gap-1">
                                                                         <div className="flex items-center gap-1">⚠️ Depende de:</div>
@@ -295,7 +320,6 @@ export default function ProjetoDashboard() {
                                                                     </div>
                                                                 )}
 
-                                                                {/* Checklists */}
                                                                 {tarefa.checklists && tarefa.checklists.length > 0 && (
                                                                     <div className="mt-3 space-y-1.5 bg-slate-900/50 p-2 border border-slate-800/80 rounded-lg">
                                                                         <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Checklist</div>
@@ -315,7 +339,6 @@ export default function ProjetoDashboard() {
                                                                     </div>
                                                                 )}
 
-                                                                {/* GED: Lista de Anexos */}
                                                                 {tarefa.anexos && tarefa.anexos.length > 0 && (
                                                                     <div className="mt-2 flex flex-wrap gap-1">
                                                                         {tarefa.anexos.map(anexo => (
@@ -326,7 +349,6 @@ export default function ProjetoDashboard() {
                                                                     </div>
                                                                 )}
 
-                                                                {/* Rodapé do Card */}
                                                                 <div className="mt-3 flex justify-between items-center pt-3 border-t border-slate-800/50">
                                                                     <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
                                                                         tarefa.prioridade === 1 ? 'bg-rose-950 text-rose-400' :
@@ -346,7 +368,8 @@ export default function ProjetoDashboard() {
                                                                         }`}
                                                                         title={isRodando ? "Parar Cronômetro" : "Iniciar Cronômetro"}
                                                                     >
-                                                                        {isRodando ? '⏹ STOP' : '▶ PLAY'}
+                                                                        {isRodando ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+                                                                        {isRodando ? 'STOP' : 'PLAY'}
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -398,6 +421,46 @@ export default function ProjetoDashboard() {
                         <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
                             <button type="button" onClick={() => setModalBlocker(null)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
                             <button type="submit" className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-bold transition shadow-lg shadow-rose-600/20 cursor-pointer">Bloquear Tarefa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Modal de Configurações (Vincular Cliente) */}
+            {modalConfig && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarConfiguracoes} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-md space-y-4 shadow-2xl">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                                <Settings className="h-5 w-5 text-indigo-400" /> Configurações do Projeto
+                            </h3>
+                            <button type="button" onClick={() => setModalConfig(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1">Nome do Projeto *</label>
+                            <input type="text" required value={formConfig.nome} onChange={e => setFormConfig({...formConfig, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500" />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1">Descrição</label>
+                            <textarea rows="2" value={formConfig.descricao} onChange={e => setFormConfig({...formConfig, descricao: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500"></textarea>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1">Cliente Vinculado (Obrigatório para Faturamento)</label>
+                            <select value={formConfig.cliente_id} onChange={e => setFormConfig({...formConfig, cliente_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500 cursor-pointer">
+                                <option value="">Sem cliente vinculado</option>
+                                {clientes.map(c => (
+                                    <option key={c.id} value={c.id}>{c.nome_razao_social} ({c.cpf_cnpj})</option>
+                                ))}
+                            </select>
+                            <p className="text-[10px] text-amber-500 mt-1 font-semibold">Sem este vínculo o Motor Fiscal não consegue emitir a Nota (NF-e/NFS-e).</p>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalConfig(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition shadow-md cursor-pointer">Salvar Configurações</button>
                         </div>
                     </form>
                 </div>
@@ -575,14 +638,13 @@ function TabEntregaveis({ projeto, api, onReload }) {
 
     const faturar = async (entregavel) => {
         if (!projeto.cliente_id) {
-            alert("Atenção: Este projeto não possui um Cliente vinculado na sua raiz. Vá até a tela de edição do projeto e vincule um cliente antes de faturar.");
+            alert("Atenção: Este projeto não possui um Cliente vinculado na sua raiz. Clique no ícone de engrenagem no cabeçalho do projeto para vincular um cliente antes de faturar.");
             return;
         }
 
-        if (!confirm(`Deseja aprovar e faturar o marco "${entregavel.titulo}" no valor de R$ ${Number(entregavel.valor_faturamento).toFixed(2)}? Isso irá gerar um Pedido de Venda.`)) return;
+        if (!window.confirm(`Deseja aprovar e faturar o marco "${entregavel.titulo}" no valor de R$ ${Number(entregavel.valor_faturamento).toFixed(2)}? Isso irá gerar um Pedido de Venda.`)) return;
 
         try {
-            // A rota será criada quando conectarmos o Motor de Vendas com Projetos
             await api.post(`/projetos/entregaveis/${entregavel.id}/faturar`);
             alert("Fatura gerada com sucesso e enviada ao contas a receber!");
             carregar();

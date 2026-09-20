@@ -222,4 +222,32 @@ class ProjetoController extends Controller
 
         return response()->json(['data' => ['message' => 'Tarefa criada com sucesso no quadro!']]);
     }
+
+    // ==========================================
+    // CONFIGURAÇÕES GERAIS DO PROJETO
+    // ==========================================
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:200',
+            'descricao' => 'nullable|string',
+            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
+        ]);
+
+        $projeto->update([
+            'nome' => $validated['nome'],
+            'descricao' => $validated['descricao'] ?? null,
+            'cliente_id' => $validated['cliente_id'] ?? null,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Configurações do projeto atualizadas com sucesso!',
+                'projeto' => $projeto
+            ]
+        ]);
+    }
 }

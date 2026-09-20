@@ -361,6 +361,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // Módulo de Projetos (Kanban & Timesheet)
 Route::prefix('projetos')->group(function () {
     Route::get('/', [ProjetoController::class, 'index']);
+    Route::put('/projetos/{id}', [ProjetoController::class, 'update']);
     Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
     Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
     Route::post('/', [ProjetoController::class, 'store']);
