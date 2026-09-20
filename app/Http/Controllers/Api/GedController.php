@@ -16,15 +16,15 @@ class GedController extends Controller
 {
     public function listar(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $pastaId = $request->get('pasta_id');
+        $tenantId =$request->user()->tenant_id;
+        $pastaId =$request->get('pasta_id');
 
-        $pastas = GedPasta::where('tenant_id', $tenantId)
+        $pastas = GedPasta::where('tenant_id',$tenantId)
             ->where('pasta_pai_id', $pastaId)
             ->orderBy('nome')
             ->get();
 
-        $documentos = GedDocumento::where('tenant_id', $tenantId)
+        $documentos = GedDocumento::where('tenant_id',$tenantId)
             ->where('pasta_id', $pastaId)
             ->with('uploader:id,name')
             ->orderByDesc('created_at')
@@ -34,7 +34,7 @@ class GedController extends Controller
         if ($pastaId) {
             $atual = GedPasta::find($pastaId);
             while ($atual) {
-                array_unshift($caminho, ['id' => $atual->id, 'nome' => $atual->nome]);
+                array_unshift($caminho, ['id' => $atual->id, 'nome' =>$atual->nome]);
                 $atual = GedPasta::find($atual->pasta_pai_id);
             }
         }
@@ -50,8 +50,8 @@ class GedController extends Controller
 
     public function criarPasta(Request $request): JsonResponse
     {
-        $tenantId = $request->user()->tenant_id;
-        $validated = $request->validate([
+        $tenantId =$request->user()->tenant_id;
+        $validated =$request->validate([
             'nome' => 'required|string|max:150',
             'pasta_pai_id' => 'nullable|uuid|exists:ged_pastas,id',
         ]);
@@ -69,22 +69,19 @@ class GedController extends Controller
     public function upload(Request $request): JsonResponse
     {
         // Validação da Cota já é feita pelo Middleware CheckStorageQuota
-        $validated = $request->validate([
+        $validated =$request->validate([
             'arquivo' => 'required|file|max:20480', // 20MB
             'pasta_id' => 'nullable|uuid|exists:ged_pastas,id',
             'entidade_type' => 'nullable|string',
             'entidade_id' => 'nullable|uuid',
         ]);
 
-        $tenantId = $request->user()->tenant_id;
-        $arquivo = $request->file('arquivo');
+        $tenantId =$request->user()->tenant_id;
+        $arquivo = $request->file('arquivo');$nomeOriginal = $arquivo->getClientOriginalName();$tamanhoBytes = $arquivo->getSize();$caminho = $arquivo->store("ged/{$tenantId}", 'public');
 
-        $nomeOriginal = $arquivo->getClientOriginalName();
-        $tamanhoBytes = $arquivo->getSize();
-        $caminho = $arquivo->store("ged/{$tenantId}", 'public');
-
-        $doc = DB::transaction(function () use ($validated, $tenantId, $request, $nomeOriginal, $tamanhoBytes, $caminho) {
-            $documento = GedDocumento::create([
+        // MÁGICA AQUI: A variável $arquivo foi injetada no construtor `use` da função anônima
+        $doc = DB::transaction(function () use ($validated,$tenantId, $request,$nomeOriginal, $tamanhoBytes,$caminho, $arquivo) {$documento = GedDocumento::create([
+                'id' => (string) Str::uuid(),
                 'tenant_id' => $tenantId,
                 'empresa_id' => $request->user()->empresa_padrao_id,
                 'pasta_id' => $validated['pasta_id'] ?? null,
