@@ -88,10 +88,10 @@ class GedController extends Controller
 
         $doc = DB::transaction(function () use ($validated, $tenantId, $userId, $empresaId, $nomeOriginal, $tamanhoBytes, $caminho, $mimeType) {
 
-            // Inserção explícita na base de dados (facade DB) para evitar que gatilhos ou observers
-            // no Model GedDocumento disparem e causem falhas estruturais indiretas.
             $documentoId = (string) Str::uuid();
 
+            // Blindagem: Injetando o $userId tanto no usuario_upload_id quanto no usuario_id
+            // para satisfazer a constraint não mapeada do PostgreSQL.
             DB::table('ged_documentos')->insert([
                 'id' => $documentoId,
                 'tenant_id' => $tenantId,
@@ -104,12 +104,12 @@ class GedController extends Controller
                 'mime_type' => $mimeType,
                 'tamanho_bytes' => $tamanhoBytes,
                 'usuario_upload_id' => $userId,
+                'usuario_id' => $userId, // <-- Mapeamento corretivo para evitar falha Not Null Constraint
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
-            // Atualiza a cota de armazenamento de forma blindada
-            DB::table('sis_assinaturas')
+            Assinatura::withoutGlobalScopes()
                 ->where('tenant_id', $tenantId)
                 ->increment('storage_utilizado_bytes', $tamanhoBytes);
 
