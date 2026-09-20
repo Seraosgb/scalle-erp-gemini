@@ -3,7 +3,8 @@ import { api } from '../../services/api';
 import {
   Folder, FileText, Upload, Plus, ChevronRight,
   HardDrive, ShieldCheck, Image as ImageIcon,
-  FileArchive, FileSpreadsheet, File, X, AlertTriangle, CheckCircle2
+  FileArchive, FileSpreadsheet, File, X, AlertTriangle, CheckCircle2,
+  Download
 } from 'lucide-react';
 
 export default function CofreDigitalPage() {
