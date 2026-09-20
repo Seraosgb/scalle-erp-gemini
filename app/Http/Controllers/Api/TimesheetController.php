@@ -59,17 +59,24 @@ class TimesheetController extends Controller
             'descricao' => $validated['descricao'] ?? 'Apontamento finalizado via cronômetro.'
         ]);
 
-        // GATILHO ENTERPRISE: Injeta a re-apuração financeira na raiz do Projeto
+        // GATILHO ENTERPRISE: Injeta a re-apuração financeira
         $tarefa = Tarefa::find($tarefaId);
+        $novoCustoTotal = 0;
+
         if ($tarefa) {
-            self::recalcularCustoProjeto($tarefa->projeto_id);
+            $novoCustoTotal = self::recalcularCustoProjeto($tarefa->projeto_id);
         }
 
-        return response()->json(['data' => ['message' => 'Cronômetro parado e custos apropriados com sucesso!', 'apontamento' => $apontamento]]);
+        return response()->json([
+            'data' => [
+                'message' => 'Cronômetro parado! Custo atual do projeto subiu para R$ ' . number_format($novoCustoTotal, 2, ',', '.'),
+                'apontamento' => $apontamento
+            ]
+        ]);
     }
 
     /**
-     * Motor Financeiro: Soma Horas Trabalhadas da Equipe + Despesas Externas Lançadas
+     * Motor Financeiro Absoluto: Soma Horas + Despesas
      */
     public static function recalcularCustoProjeto(string $projetoId)
     {
@@ -78,41 +85,58 @@ class TimesheetController extends Controller
             ->where('projeto_id', $projetoId)
             ->sum('valor');
 
-        // 2. Cálculo da Mão de Obra (Horas do Timesheet * Custo Hora da Equipe)
+        $totalDespesas = is_numeric($totalDespesas) ? (float) $totalDespesas : 0.00;
+
+        // 2. Cálculo da Mão de Obra (Apenas apontamentos válidos)
         $apontamentos = DB::table('prj_apontamentos')
             ->join('prj_tarefas', 'prj_apontamentos.tarefa_id', '=', 'prj_tarefas.id')
             ->where('prj_tarefas.projeto_id', $projetoId)
             ->whereNotNull('prj_apontamentos.fim')
+            ->whereNull('prj_apontamentos.deleted_at')
             ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim')
             ->get();
 
-        // 3. Membros da Equipe Alocados
-        $equipe = DB::table('prj_projeto_equipe')
+        // 3. Mapeamento Primitivo e Seguro de Custos da Equipe
+        $membros = DB::table('prj_projeto_equipe')
             ->where('projeto_id', $projetoId)
             ->get();
 
-        $custoMaoDeObra = 0;
+        $mapaCustos = [];
+        foreach ($membros as $m) {
+            $mapaCustos[$m->usuario_id] = (float) $m->custo_hora;
+        }
+
+        $custoMaoDeObra = 0.00;
 
         foreach ($apontamentos as $ap) {
+            if (empty($ap->inicio) || empty($ap->fim)) continue;
+
             $inicio = Carbon::parse($ap->inicio);
             $fim = Carbon::parse($ap->fim);
 
-            // Pega os minutos exatos (mínimo de 1 minuto para não zerar em testes rápidos de cliques)
-            $minutos = max(1, $fim->diffInMinutes($inicio));
-            $horas = $minutos / 60;
+            // Força a diferença absoluta para evitar tempos negativos
+            $minutos = $inicio->diffInMinutes($fim);
 
-            // Procura o usuário na equipe. Se não achar, o custo dele é zero.
-            $membro = $equipe->firstWhere('usuario_id', $ap->usuario_id);
-            $custoHora = $membro ? (float) $membro->custo_hora : 0.00;
+            // Garante o tempo mínimo de 1 minuto para validações e testes rápidos
+            if ($minutos < 1) {
+                $minutos = 1;
+            }
+
+            $horas = $minutos / 60.0;
+
+            // Busca segura via array nativo do PHP
+            $custoHora = isset($mapaCustos[$ap->usuario_id]) ? $mapaCustos[$ap->usuario_id] : 0.00;
 
             $custoMaoDeObra += ($horas * $custoHora);
         }
 
-        $custoTotalReal = (float) $totalDespesas + (float) $custoMaoDeObra;
+        $custoTotalReal = $totalDespesas + $custoMaoDeObra;
 
         // 4. Atualiza o Totalizador do Projeto
         DB::table('prj_projetos')
             ->where('id', $projetoId)
             ->update(['custo_total_real' => $custoTotalReal]);
+
+        return $custoTotalReal;
     }
 }
