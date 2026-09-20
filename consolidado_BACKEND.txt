@@ -25319,6 +25319,7 @@ use App\Models\Etapa;
 use App\Models\PrjTarefaChecklist;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class KanbanController extends Controller
@@ -25328,20 +25329,63 @@ class KanbanController extends Controller
      */
     public function board(Request $request, string $projetoId): JsonResponse
     {
-        $usuarioId = $request->user()->id;
+        $user = $request->user();
+        $usuarioId = $user->id;
 
-        $projeto = Projeto::with(['etapas.tarefas' => function($query) use ($usuarioId) {
-            $query->orderBy('prioridade', 'desc')
-                  ->orderBy('created_at', 'desc')
-                  ->with([
-                      'checklists',
-                      'dependencias',
-                      'anexos', // Prepara o terreno para o GED
-                      'apontamentos' => function($q) use ($usuarioId) {
-                          $q->whereNull('fim')->where('usuario_id', $usuarioId);
-                      }
-                  ]);
+        $projeto = Projeto::with(['etapas.tarefas' => function($query) {
+            $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
         }])->findOrFail($projetoId);
+
+        // MÁGICA: Injeta os anexos (GED), checklists, dependências e apontamentos diretamente na resposta
+        // Isso evita erros 500 por falta de mapeamento de relacionamentos complexos nos Models.
+        $tarefaIds = [];
+        foreach ($projeto->etapas as $etapa) {
+            foreach ($etapa->tarefas as $tarefa) {
+                $tarefaIds[] = $tarefa->id;
+            }
+        }
+
+        if (count($tarefaIds) > 0) {
+            // Anexos do Cofre Digital (GED)
+            $anexos = \App\Models\GedDocumento::where('tenant_id', $user->tenant_id)
+                ->where('entidade_vinculada_type', 'App\Models\Tarefa')
+                ->whereIn('entidade_vinculada_id', $tarefaIds)
+                ->get()
+                ->groupBy('entidade_vinculada_id');
+
+            // Checklists
+            $checklists = DB::table('prj_tarefa_checklists')
+                ->whereIn('tarefa_id', $tarefaIds)
+                ->get()
+                ->groupBy('tarefa_id');
+
+            // Apontamentos (lê os cronômetros ativos do próprio usuário logado)
+            $apontamentos = DB::table('prj_apontamentos')
+                ->whereIn('tarefa_id', $tarefaIds)
+                ->where('usuario_id', $usuarioId)
+                ->whereNull('fim')
+                ->whereNull('deleted_at')
+                ->get()
+                ->groupBy('tarefa_id');
+
+            // Dependências (Blockers)
+            $dependencias = DB::table('prj_tarefa_dependencias')
+                ->join('prj_tarefas', 'prj_tarefa_dependencias.depende_de_id', '=', 'prj_tarefas.id')
+                ->whereIn('prj_tarefa_dependencias.tarefa_id', $tarefaIds)
+                ->select('prj_tarefa_dependencias.tarefa_id', 'prj_tarefas.titulo', 'prj_tarefa_dependencias.depende_de_id as id')
+                ->get()
+                ->groupBy('tarefa_id');
+
+            // Amarração em Memória
+            foreach ($projeto->etapas as $etapa) {
+                foreach ($etapa->tarefas as $tarefa) {
+                    $tarefa->anexos = $anexos->get($tarefa->id, []);
+                    $tarefa->checklists = $checklists->get($tarefa->id, []);
+                    $tarefa->apontamentos = $apontamentos->get($tarefa->id, []);
+                    $tarefa->dependencias = $dependencias->get($tarefa->id, []);
+                }
+            }
+        }
 
         return response()->json(['data' => $projeto]);
     }
@@ -27305,12 +27349,24 @@ class ProjetoController extends Controller
     public function index(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-
-        $projetos = Projeto::where('tenant_id', $tenantId)
+        $query = Projeto::where('tenant_id', $tenantId)
             ->withCount('tarefas')
-            ->with('etapas')
-            ->orderByDesc('created_at')
-            ->paginate(15);
+            ->with('cliente:id,nome_razao_social,cpf_cnpj');
+
+        if ($request->filled('status') && $request->status !== 'TODOS') {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome', 'ILIKE', "%{$search}%")
+                  ->orWhere('descricao', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('cliente', fn($c) => $c->where('nome_razao_social', 'ILIKE', "%{$search}%"));
+            });
+        }
+
+        $projetos = $query->orderByDesc('created_at')->paginate(20);
 
         return response()->json($projetos);
     }
@@ -27335,7 +27391,10 @@ class ProjetoController extends Controller
                 'orcamento_previsto' => $validated['orcamento_previsto'] ?? 0.00,
             ]);
 
-            // Scaffolding dinâmico: Cria as colunas iniciais do Kanban para o projeto não nascer vazio
+            $proj->status = 'ATIVO';
+            $proj->save();
+
+            // Scaffolding dinâmico Kanban
             $etapasPadrao = [
                 ['nome' => 'Backlog', 'cor_hex' => '#64748b'],
                 ['nome' => 'A Fazer', 'cor_hex' => '#e2e8f0'],
@@ -27366,6 +27425,51 @@ class ProjetoController extends Controller
         ], 201);
     }
 
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:200',
+            'descricao' => 'nullable|string',
+            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
+        ]);
+
+        $projeto->update([
+            'nome' => $validated['nome'],
+            'descricao' => $validated['descricao'] ?? null,
+            'cliente_id' => $validated['cliente_id'] ?? null,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Configurações do projeto atualizadas com sucesso!',
+                'projeto' => $projeto
+            ]
+        ]);
+    }
+
+    public function alterarStatus(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'status' => 'required|string|in:ATIVO,CONCLUIDO,CANCELADO'
+        ]);
+
+        $projeto->status = $validated['status'];
+        $projeto->save();
+
+        return response()->json([
+            'data' => [
+                'message' => "Projeto marcado como {$validated['status']}!",
+                'projeto' => $projeto
+            ]
+        ]);
+    }
+
     public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse
     {
         $validated = $request->validate(['orcamento_previsto' => 'required|numeric|min:0']);
@@ -27373,144 +27477,6 @@ class ProjetoController extends Controller
         $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
 
         return response()->json(['data' => $projeto]);
-    }
-
-    // ==========================================
-    // ABA: ALOCAÇÃO DE EQUIPA
-    // ==========================================
-    public function equipe(Request $request, string $projetoId): JsonResponse
-    {
-        $equipe = DB::table('prj_projeto_equipe')
-            ->join('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
-            ->where('prj_projeto_equipe.projeto_id', $projetoId)
-            ->select('prj_projeto_equipe.*', 'users.name as nome_usuario')
-            ->get();
-
-        return response()->json(['data' => $equipe]);
-    }
-
-    public function storeEquipe(Request $request, string $projetoId): JsonResponse
-    {
-        $validated = $request->validate([
-            'usuario_id' => 'required|uuid',
-            'custo_hora' => 'required|numeric|min:0'
-        ]);
-
-        DB::table('prj_projeto_equipe')->updateOrInsert(
-            ['projeto_id' => $projetoId, 'usuario_id' => $validated['usuario_id']],
-            [
-                'id' => (string) Str::uuid(),
-                'custo_hora' => $validated['custo_hora'],
-                'created_at' => now(),
-                'updated_at' => now()
-            ]
-        );
-
-        return response()->json(['data' => ['message' => 'Membro alocado ao projeto com sucesso!']]);
-    }
-
-    // ==========================================
-    // ABA: CUSTOS E DESPESAS EXTERNAS
-    // ==========================================
-    public function custos(Request $request, string $projetoId): JsonResponse
-    {
-        $custos = DB::table('prj_projeto_custos')
-            ->where('projeto_id', $projetoId)
-            ->orderByDesc('data_custo')
-            ->get();
-
-        return response()->json(['data' => $custos]);
-    }
-
-    public function storeCusto(Request $request, string $projetoId): JsonResponse
-    {
-        $validated = $request->validate([
-            'descricao' => 'required|string|max:255',
-            'valor' => 'required|numeric|min:0',
-            'data_custo' => 'required|date'
-        ]);
-
-        DB::table('prj_projeto_custos')->insert([
-            'id' => (string) Str::uuid(),
-            'projeto_id' => $projetoId,
-            'descricao' => $validated['descricao'],
-            'valor' => $validated['valor'],
-            'data_custo' => $validated['data_custo'],
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        // GATILHO ENTERPRISE: Recalcula o Custo Total Real do Projeto imediatamente
-        \App\Http\Controllers\Api\TimesheetController::recalcularCustoProjeto($projetoId);
-
-        return response()->json(['data' => ['message' => 'Despesa externa lançada com sucesso!']]);
-    }
-
-    // ==========================================
-    // ABA: ENTREGÁVEIS / MARCOS DE FATURAMENTO
-    // ==========================================
-    public function entregaveis(Request $request, string $projetoId): JsonResponse
-    {
-        $entregaveis = DB::table('prj_projeto_entregaveis')
-            ->where('projeto_id', $projetoId)
-            ->orderBy('data_prevista')
-            ->get();
-
-        return response()->json(['data' => $entregaveis]);
-    }
-
-    public function storeEntregavel(Request $request, string $projetoId): JsonResponse
-    {
-        $validated = $request->validate([
-            'titulo' => 'required|string|max:255',
-            'valor_faturamento' => 'required|numeric|min:0',
-            'data_prevista' => 'nullable|date'
-        ]);
-
-        DB::table('prj_projeto_entregaveis')->insert([
-            'id' => (string) Str::uuid(),
-            'projeto_id' => $projetoId,
-            'titulo' => $validated['titulo'],
-            'valor_faturamento' => $validated['valor_faturamento'],
-            'data_prevista' => $validated['data_prevista'],
-            'status' => 'PENDENTE',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        return response()->json(['data' => ['message' => 'Marco de faturamento mapeado com sucesso!']]);
-    }
-
-    // ==========================================
-    // KANBAN: ADICIONAR TAREFA NA ETAPA
-    // ==========================================
-    public function storeTarefa(Request $request, string $etapaId): JsonResponse
-    {
-        $validated = $request->validate([
-            'titulo' => 'required|string|max:255',
-            'prioridade' => 'required|string|in:BAIXA,MEDIA,ALTA,URGENTE'
-        ]);
-
-        $etapa = DB::table('prj_etapas')->where('id', $etapaId)->first();
-
-        if (!$etapa) {
-            return response()->json(['error' => ['message' => 'Etapa não encontrada no Kanban.']], 404);
-        }
-
-        $tarefaId = (string) Str::uuid();
-
-        DB::table('prj_tarefas')->insert([
-            'id' => $tarefaId,
-            'tenant_id' => $etapa->tenant_id,
-            'projeto_id' => $etapa->projeto_id,
-            'etapa_id' => $etapaId,
-            'titulo' => $validated['titulo'],
-            'prioridade' => $validated['prioridade'],
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
-
-        return response()->json(['data' => ['message' => 'Tarefa criada com sucesso no quadro!']]);
     }
 }
 
@@ -27525,9 +27491,6 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ProjetoGestaoCon
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProjetoEquipe;
-use App\Models\ProjetoCusto;
-use App\Models\Entregavel;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -27535,87 +27498,122 @@ use Illuminate\Support\Str;
 
 class ProjetoGestaoController extends Controller
 {
-    // === EQUIPE ===
-    public function listarEquipe(Request $request, string $projetoId): JsonResponse {
-        $tenantId = $request->user()->tenant_id;
-        $equipe = ProjetoEquipe::where('prj_projeto_equipe.tenant_id', $tenantId) // <-- Correção aqui
-            ->where('prj_projeto_equipe.projeto_id', $projetoId) // <-- Correção aqui
-            ->leftJoin('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
+    // ==========================================
+    // ABA: ALOCAÇÃO DE EQUIPA
+    // ==========================================
+    public function listarEquipe(Request $request, string $projetoId): JsonResponse
+    {
+        $equipe = DB::table('prj_projeto_equipe')
+            ->join('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
+            ->where('prj_projeto_equipe.projeto_id', $projetoId)
+            ->whereNull('prj_projeto_equipe.deleted_at')
             ->select('prj_projeto_equipe.*', 'users.name as nome_usuario')
             ->get();
+
         return response()->json(['data' => $equipe]);
     }
 
-    public function adicionarEquipe(Request $request, string $projetoId): JsonResponse {
+    public function adicionarEquipe(Request $request, string $projetoId): JsonResponse
+    {
         $validated = $request->validate([
-            'usuario_id' => 'required|uuid|exists:users,id',
+            'usuario_id' => 'required|uuid',
             'custo_hora' => 'required|numeric|min:0'
         ]);
 
-        $membro = ProjetoEquipe::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => $request->user()->tenant_id,
-            'projeto_id' => $projetoId,
-            'usuario_id' => $validated['usuario_id'],
-            'custo_hora' => $validated['custo_hora']
-        ]);
-        return response()->json(['data' => $membro], 201);
+        $tenantId = $request->user()->tenant_id;
+
+        DB::table('prj_projeto_equipe')->updateOrInsert(
+            ['projeto_id' => $projetoId, 'usuario_id' => $validated['usuario_id']],
+            [
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'custo_hora' => $validated['custo_hora'],
+                'created_at' => now(),
+                'updated_at' => now(),
+                'deleted_at' => null
+            ]
+        );
+
+        return response()->json(['data' => ['message' => 'Membro alocado ao projeto com sucesso!']]);
     }
 
-    // === CUSTOS ===
-    public function listarCustos(Request $request, string $projetoId): JsonResponse {
-        $tenantId = $request->user()->tenant_id;
-        $custos = ProjetoCusto::where('tenant_id', $tenantId)
+    // ==========================================
+    // ABA: CUSTOS E DESPESAS EXTERNAS
+    // ==========================================
+    public function listarCustos(Request $request, string $projetoId): JsonResponse
+    {
+        $custos = DB::table('prj_projeto_custos')
             ->where('projeto_id', $projetoId)
+            ->whereNull('deleted_at')
             ->orderByDesc('data_custo')
             ->get();
+
         return response()->json(['data' => $custos]);
     }
 
-    public function adicionarCusto(Request $request, string $projetoId): JsonResponse {
+    public function adicionarCusto(Request $request, string $projetoId): JsonResponse
+    {
         $validated = $request->validate([
-            'descricao' => 'required|string',
-            'valor' => 'required|numeric|min:0.01',
+            'descricao' => 'required|string|max:255',
+            'valor' => 'required|numeric|min:0',
             'data_custo' => 'required|date'
         ]);
 
-        $custo = ProjetoCusto::create([
+        $tenantId = $request->user()->tenant_id;
+
+        DB::table('prj_projeto_custos')->insert([
             'id' => (string) Str::uuid(),
-            'tenant_id' => $request->user()->tenant_id,
+            'tenant_id' => $tenantId,
             'projeto_id' => $projetoId,
+            'descricao' => $validated['descricao'],
             'valor' => $validated['valor'],
             'data_custo' => $validated['data_custo'],
-            'descricao' => $validated['descricao']
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
-        // Atualizando o custo total real do projeto
-        DB::statement("UPDATE prj_projetos SET custo_total_real = custo_total_real + ? WHERE id = ?", [$validated['valor'], $projetoId]);
+        \App\Http\Controllers\Api\TimesheetController::recalcularCustoProjeto($projetoId);
 
-        return response()->json(['data' => $custo], 201);
+        return response()->json(['data' => ['message' => 'Despesa externa lançada com sucesso!']]);
     }
 
-    // === ENTREGÁVEIS ===
-    public function listarEntregaveis(Request $request, string $projetoId): JsonResponse {
-        $tenantId = $request->user()->tenant_id;
-        $entregaveis = Entregavel::where('tenant_id', $tenantId)->where('projeto_id', $projetoId)->get();
+    // ==========================================
+    // ABA: ENTREGÁVEIS / MARCOS DE FATURAMENTO
+    // ==========================================
+    public function listarEntregaveis(Request $request, string $projetoId): JsonResponse
+    {
+        $entregaveis = DB::table('prj_projeto_entregaveis')
+            ->where('projeto_id', $projetoId)
+            ->whereNull('deleted_at')
+            ->orderBy('data_prevista')
+            ->get();
+
         return response()->json(['data' => $entregaveis]);
     }
-    public function adicionarEntregavel(Request $request, string $projetoId): JsonResponse {
+
+    public function adicionarEntregavel(Request $request, string $projetoId): JsonResponse
+    {
         $validated = $request->validate([
-            'titulo' => 'required|string|max:200',
-            'data_prevista' => 'nullable|date',
-            'valor_faturamento' => 'required|numeric|min:0'
+            'titulo' => 'required|string|max:255',
+            'valor_faturamento' => 'required|numeric|min:0',
+            'data_prevista' => 'nullable|date'
         ]);
 
-        $entregavel = \App\Models\Entregavel::create([
+        $tenantId = $request->user()->tenant_id;
+
+        DB::table('prj_projeto_entregaveis')->insert([
             'id' => (string) Str::uuid(),
-            'tenant_id' => $request->user()->tenant_id,
+            'tenant_id' => $tenantId,
             'projeto_id' => $projetoId,
             'titulo' => $validated['titulo'],
-            'data_prevista' => $validated['data_prevista'] ?? null,
-            'valor_faturamento' => $validated['valor_faturamento']
+            'valor_faturamento' => $validated['valor_faturamento'],
+            'data_prevista' => $validated['data_prevista'],
+            'status' => 'PENDENTE',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
-        return response()->json(['data' => $entregavel], 201);
+
+        return response()->json(['data' => ['message' => 'Marco de faturamento mapeado com sucesso!']]);
     }
 }
 
@@ -27984,11 +27982,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Apontamento;
-use App\Models\Tarefa;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class TimesheetController extends Controller
@@ -27996,10 +27994,14 @@ class TimesheetController extends Controller
     public function play(Request $request, string $tarefaId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $tarefa = Tarefa::where('tenant_id', $tenantId)->findOrFail($tarefaId);
 
-        // Bloqueia múltiplos cronômetros abertos para a mesma tarefa e usuário
-        $aberto = Apontamento::where('tarefa_id', $tarefa->id)
+        // Valida a tarefa diretamente no banco para evitar bloqueios de Model
+        $tarefa = DB::table('prj_tarefas')->where('id', $tarefaId)->where('tenant_id', $tenantId)->first();
+        if (!$tarefa) {
+            return response()->json(['error' => ['message' => 'Tarefa não encontrada.']], 404);
+        }
+
+        $aberto = Apontamento::where('tarefa_id', $tarefaId)
             ->where('usuario_id', $request->user()->id)
             ->whereNull('fim')
             ->first();
@@ -28011,7 +28013,7 @@ class TimesheetController extends Controller
         $apontamento = Apontamento::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
-            'tarefa_id' => $tarefa->id,
+            'tarefa_id' => $tarefaId,
             'usuario_id' => $request->user()->id,
             'inicio' => now(),
             'is_faturavel' => true,
@@ -28039,12 +28041,19 @@ class TimesheetController extends Controller
             'descricao' => $validated['descricao'] ?? 'Apontamento finalizado via cronômetro.'
         ]);
 
-        // GATILHO ENTERPRISE: Injeta a re-apuração financeira
-        $tarefa = Tarefa::find($tarefaId);
-        $novoCustoTotal = 0;
+        // A MÁGICA DE CORREÇÃO: Procura o Projeto através da Etapa, ignorando falhas do Model Tarefa
+        $vinculo = DB::table('prj_tarefas')
+            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
+            ->where('prj_tarefas.id', $tarefaId)
+            ->select('prj_etapas.projeto_id')
+            ->first();
 
-        if ($tarefa) {
-            $novoCustoTotal = self::recalcularCustoProjeto($tarefa->projeto_id);
+        $novoCustoTotal = 0.00;
+        if ($vinculo && $vinculo->projeto_id) {
+            // Corrige a tarefa silenciosamente na base de dados
+            DB::table('prj_tarefas')->where('id', $tarefaId)->update(['projeto_id' => $vinculo->projeto_id]);
+
+            $novoCustoTotal = self::recalcularCustoProjeto($vinculo->projeto_id);
         }
 
         return response()->json([
@@ -28060,23 +28069,29 @@ class TimesheetController extends Controller
      */
     public static function recalcularCustoProjeto(string $projetoId)
     {
-        // 1. Somatório das Despesas Externas (Aba Custos)
+        // 1. Somatório das Despesas Externas
         $totalDespesas = DB::table('prj_projeto_custos')
             ->where('projeto_id', $projetoId)
             ->sum('valor');
 
         $totalDespesas = is_numeric($totalDespesas) ? (float) $totalDespesas : 0.00;
 
-        // 2. Cálculo da Mão de Obra (Apenas apontamentos válidos)
-        $apontamentos = DB::table('prj_apontamentos')
+        // 2. Apontamentos (usando a tabela de etapas para garantir o projeto_id correto)
+        $queryApontamentos = DB::table('prj_apontamentos')
             ->join('prj_tarefas', 'prj_apontamentos.tarefa_id', '=', 'prj_tarefas.id')
-            ->where('prj_tarefas.projeto_id', $projetoId)
+            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
+            ->where('prj_etapas.projeto_id', $projetoId)
             ->whereNotNull('prj_apontamentos.fim')
-            ->whereNull('prj_apontamentos.deleted_at')
-            ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim')
-            ->get();
+            ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim');
 
-        // 3. Mapeamento Primitivo e Seguro de Custos da Equipe
+        // Proteção caso a tabela não suporte soft deletes
+        if (Schema::hasColumn('prj_apontamentos', 'deleted_at')) {
+            $queryApontamentos->whereNull('prj_apontamentos.deleted_at');
+        }
+
+        $apontamentos = $queryApontamentos->get();
+
+        // 3. Mapeamento Primitivo de Custos da Equipe
         $membros = DB::table('prj_projeto_equipe')
             ->where('projeto_id', $projetoId)
             ->get();
@@ -28094,17 +28109,11 @@ class TimesheetController extends Controller
             $inicio = Carbon::parse($ap->inicio);
             $fim = Carbon::parse($ap->fim);
 
-            // Força a diferença absoluta para evitar tempos negativos
             $minutos = $inicio->diffInMinutes($fim);
-
-            // Garante o tempo mínimo de 1 minuto para validações e testes rápidos
-            if ($minutos < 1) {
-                $minutos = 1;
-            }
+            if ($minutos < 1) $minutos = 1;
 
             $horas = $minutos / 60.0;
 
-            // Busca segura via array nativo do PHP
             $custoHora = isset($mapaCustos[$ap->usuario_id]) ? $mapaCustos[$ap->usuario_id] : 0.00;
 
             $custoMaoDeObra += ($horas * $custoHora);
@@ -28112,7 +28121,7 @@ class TimesheetController extends Controller
 
         $custoTotalReal = $totalDespesas + $custoMaoDeObra;
 
-        // 4. Atualiza o Totalizador do Projeto
+        // 4. Atualiza o Totalizador do Projeto de forma forçada
         DB::table('prj_projetos')
             ->where('id', $projetoId)
             ->update(['custo_total_real' => $custoTotalReal]);
@@ -28808,6 +28817,57 @@ class CheckPermission
         return $next($request);
     }
 }
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\CheckProjetoStatus.php
+========================================
+
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\DB;
+
+class CheckProjetoStatus
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        // Só bloqueia ações de alteração (POST, PUT, PATCH, DELETE)
+        if ($request->isMethod('get')) {
+            return $next($request);
+        }
+
+        // Tenta encontrar o ID do projeto na rota ou no body da requisição
+        $projetoId = $request->route('projetoId') ?? $request->route('id') ?? $request->input('projeto_id');
+
+        if (!$projetoId) {
+            // Se for uma rota de tarefa (ex: mover tarefa, timer, anexo), precisamos buscar a qual projeto a tarefa pertence
+            $tarefaId = $request->route('tarefaId') ?? $request->input('tarefa_id');
+            if ($tarefaId) {
+                $projetoId = DB::table('prj_tarefas')->where('id', $tarefaId)->value('projeto_id');
+            }
+        }
+
+        if ($projetoId) {
+            $status = DB::table('prj_projetos')->where('id', $projetoId)->value('status');
+
+            if ($status && in_array($status, ['CONCLUIDO', 'CANCELADO'])) {
+                return response()->json([
+                    'error' => [
+                        'message' => 'O projeto está ' . $status . ' e encontra-se bloqueado para novas alterações (Modo Somente Leitura).'
+                    ]
+                ], 403);
+            }
+        }
+
+        return $next($request);
+    }
+}
+
 
 
 ========================================
@@ -32230,29 +32290,47 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Projeto extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, HasUuids, SoftDeletes;
 
     protected $table = 'prj_projetos';
-    protected $keyType = 'string';
-    public $incrementing = false;
 
     protected $fillable = [
-        'id', 'tenant_id', 'cliente_id', 'nome', 'descricao',
-        'data_inicio', 'data_fim_prevista', 'orcamento_previsto', 'status_id'
+        'tenant_id',
+        'nome',
+        'descricao',
+        'orcamento_previsto',
+        'custo_total_real',
+        'status',
+        'cliente_id',
     ];
 
+    /**
+     * Relação com o Cliente (Módulo de Pessoas)
+     */
+    public function cliente()
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    /**
+     * Relação com as Etapas do Kanban
+     */
     public function etapas()
     {
         return $this->hasMany(Etapa::class, 'projeto_id')->orderBy('ordem');
     }
 
+    /**
+     * Relação de acesso direto a todas as tarefas do projeto
+     */
     public function tarefas()
     {
-        return $this->hasMany(Tarefa::class, 'projeto_id');
+        return $this->hasManyThrough(Tarefa::class, Etapa::class, 'projeto_id', 'etapa_id');
     }
 }
 
@@ -41262,6 +41340,138 @@ return new class extends Migration
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_102157_add_tenant_id_to_prj_tabelas_secundarias.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Equipe
+        Schema::table('prj_projeto_equipe', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_projeto_equipe', 'tenant_id')) {
+                $table->uuid('tenant_id')->nullable()->index();
+            }
+        });
+
+        // 2. Custos
+        Schema::table('prj_projeto_custos', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_projeto_custos', 'tenant_id')) {
+                $table->uuid('tenant_id')->nullable()->index();
+            }
+        });
+
+        // 3. Entregáveis
+        Schema::table('prj_projeto_entregaveis', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_projeto_entregaveis', 'tenant_id')) {
+                $table->uuid('tenant_id')->nullable()->index();
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('prj_projeto_equipe', function (Blueprint $table) {
+            $table->dropColumn('tenant_id');
+        });
+        Schema::table('prj_projeto_custos', function (Blueprint $table) {
+            $table->dropColumn('tenant_id');
+        });
+        Schema::table('prj_projeto_entregaveis', function (Blueprint $table) {
+            $table->dropColumn('tenant_id');
+        });
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_103714_add_deleted_at_to_prj_tabelas_secundarias.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('prj_projeto_equipe', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_projeto_equipe', 'deleted_at')) {
+                $table->softDeletes();
+            }
+        });
+
+        Schema::table('prj_projeto_custos', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_projeto_custos', 'deleted_at')) {
+                $table->softDeletes();
+            }
+        });
+
+        Schema::table('prj_projeto_entregaveis', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_projeto_entregaveis', 'deleted_at')) {
+                $table->softDeletes();
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('prj_projeto_equipe', function (Blueprint $table) {
+            $table->dropSoftDeletes();
+        });
+        Schema::table('prj_projeto_custos', function (Blueprint $table) {
+            $table->dropSoftDeletes();
+        });
+        Schema::table('prj_projeto_entregaveis', function (Blueprint $table) {
+            $table->dropSoftDeletes();
+        });
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_124500_add_status_to_prj_projetos.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('prj_projetos', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_projetos', 'status')) {
+                $table->string('status', 30)->default('ATIVO')->index();
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('prj_projetos', function (Blueprint $table) {
+            $table->dropColumn('status');
+        });
+    }
+};
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\DatabaseSeeder.php
 ========================================
 
@@ -42312,6 +42522,7 @@ use App\Http\Controllers\Api\KanbanController;
 use App\Http\Controllers\Api\ProjetoController;
 use App\Http\Controllers\Api\TimesheetController;
 use App\Http\Controllers\Api\ProjetoGestaoController;
+use App\Http\Controllers\Api\GedController; // <== Adicionado o import do GED
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -42522,18 +42733,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // ==========================================
     // CRM & FUNIL DE VENDAS
     // ==========================================
-    // Pipelines
     Route::get('/crm/pipelines', [CrmController::class, 'listarPipelines']);
     Route::post('/crm/pipelines', [CrmController::class, 'storePipeline']);
     Route::put('/crm/pipelines/{id}', [CrmController::class, 'atualizarPipeline']);
     Route::put('/crm/pipelines/{pipelineId}/reordenar-etapas', [CrmController::class, 'reordenarEtapas']);
 
-    // Gestão Dinâmica de Etapas (RBAC Admin/Gestor)
     Route::post('/crm/pipelines/{pipelineId}/etapas', [CrmController::class, 'storeEtapa']);
     Route::put('/crm/etapas/{id}', [CrmController::class, 'updateEtapa']);
     Route::delete('/crm/etapas/{id}', [CrmController::class, 'destroyEtapa']);
 
-    // Operação do Kanban
     Route::get('/crm/board', [CrmController::class, 'board']);
     Route::post('/crm/oportunidades', [CrmController::class, 'storeOportunidade']);
     Route::put('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
@@ -42541,20 +42749,16 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/crm/oportunidades/{id}/marcar-perdido', [CrmController::class, 'marcarPerdido']);
     Route::post('/crm/oportunidades/{id}/converter-orcamento', [CrmController::class, 'converterParaOrcamento']);
 
-    // Itens e Grade de Produtos da Oportunidade
     Route::post('/crm/oportunidades/{id}/itens', [CrmController::class, 'adicionarItemOportunidade']);
     Route::delete('/crm/oportunidades/{id}/itens/{itemId}', [CrmController::class, 'removerItemOportunidade']);
 
-    // Follow-ups e Atividades
     Route::post('/crm/oportunidades/{id}/atividades', [CrmController::class, 'adicionarAtividade']);
     Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [CrmController::class, 'toggleAtividade']);
 
-    // Motivos de Perda (Tabela de Domínio Parametrizável)
     Route::post('/crm/motivos-perda', [CrmController::class, 'storeMotivoPerda']);
     Route::put('/crm/motivos-perda/{id}', [CrmController::class, 'updateMotivoPerda']);
     Route::delete('/crm/motivos-perda/{id}', [CrmController::class, 'destroyMotivoPerda']);
 
-    // Métricas analíticas do CRM
     Route::get('/crm/metricas', [CrmController::class, 'metricasAnaliticas']);
 
     // --- GESTÃO DE ASSINATURA (PORTAL DO INQUILINO) ---
@@ -42565,62 +42769,46 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::post('/rh/ponto/registrar', [PontoController::class, 'registrar']);
     Route::get('/rh/ponto/hoje', [PontoController::class, 'historicoHoje']);
 
-    // Gestão de RH
     Route::get('/rh/colaboradores', [ColaboradorController::class, 'index']);
     Route::post('/rh/colaboradores', [ColaboradorController::class, 'store']);
     Route::put('/rh/colaboradores/{id}', [ColaboradorController::class, 'update']);
     Route::get('/rh/colaboradores/{id}/espelho', [ColaboradorController::class, 'espelhoPonto']);
 
-    // Tabela de Domínio Dinâmica para o RH
     Route::get('/rh/departamentos', [ColaboradorController::class, 'departamentos']);
     Route::post('/rh/departamentos', [ColaboradorController::class, 'storeDepartamento']);
     Route::delete('/rh/departamentos/{id}', [ColaboradorController::class, 'destroyDepartamento']);
 
-    // Gestão de Escalas de Trabalho
     Route::get('/rh/escalas', [EscalaTrabalhoController::class, 'index']);
     Route::post('/rh/escalas', [EscalaTrabalhoController::class, 'store']);
     Route::delete('/rh/escalas/{id}', [EscalaTrabalhoController::class, 'destroy']);
 
-    // ==========================================
-    // Rotas de Holerites
-    // ==========================================
-    Route::get('/rh/holerites/meus', [App\Http\Controllers\Api\HoleriteController::class, 'meusHolerites']);
-    Route::get('/rh/holerites/meus/{id}/pdf', [App\Http\Controllers\Api\HoleriteController::class, 'baixarMeuPdf'])->whereUuid('id');
+    Route::get('/rh/holerites/meus', [HoleriteController::class, 'meusHolerites']);
+    Route::get('/rh/holerites/meus/{id}/pdf', [HoleriteController::class, 'baixarMeuPdf'])->whereUuid('id');
+    Route::get('/rh/holerites', [HoleriteController::class, 'index']);
+    Route::post('/rh/holerites', [HoleriteController::class, 'store']);
+    Route::get('/rh/holerites/{id}', [HoleriteController::class, 'show'])->whereUuid('id');
 
-    Route::get('/rh/holerites', [App\Http\Controllers\Api\HoleriteController::class, 'index']);
-    Route::post('/rh/holerites', [App\Http\Controllers\Api\HoleriteController::class, 'store']);
-    Route::get('/rh/holerites/{id}', [App\Http\Controllers\Api\HoleriteController::class, 'show'])->whereUuid('id');
-
-    // Rotas do Recrutamento
     Route::get('/rh/vagas', [RecrutamentoController::class, 'indexVagas']);
     Route::post('/rh/vagas', [RecrutamentoController::class, 'storeVaga']);
     Route::get('/rh/vagas/{vagaId}/kanban', [RecrutamentoController::class, 'boardKanban']);
     Route::post('/rh/candidatos', [RecrutamentoController::class, 'storeCandidato']);
     Route::put('/rh/candidatos/{id}/mover', [RecrutamentoController::class, 'moverCandidato']);
 
-    // Rotas do Recrutamento - Etapas
     Route::get('/rh/etapas', [RecrutamentoController::class, 'indexEtapas']);
     Route::post('/rh/etapas', [RecrutamentoController::class, 'storeEtapa']);
     Route::delete('/rh/etapas/{id}', [RecrutamentoController::class, 'destroyEtapa']);
 
-    // RH Estratégico - eNPS e Avaliação
     Route::post('/rh/enps/campanhas', [DesempenhoClimaController::class, 'storeCampanha']);
     Route::post('/rh/enps/campanhas/{campanhaId}/responder', [DesempenhoClimaController::class, 'responderEnps']);
     Route::get('/rh/enps/campanhas/{campanhaId}/resultados', [DesempenhoClimaController::class, 'resultadosEnps']);
 
-    // RH Estratégico - Nine-Box & PDI
     Route::post('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'storeEixo']);
     Route::get('/rh/enps/campanhas', [DesempenhoClimaController::class, 'indexCampanhas']);
     Route::get('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'indexEixos']);
 
-    // ==========================================
     // MÓDULO DE FROTAS & TELEMETRIA
-    // ==========================================
     Route::prefix('frota')->group(function () {
-        // Listas dinâmicas de apoio (Status, Combustível)
         Route::get('/dominios', [FrotaVeiculoController::class, 'dominios']);
-
-        // Gestão de Veículos
         Route::get('/veiculos', [FrotaVeiculoController::class, 'index']);
         Route::post('/veiculos', [FrotaVeiculoController::class, 'store']);
         Route::get('/veiculos/{id}', [FrotaVeiculoController::class, 'show']);
@@ -42629,39 +42817,53 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
 
+    // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
-Route::prefix('projetos')->group(function () {
-    Route::get('/', [ProjetoController::class, 'index']);
-    Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
-    Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
-    Route::post('/', [ProjetoController::class, 'store']);
-    // Timesheet
-    Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
-    Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);
-    // Rotas de Gestão Interna (Abas)
-    Route::get('/{projetoId}/equipe', [ProjetoGestaoController::class, 'listarEquipe']);
-    Route::post('/{projetoId}/equipe', [ProjetoGestaoController::class, 'adicionarEquipe']);
+    // ==========================================
+Route::prefix('projetos')->middleware('check.projeto.status')->group(function () {
+        Route::get('/', [ProjetoController::class, 'index']);
+        Route::post('/', [ProjetoController::class, 'store']);
+        Route::put('/{id}', [ProjetoController::class, 'update']); // <== ROTA CORRIGIDA (/api/projetos/{id})
+        Route::put('/{projetoId}/orcamento', [ProjetoController::class, 'atualizarOrcamento']);
 
-    Route::get('/{projetoId}/custos', [ProjetoGestaoController::class, 'listarCustos']);
-    Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
+        Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
+        Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
+        Route::post('/etapas/{etapaId}/tarefas', [KanbanController::class, 'adicionarTarefa']);
 
-    Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
-    Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
-    Route::put('/{projetoId}/orcamento', [\App\Http\Controllers\Api\ProjetoController::class, 'atualizarOrcamento']);
-    Route::post('/etapas/{etapaId}/tarefas', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarTarefa']);
-    // Micro-Gestão da Tarefa (Checklists e Blockers)
-        Route::post('/tarefas/{tarefaId}/checklists', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarChecklist']);
-        Route::patch('/tarefas/checklists/{checklistId}/toggle', [\App\Http\Controllers\Api\KanbanController::class, 'toggleChecklist']);
+        Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
+        Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);
 
-        Route::post('/tarefas/{tarefaId}/dependencias', [\App\Http\Controllers\Api\KanbanController::class, 'adicionarDependencia']);
-        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [\App\Http\Controllers\Api\KanbanController::class, 'removerDependencia']);
-});
+        Route::get('/{projetoId}/equipe', [ProjetoGestaoController::class, 'listarEquipe']);
+        Route::post('/{projetoId}/equipe', [ProjetoGestaoController::class, 'adicionarEquipe']);
+
+        Route::get('/{projetoId}/custos', [ProjetoGestaoController::class, 'listarCustos']);
+        Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
+
+        Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
+        Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
+
+        Route::post('/tarefas/{tarefaId}/checklists', [KanbanController::class, 'adicionarChecklist']);
+        Route::patch('/tarefas/checklists/{checklistId}/toggle', [KanbanController::class, 'toggleChecklist']);
+
+        Route::post('/tarefas/{tarefaId}/dependencias', [KanbanController::class, 'adicionarDependencia']);
+        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [KanbanController::class, 'removerDependencia']);
+    });
 
     // ==========================================
     // MÓDULO GED (Cofre Digital)
     // ==========================================
     Route::prefix('ged')->group(function () {
-        Route::post('/upload', [\App\Http\Controllers\Api\GedController::class, 'upload']);
+        Route::get('/listar', [GedController::class, 'listar']);
+        Route::post('/pastas', [GedController::class, 'criarPasta']);
+        Route::post('/upload', [GedController::class, 'upload']);
+
+        Route::post('/upload/tarefa/{tarefaId}', function(\Illuminate\Http\Request $request, $tarefaId) {
+            $request->merge([
+                'entidade_type' => 'App\Models\Tarefa',
+                'entidade_id' => $tarefaId
+            ]);
+            return app(GedController::class)->upload($request);
+        });
     });
 });
 

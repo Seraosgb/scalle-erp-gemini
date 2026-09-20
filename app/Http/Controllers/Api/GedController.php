@@ -3,55 +3,108 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Empresa;
 use App\Models\GedDocumento;
-use Illuminate\Http\Request;
+use App\Models\GedPasta;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Storage;
 
 class GedController extends Controller
 {
-    /**
-     * Processa o upload blindando fisicamente o arquivo na pasta do Tenant.
-     */
+    public function listar(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pastaId = $request->get('pasta_id');
+
+        $pastas = GedPasta::where('tenant_id', $tenantId)
+            ->where('pasta_pai_id', $pastaId)
+            ->orderBy('nome')
+            ->get();
+
+        $documentos = GedDocumento::where('tenant_id', $tenantId)
+            ->where('pasta_id', $pastaId)
+            ->with('uploader:id,name')
+            ->orderByDesc('created_at')
+            ->get();
+
+        $caminho = [];
+        if ($pastaId) {
+            $atual = GedPasta::find($pastaId);
+            while ($atual) {
+                array_unshift($caminho, ['id' => $atual->id, 'nome' => $atual->nome]);
+                $atual = GedPasta::find($atual->pasta_pai_id);
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'caminho' => $caminho,
+                'pastas' => $pastas,
+                'documentos' => $documentos,
+            ]
+        ]);
+    }
+
+    public function criarPasta(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'pasta_pai_id' => 'nullable|uuid|exists:ged_pastas,id',
+        ]);
+
+        $pasta = GedPasta::create([
+            'tenant_id' => $tenantId,
+            'empresa_id' => $request->user()->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()?->id,
+            'pasta_pai_id' => $validated['pasta_pai_id'] ?? null,
+            'nome' => $validated['nome'],
+        ]);
+
+        return response()->json(['data' => $pasta], 201);
+    }
+
     public function upload(Request $request): JsonResponse
     {
-        $request->validate([
-            'arquivo' => 'required|file|max:20480', // Limite de 20MB
+        // Validação da Cota já é feita pelo Middleware CheckStorageQuota
+        $validated = $request->validate([
+            'arquivo' => 'required|file|max:20480', // 20MB
             'pasta_id' => 'nullable|uuid|exists:ged_pastas,id',
-            'entidade_type' => 'nullable|string', // Ex: App\Models\Tarefa
-            'entidade_id' => 'nullable|uuid'
+            'entidade_type' => 'nullable|string',
+            'entidade_id' => 'nullable|uuid',
         ]);
 
         $tenantId = $request->user()->tenant_id;
-        $file = $request->file('arquivo');
+        $arquivo = $request->file('arquivo');
 
-        $nomeOriginal = $file->getClientOriginalName();
-        $extensao = $file->getClientOriginalExtension();
-        $tamanho = $file->getSize();
-        $hash = hash_file('sha256', $file->getRealPath());
+        $nomeOriginal = $arquivo->getClientOriginalName();
+        $tamanhoBytes = $arquivo->getSize();
+        $caminho = $arquivo->store("ged/{$tenantId}", 'public');
 
-        // Isolamento físico no disco (ou bucket S3) usando o ID do Inquilino
-        $caminhoFisico = $file->storeAs(
-            "ged/{$tenantId}/" . date('Y/m'),
-            Str::uuid() . '.' . $extensao,
-            'public'
-        );
+        $doc = DB::transaction(function () use ($validated, $tenantId, $request, $nomeOriginal, $tamanhoBytes, $caminho) {
+            $documento = GedDocumento::create([
+                'tenant_id' => $tenantId,
+                'empresa_id' => $request->user()->empresa_padrao_id,
+                'pasta_id' => $validated['pasta_id'] ?? null,
+                'entidade_vinculada_type' => $validated['entidade_type'] ?? null,
+                'entidade_vinculada_id' => $validated['entidade_id'] ?? null,
+                'nome_original' => $nomeOriginal,
+                'caminho_s3' => $caminho,
+                'mime_type' => $arquivo->getMimeType(),
+                'tamanho_bytes' => $tamanhoBytes,
+                'usuario_upload_id' => $request->user()->id,
+            ]);
 
-        $documento = GedDocumento::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
-            'pasta_id' => $request->pasta_id,
-            'usuario_id' => $request->user()->id,
-            'nome_original' => $nomeOriginal,
-            'caminho_s3' => $caminhoFisico,
-            'extensao' => $extensao,
-            'tamanho_bytes' => $tamanho,
-            'hash_arquivo' => $hash,
-            'entidade_vinculada_type' => $request->entidade_type,
-            'entidade_vinculada_id' => $request->entidade_id,
-        ]);
+            // Atualiza o uso de armazenamento do plano SaaS do tenant
+            Assinatura::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->increment('storage_utilizado_bytes', $tamanhoBytes);
 
-        return response()->json(['data' => $documento], 201);
+            return $documento;
+        });
+
+        return response()->json(['data' => ['message' => 'Arquivo anexado ao cofre com sucesso!', 'documento' => $doc]], 201);
     }
 }
