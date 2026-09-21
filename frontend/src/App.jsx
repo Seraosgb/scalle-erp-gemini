@@ -53,6 +53,9 @@ import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
 // GED (Cofre Digital)
 import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
 
+// PMO Configurações
+import PmoConfig from './pages/Configuracoes/PmoConfig';
+
 // Instância global do React Query Client
 const queryClient = new QueryClient({
   defaultOptions: {
