@@ -180,4 +180,25 @@ class KanbanController extends Controller
 
         return response()->json(['message' => 'Dependência removida com sucesso.']);
     }
+    public function alterarPrioridade(Request $request, $tarefaId): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate(['prioridade' => 'required|integer|in:1,2,3']);
+
+        $tarefa = \App\Models\Tarefa::where('tenant_id', $tenantId)->findOrFail($tarefaId);
+        $tarefa->update(['prioridade' => $validated['prioridade']]);
+
+        return response()->json(['message' => 'Prioridade atualizada com sucesso!']);
+    }
+
+    public function renomearEtapa(Request $request, $etapaId): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate(['nome' => 'required|string|max:100']);
+
+        $etapa = \App\Models\Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
+        $etapa->update(['nome' => $validated['nome']]);
+
+        return response()->json(['message' => 'Etapa renomeada com sucesso!']);
+    }
 }

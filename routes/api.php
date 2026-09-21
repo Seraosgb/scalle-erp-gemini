@@ -371,6 +371,11 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
 
         Route::post('/tarefas/{tarefaId}/dependencias', [KanbanController::class, 'adicionarDependencia']);
         Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [KanbanController::class, 'removerDependencia']);
+
+        // Rotas corretivas (Status, Taxonomia e Prioridades)
+        Route::patch('/{id}/status', [ProjetoController::class, 'alterarStatus'])->withoutMiddleware('check.projeto.status');
+        Route::patch('/tarefas/{tarefaId}/prioridade', [KanbanController::class, 'alterarPrioridade']);
+        Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
     });
 
     // ==========================================

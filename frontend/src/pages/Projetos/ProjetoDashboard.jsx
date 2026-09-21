@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity } from 'lucide-react';
+import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity, Edit2 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export default function ProjetoDashboard() {
@@ -12,7 +12,6 @@ export default function ProjetoDashboard() {
     const [activeTab, setActiveTab] = useState('board');
     const [loading, setLoading] = useState(true);
 
-    // Clientes para o Modal de Configurações
     const [clientes, setClientes] = useState([]);
     const [modalConfig, setModalConfig] = useState(false);
     const [formConfig, setFormConfig] = useState({ nome: '', descricao: '', cliente_id: '' });
@@ -51,7 +50,6 @@ export default function ProjetoDashboard() {
             await api.put(`/projetos/${projetoId}`, formConfig);
             setModalConfig(false);
             carregarProjeto();
-            alert("Projeto atualizado com sucesso!");
         } catch (error) {
             alert("Erro ao atualizar projeto.");
         }
@@ -66,18 +64,57 @@ export default function ProjetoDashboard() {
         } catch (error) { alert("Erro ao atualizar budget."); }
     };
 
+    const alterarStatusProjeto = async (statusAtual) => {
+        const novoStatus = window.prompt("Novo status (ATIVO, PAUSADO, CONCLUIDO, CANCELADO):", statusAtual || 'ATIVO');
+        if (!novoStatus) return;
+
+        const statusClean = novoStatus.toUpperCase().trim();
+        if (!['ATIVO', 'PAUSADO', 'CONCLUIDO', 'CANCELADO'].includes(statusClean)) {
+            alert('Status inválido. Utilize: ATIVO, PAUSADO, CONCLUIDO ou CANCELADO.');
+            return;
+        }
+
+        try {
+            await api.patch(`/projetos/${projetoId}/status`, { status: statusClean });
+            carregarProjeto();
+        } catch (error) {
+            alert("Erro ao alterar status. Verifique se o backend foi atualizado.");
+        }
+    };
+
     const adicionarTarefa = async (etapaId) => {
         const titulo = window.prompt("Qual o título da nova tarefa?");
         if (!titulo) return;
+
+        const prio = window.prompt("Nível de prioridade (1=ALTA, 2=MÉDIA, 3=BAIXA):", "2");
+        const prioridadeFinal = ['1', '2', '3'].includes(prio) ? Number(prio) : 2;
+
         try {
-            await api.post(`/projetos/etapas/${etapaId}/tarefas`, { titulo, prioridade: 'MEDIA' });
+            await api.post(`/projetos/etapas/${etapaId}/tarefas`, { titulo, prioridade: prioridadeFinal });
             carregarProjeto();
         } catch (error) { alert("Erro ao criar tarefa."); }
     };
 
+    const renomearEtapa = async (etapaId, nomeAtual) => {
+        const novoNome = window.prompt("Renomear coluna/etapa do Kanban:", nomeAtual);
+        if (!novoNome || novoNome === nomeAtual) return;
+        try {
+            await api.put(`/projetos/etapas/${etapaId}`, { nome: novoNome });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao renomear etapa."); }
+    };
+
+    const alterarPrioridade = async (tarefaId, atual) => {
+        const nova = window.prompt("Altere a prioridade desta tarefa (1=ALTA, 2=MÉDIA, 3=BAIXA):", atual);
+        if (!nova || !['1', '2', '3'].includes(nova.toString())) return;
+        try {
+            await api.patch(`/projetos/tarefas/${tarefaId}/prioridade`, { prioridade: Number(nova) });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao alterar prioridade."); }
+    };
+
     const handleDragEnd = async (result) => {
         const { destination, source, draggableId } = result;
-
         if (!destination) return;
         if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
@@ -94,7 +131,7 @@ export default function ProjetoDashboard() {
         const [tarefaMovida] = tarefasOrigem.splice(source.index, 1);
 
         if (tarefaMovida.dependencias?.length > 0 && source.droppableId !== destination.droppableId) {
-            alert(`⚠️ TAREFA BLOQUEADA\n\nEsta tarefa depende de ${tarefaMovida.dependencias.length} pré-requisito(s). Conclua as dependências primeiro.`);
+            alert(`⚠️ TAREFA BLOQUEADA\n\nEsta tarefa depende de pré-requisitos. Conclua as dependências primeiro.`);
             return;
         }
 
@@ -109,10 +146,8 @@ export default function ProjetoDashboard() {
 
             etapaOrigem.tarefas = tarefasOrigem;
             etapaDestino.tarefas = tarefasDestino;
-
             novasEtapas[etapaOrigemIndex] = etapaOrigem;
             novasEtapas[etapaDestinoIndex] = etapaDestino;
-
             setProjeto({ ...projeto, etapas: novasEtapas });
 
             try {
@@ -172,11 +207,9 @@ export default function ProjetoDashboard() {
 
         try {
             await api.post('/ged/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
-            alert('Arquivo anexado com sucesso ao Cofre Digital!');
+            alert('Arquivo anexado com sucesso!');
             carregarProjeto();
-        } catch (error) {
-            alert('Erro ao anexar arquivo ao GED.');
-        }
+        } catch (error) { alert('Erro ao anexar arquivo.'); }
     };
 
     const adicionarDependencia = async (e) => {
@@ -214,8 +247,20 @@ export default function ProjetoDashboard() {
                         <div>
                             <h1 className="text-2xl font-bold text-white flex items-center gap-3">
                                 {projeto.nome}
+                                <span
+                                    onClick={() => alterarStatusProjeto(projeto.status)}
+                                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer transition shadow-sm ${
+                                        projeto.status === 'CONCLUIDO' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800 hover:bg-emerald-900' :
+                                        projeto.status === 'PAUSADO' ? 'bg-amber-950 text-amber-400 border border-amber-800 hover:bg-amber-900' :
+                                        projeto.status === 'CANCELADO' ? 'bg-rose-950 text-rose-400 border border-rose-800 hover:bg-rose-900' :
+                                        'bg-indigo-950 text-indigo-400 border border-indigo-800 hover:bg-indigo-900'
+                                    }`}
+                                    title="Clique para alterar o status do projeto"
+                                >
+                                    {projeto.status || 'ATIVO'}
+                                </span>
                                 {!projeto.cliente_id && (
-                                    <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
+                                    <span className="text-[10px] bg-rose-950/40 text-rose-400 border border-rose-900 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
                                 )}
                             </h1>
                             <p className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-2">
@@ -259,10 +304,16 @@ export default function ProjetoDashboard() {
                     <div className="flex space-x-4 overflow-x-auto h-full pb-4 items-start">
                         {projeto.etapas?.map(etapa => (
                             <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl min-w-[320px] max-w-[320px] flex flex-col max-h-[75vh]">
-                                <div className="p-3 font-bold text-slate-100 rounded-t-xl flex justify-between items-center border-b border-slate-800 bg-slate-950/40">
+                                <div className="p-3 font-bold text-slate-100 rounded-t-xl flex justify-between items-center border-b border-slate-800 bg-slate-950/40 group">
                                     <div className="flex items-center gap-2">
                                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#3b82f6' }}></span>
-                                        <span className="text-sm uppercase tracking-wider">{etapa.nome}</span>
+                                        <span
+                                            className="text-sm uppercase tracking-wider cursor-pointer hover:text-indigo-400 flex items-center gap-1"
+                                            title="Clique para renomear esta etapa"
+                                            onClick={() => renomearEtapa(etapa.id, etapa.nome)}
+                                        >
+                                            {etapa.nome} <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </span>
                                     </div>
                                     <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
                                         {etapa.tarefas?.length || 0}
@@ -351,7 +402,10 @@ export default function ProjetoDashboard() {
                                                                 )}
 
                                                                 <div className="mt-3 flex justify-between items-center pt-3 border-t border-slate-800/50">
-                                                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
+                                                                    <span
+                                                                        onClick={() => alterarPrioridade(tarefa.id, tarefa.prioridade)}
+                                                                        title="Clique para mudar a prioridade"
+                                                                        className={`text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer hover:opacity-80 transition ${
                                                                         tarefa.prioridade === 1 ? 'bg-rose-950 text-rose-400' :
                                                                         tarefa.prioridade === 2 ? 'bg-orange-950 text-orange-400' :
                                                                         tarefa.prioridade === 3 ? 'bg-blue-950 text-blue-400' :
@@ -597,7 +651,7 @@ function TabEquipe({ projeto, api, onReload }) {
     const [equipe, setEquipe] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
     const [modal, setModal] = useState(false);
-    const [form, setForm] = useState({ usuario_id: '', custo_hora: '', limite_horas_semanais: '40' }); // Campo novo adicionado
+    const [form, setForm] = useState({ usuario_id: '', custo_hora: '', limite_horas_semanais: '40' });
 
     const carregar = () => api.get(`/projetos/${projeto.id}/equipe`).then(res => setEquipe(res.data.data));
 
@@ -689,7 +743,7 @@ function TabCustos({ projeto, api, onReload }) {
             setModal(false);
             setForm({ descricao: '', valor: '', data_custo: new Date().toISOString().split('T')[0] });
             carregar();
-            onReload(); // Atualiza o header do projeto
+            onReload();
         } catch (err) { alert("Erro ao lançar despesa."); }
     };
 

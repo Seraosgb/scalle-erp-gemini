@@ -117,26 +117,6 @@ class ProjetoController extends Controller
         ]);
     }
 
-    public function alterarStatus(Request $request, string $id): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
-
-        $validated = $request->validate([
-            'status' => 'required|string|in:ATIVO,CONCLUIDO,CANCELADO'
-        ]);
-
-        $projeto->status = $validated['status'];
-        $projeto->save();
-
-        return response()->json([
-            'data' => [
-                'message' => "Projeto marcado como {$validated['status']}!",
-                'projeto' => $projeto
-            ]
-        ]);
-    }
-
     public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse
     {
         $validated = $request->validate(['orcamento_previsto' => 'required|numeric|min:0']);
@@ -200,5 +180,15 @@ class ProjetoController extends Controller
         });
 
         return response()->json(['data' => $capacidade]);
+    }
+    public function alterarStatus(Request $request, $id): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate(['status' => 'required|string']);
+
+        $projeto = \App\Models\Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+        $projeto->update(['status' => $validated['status']]);
+
+        return response()->json(['message' => 'Status do projeto atualizado com sucesso!', 'data' => $projeto]);
     }
 }
