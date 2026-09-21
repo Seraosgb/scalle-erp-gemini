@@ -15,6 +15,32 @@ use Illuminate\Support\Str;
 class KanbanController extends Controller
 {
     /**
+     * Retorna as prioridades configuradas para o Tenant
+     */
+    public function listarPrioridades(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $prioridades = DB::table('prj_prioridades_tarefas')
+            ->where('tenant_id', $tenantId)
+            ->orderBy('peso', 'desc')
+            ->get();
+
+        // Fallback robusto caso o tenant seja novo e não tenha prioridades cadastradas
+        if ($prioridades->isEmpty()) {
+            $basicos = [
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Crítica', 'peso' => 100, 'cor_hex' => '#ef4444'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Alta', 'peso' => 75, 'cor_hex' => '#f97316'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Média', 'peso' => 50, 'cor_hex' => '#3b82f6'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Baixa', 'peso' => 25, 'cor_hex' => '#64748b'],
+            ];
+            DB::table('prj_prioridades_tarefas')->insert($basicos);
+            $prioridades = collect($basicos);
+        }
+
+        return response()->json(['data' => $prioridades]);
+    }
+
+    /**
      * Retorna o quadro completo com Etapas e Tarefas aninhadas.
      */
     public function board(Request $request, string $projetoId): JsonResponse
@@ -22,12 +48,11 @@ class KanbanController extends Controller
         $user = $request->user();
         $usuarioId = $user->id;
 
+        // O fallback na ordenação garante retrocompatibilidade com tarefas legadas que só têm 'prioridade' int
         $projeto = Projeto::with(['etapas.tarefas' => function($query) {
             $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
         }])->findOrFail($projetoId);
 
-        // MÁGICA: Injeta os anexos (GED), checklists, dependências e apontamentos diretamente na resposta
-        // Isso evita erros 500 por falta de mapeamento de relacionamentos complexos nos Models.
         $tarefaIds = [];
         foreach ($projeto->etapas as $etapa) {
             foreach ($etapa->tarefas as $tarefa) {
@@ -36,20 +61,17 @@ class KanbanController extends Controller
         }
 
         if (count($tarefaIds) > 0) {
-            // Anexos do Cofre Digital (GED)
             $anexos = \App\Models\GedDocumento::where('tenant_id', $user->tenant_id)
                 ->where('entidade_vinculada_type', 'App\Models\Tarefa')
                 ->whereIn('entidade_vinculada_id', $tarefaIds)
                 ->get()
                 ->groupBy('entidade_vinculada_id');
 
-            // Checklists
             $checklists = DB::table('prj_tarefa_checklists')
                 ->whereIn('tarefa_id', $tarefaIds)
                 ->get()
                 ->groupBy('tarefa_id');
 
-            // Apontamentos (lê os cronômetros ativos do próprio usuário logado)
             $apontamentos = DB::table('prj_apontamentos')
                 ->whereIn('tarefa_id', $tarefaIds)
                 ->where('usuario_id', $usuarioId)
@@ -58,7 +80,6 @@ class KanbanController extends Controller
                 ->get()
                 ->groupBy('tarefa_id');
 
-            // Dependências (Blockers)
             $dependencias = DB::table('prj_tarefa_dependencias')
                 ->join('prj_tarefas', 'prj_tarefa_dependencias.depende_de_id', '=', 'prj_tarefas.id')
                 ->whereIn('prj_tarefa_dependencias.tarefa_id', $tarefaIds)
@@ -66,13 +87,20 @@ class KanbanController extends Controller
                 ->get()
                 ->groupBy('tarefa_id');
 
-            // Amarração em Memória
+            // Busca dados ricos da prioridade dinâmica para colorir o card
+            $dictPrioridades = DB::table('prj_prioridades_tarefas')->where('tenant_id', $user->tenant_id)->get()->keyBy('id');
+
             foreach ($projeto->etapas as $etapa) {
                 foreach ($etapa->tarefas as $tarefa) {
                     $tarefa->anexos = $anexos->get($tarefa->id, []);
                     $tarefa->checklists = $checklists->get($tarefa->id, []);
                     $tarefa->apontamentos = $apontamentos->get($tarefa->id, []);
                     $tarefa->dependencias = $dependencias->get($tarefa->id, []);
+
+                    // Acopla os metadados visuais da prioridade dinâmica
+                    if ($tarefa->prioridade_id && $dictPrioridades->has($tarefa->prioridade_id)) {
+                        $tarefa->prioridade_dinamica = $dictPrioridades[$tarefa->prioridade_id];
+                    }
                 }
             }
         }
@@ -102,19 +130,10 @@ class KanbanController extends Controller
     {
         $validated = $request->validate([
             'titulo' => 'required|string|max:200',
-            'prioridade' => 'nullable|string|in:BAIXA,MEDIA,ALTA,CRITICA'
+            'prioridade_id' => 'nullable|uuid|exists:prj_prioridades_tarefas,id'
         ]);
 
         $etapa = Etapa::findOrFail($etapaId);
-
-        // Converte a string do React para o integer que o banco espera
-        $prioridadeInt = match ($validated['prioridade'] ?? 'MEDIA') {
-            'CRITICA' => 1,
-            'ALTA' => 2,
-            'MEDIA' => 3,
-            'BAIXA' => 4,
-            default => 3,
-        };
 
         $tarefa = Tarefa::create([
             'id' => (string) Str::uuid(),
@@ -122,7 +141,8 @@ class KanbanController extends Controller
             'projeto_id' => $etapa->projeto_id,
             'etapa_id' => $etapa->id,
             'titulo' => $validated['titulo'],
-            'prioridade' => $prioridadeInt,
+            'prioridade' => 2, // Legado de ordenação visual mantido para compatibilidade
+            'prioridade_id' => $validated['prioridade_id'] ?? null, // Nova tabela de domínio
         ]);
 
         return response()->json(['data' => $tarefa], 201);
@@ -136,9 +156,7 @@ class KanbanController extends Controller
 
     public function adicionarChecklist(Request $request, string $tarefaId): JsonResponse
     {
-        $validated = $request->validate([
-            'descricao' => 'required|string|max:255'
-        ]);
+        $validated = $request->validate(['descricao' => 'required|string|max:255']);
 
         $item = PrjTarefaChecklist::create([
             'id' => (string) Str::uuid(),
@@ -161,13 +179,8 @@ class KanbanController extends Controller
 
     public function adicionarDependencia(Request $request, string $tarefaId): JsonResponse
     {
-        $validated = $request->validate([
-            'depende_de_id' => 'required|uuid|exists:prj_tarefas,id'
-        ]);
-
+        $validated = $request->validate(['depende_de_id' => 'required|uuid|exists:prj_tarefas,id']);
         $tarefa = Tarefa::findOrFail($tarefaId);
-
-        // Evita duplicidade usando o syncWithoutDetaching
         $tarefa->dependencias()->syncWithoutDetaching([$validated['depende_de_id']]);
 
         return response()->json(['message' => 'Dependência adicionada com sucesso.']);
@@ -180,23 +193,26 @@ class KanbanController extends Controller
 
         return response()->json(['message' => 'Dependência removida com sucesso.']);
     }
-    public function alterarPrioridade(Request $request, $tarefaId): \Illuminate\Http\JsonResponse
+
+    public function alterarPrioridade(Request $request, $tarefaId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $validated = $request->validate(['prioridade' => 'required|integer|in:1,2,3']);
+        $validated = $request->validate([
+            'prioridade_id' => 'required|uuid|exists:prj_prioridades_tarefas,id'
+        ]);
 
-        $tarefa = \App\Models\Tarefa::where('tenant_id', $tenantId)->findOrFail($tarefaId);
-        $tarefa->update(['prioridade' => $validated['prioridade']]);
+        $tarefa = Tarefa::where('tenant_id', $tenantId)->findOrFail($tarefaId);
+        $tarefa->update(['prioridade_id' => $validated['prioridade_id']]);
 
         return response()->json(['message' => 'Prioridade atualizada com sucesso!']);
     }
 
-    public function renomearEtapa(Request $request, $etapaId): \Illuminate\Http\JsonResponse
+    public function renomearEtapa(Request $request, $etapaId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
         $validated = $request->validate(['nome' => 'required|string|max:100']);
 
-        $etapa = \App\Models\Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
+        $etapa = Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
         $etapa->update(['nome' => $validated['nome']]);
 
         return response()->json(['message' => 'Etapa renomeada com sucesso!']);

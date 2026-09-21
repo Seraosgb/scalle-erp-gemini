@@ -376,6 +376,10 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::patch('/{id}/status', [ProjetoController::class, 'alterarStatus'])->withoutMiddleware('check.projeto.status');
         Route::patch('/tarefas/{tarefaId}/prioridade', [KanbanController::class, 'alterarPrioridade']);
         Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
+
+        // Parâmetros de Domínio PMO
+        Route::get('/parametros/status', [ProjetoController::class, 'listarStatus']);
+        Route::get('/parametros/prioridades', [KanbanController::class, 'listarPrioridades']);
     });
 
     // ==========================================

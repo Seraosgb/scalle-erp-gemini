@@ -191,4 +191,25 @@ class ProjetoController extends Controller
 
         return response()->json(['message' => 'Status do projeto atualizado com sucesso!', 'data' => $projeto]);
     }
+    public function listarStatus(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $status = \Illuminate\Support\Facades\DB::table('prj_status_projetos')
+            ->where('tenant_id', $tenantId)
+            ->orderBy('nome')
+            ->get();
+
+        // Fallback: Se o tenant não configurou nada, gera os básicos para não quebrar a UI
+        if ($status->isEmpty()) {
+            $basicos = [
+                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Ativo', 'cor_hex' => '#4f46e5'],
+                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Concluído', 'cor_hex' => '#10b981'],
+                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Pausado', 'cor_hex' => '#f59e0b']
+            ];
+            \Illuminate\Support\Facades\DB::table('prj_status_projetos')->insert($basicos);
+            $status = collect($basicos);
+        }
+
+        return response()->json(['data' => $status]);
+    }
 }
