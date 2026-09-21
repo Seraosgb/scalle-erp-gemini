@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity, Edit2, Plus } from 'lucide-react';
@@ -15,13 +15,16 @@ export default function ProjetoDashboard() {
     const [parametrosStatus, setParametrosStatus] = useState([]);
     const [parametrosPrioridades, setParametrosPrioridades] = useState([]);
     const [clientes, setClientes] = useState([]);
+
+    // Configurações do Projeto
     const [modalConfig, setModalConfig] = useState(false);
     const [formConfig, setFormConfig] = useState({ nome: '', descricao: '', cliente_id: '' });
 
+    // Blockers (Dependências)
     const [modalBlocker, setModalBlocker] = useState(null);
     const [dependenciaIdSelecionada, setDependenciaIdSelecionada] = useState('');
 
-    // Gestão de Modais (Substituindo os antigos window.prompt)
+    // Modais Dinâmicos
     const [modalStatus, setModalStatus] = useState(false);
     const [novoStatusId, setNovoStatusId] = useState('');
 
@@ -141,6 +144,7 @@ export default function ProjetoDashboard() {
         }
     };
 
+    // Mecânica principal de Arrasto (Padrão Gemini)
     const handleDragEnd = async (result) => {
         const { destination, source, draggableId } = result;
         if (!destination) return;
@@ -281,6 +285,7 @@ export default function ProjetoDashboard() {
                                     onClick={() => { setNovoStatusId(projeto.status_projeto_id); setModalStatus(true); }}
                                     className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer hover:opacity-80 transition shadow-sm border"
                                     style={{ backgroundColor: `${statusCor}20`, color: statusCor, borderColor: `${statusCor}50` }}
+                                    title="Clique para alterar o status do projeto"
                                 >
                                     {statusNome}
                                 </span>
