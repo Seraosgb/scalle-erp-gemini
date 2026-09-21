@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import { Settings, Plus, Edit2, Trash2, Tag, AlertCircle, Building2, DollarSign, Target } from 'lucide-react';
+import { Settings, Plus, Edit2, Trash2, Tag, AlertCircle, Building2, DollarSign, Target, Activity } from 'lucide-react';
 
 const TABS = [
     { id: 'status', label: 'Status dos Projetos', icon: Activity, hasColor: true, hasPeso: false },
