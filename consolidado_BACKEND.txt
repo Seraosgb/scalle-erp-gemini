@@ -24283,56 +24283,121 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\GedController.ph
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Empresa;
 use App\Models\GedDocumento;
-use Illuminate\Http\Request;
+use App\Models\GedPasta;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Storage;
 
 class GedController extends Controller
 {
-    /**
-     * Processa o upload blindando fisicamente o arquivo na pasta do Tenant.
-     */
+    public function listar(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pastaId = $request->get('pasta_id');
+
+        $pastas = GedPasta::where('tenant_id', $tenantId)
+            ->where('pasta_pai_id', $pastaId)
+            ->orderBy('nome')
+            ->get();
+
+        $documentos = GedDocumento::where('tenant_id', $tenantId)
+            ->where('pasta_id', $pastaId)
+            ->with('uploader:id,name')
+            ->orderByDesc('created_at')
+            ->get();
+
+        $caminho = [];
+        if ($pastaId) {
+            $atual = GedPasta::find($pastaId);
+            while ($atual) {
+                array_unshift($caminho, ['id' => $atual->id, 'nome' => $atual->nome]);
+                $atual = GedPasta::find($atual->pasta_pai_id);
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'caminho' => $caminho,
+                'pastas' => $pastas,
+                'documentos' => $documentos,
+            ]
+        ]);
+    }
+
+    public function criarPasta(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'pasta_pai_id' => 'nullable|uuid|exists:ged_pastas,id',
+        ]);
+
+        $pasta = GedPasta::create([
+            'tenant_id' => $tenantId,
+            'empresa_id' => $request->user()->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()?->id,
+            'pasta_pai_id' => $validated['pasta_pai_id'] ?? null,
+            'nome' => $validated['nome'],
+        ]);
+
+        return response()->json(['data' => $pasta], 201);
+    }
+
     public function upload(Request $request): JsonResponse
     {
-        $request->validate([
-            'arquivo' => 'required|file|max:20480', // Limite de 20MB
+        // Validação da Cota já é feita pelo Middleware CheckStorageQuota
+        $validated = $request->validate([
+            'arquivo' => 'required|file|max:20480', // 20MB
             'pasta_id' => 'nullable|uuid|exists:ged_pastas,id',
-            'entidade_type' => 'nullable|string', // Ex: App\Models\Tarefa
-            'entidade_id' => 'nullable|uuid'
+            'entidade_type' => 'nullable|string',
+            'entidade_id' => 'nullable|uuid',
         ]);
 
         $tenantId = $request->user()->tenant_id;
-        $file = $request->file('arquivo');
+        $userId = $request->user()->id;
+        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
 
-        $nomeOriginal = $file->getClientOriginalName();
-        $extensao = $file->getClientOriginalExtension();
-        $tamanho = $file->getSize();
-        $hash = hash_file('sha256', $file->getRealPath());
+        $arquivo = $request->file('arquivo');
+        $nomeOriginal = $arquivo->getClientOriginalName();
+        $tamanhoBytes = $arquivo->getSize();
+        $mimeType = $arquivo->getMimeType();
+        $extensao = $arquivo->getClientOriginalExtension() ?: 'bin'; // Extrai a extensão e previne nulos
+        $caminho = $arquivo->store("ged/{$tenantId}", 'public');
 
-        // Isolamento físico no disco (ou bucket S3) usando o ID do Inquilino
-        $caminhoFisico = $file->storeAs(
-            "ged/{$tenantId}/" . date('Y/m'),
-            Str::uuid() . '.' . $extensao,
-            'public'
-        );
+        $doc = DB::transaction(function () use ($validated, $tenantId, $userId, $empresaId, $nomeOriginal, $tamanhoBytes, $caminho, $mimeType, $extensao) {
 
-        $documento = GedDocumento::create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
-            'pasta_id' => $request->pasta_id,
-            'usuario_id' => $request->user()->id,
-            'nome_original' => $nomeOriginal,
-            'caminho_s3' => $caminhoFisico,
-            'extensao' => $extensao,
-            'tamanho_bytes' => $tamanho,
-            'hash_arquivo' => $hash,
-            'entidade_vinculada_type' => $request->entidade_type,
-            'entidade_vinculada_id' => $request->entidade_id,
-        ]);
+            $documentoId = (string) Str::uuid();
 
-        return response()->json(['data' => $documento], 201);
+            // Mapeamento corretivo exaustivo para contornar restrições Not Null da base legada
+            DB::table('ged_documentos')->insert([
+                'id' => $documentoId,
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pasta_id' => $validated['pasta_id'] ?? null,
+                'entidade_vinculada_type' => $validated['entidade_type'] ?? null,
+                'entidade_vinculada_id' => $validated['entidade_id'] ?? null,
+                'nome_original' => $nomeOriginal,
+                'caminho_s3' => $caminho,
+                'mime_type' => $mimeType,
+                'tamanho_bytes' => $tamanhoBytes,
+                'extensao' => $extensao, // <-- Coluna adicionada para satisfazer a restrição
+                'usuario_upload_id' => $userId,
+                'usuario_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            Assinatura::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->increment('storage_utilizado_bytes', $tamanhoBytes);
+
+            return DB::table('ged_documentos')->where('id', $documentoId)->first();
+        });
+
+        return response()->json(['data' => ['message' => 'Arquivo anexado ao cofre com sucesso!', 'documento' => $doc]], 201);
     }
 }
 
@@ -25325,6 +25390,32 @@ use Illuminate\Support\Str;
 class KanbanController extends Controller
 {
     /**
+     * Retorna as prioridades configuradas para o Tenant
+     */
+    public function listarPrioridades(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $prioridades = DB::table('prj_prioridades_tarefas')
+            ->where('tenant_id', $tenantId)
+            ->orderBy('peso', 'desc')
+            ->get();
+
+        // Fallback robusto caso o tenant seja novo e não tenha prioridades cadastradas
+        if ($prioridades->isEmpty()) {
+            $basicos = [
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Crítica', 'peso' => 100, 'cor_hex' => '#ef4444'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Alta', 'peso' => 75, 'cor_hex' => '#f97316'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Média', 'peso' => 50, 'cor_hex' => '#3b82f6'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Baixa', 'peso' => 25, 'cor_hex' => '#64748b'],
+            ];
+            DB::table('prj_prioridades_tarefas')->insert($basicos);
+            $prioridades = collect($basicos);
+        }
+
+        return response()->json(['data' => $prioridades]);
+    }
+
+    /**
      * Retorna o quadro completo com Etapas e Tarefas aninhadas.
      */
     public function board(Request $request, string $projetoId): JsonResponse
@@ -25332,12 +25423,11 @@ class KanbanController extends Controller
         $user = $request->user();
         $usuarioId = $user->id;
 
+        // O fallback na ordenação garante retrocompatibilidade com tarefas legadas que só têm 'prioridade' int
         $projeto = Projeto::with(['etapas.tarefas' => function($query) {
             $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
         }])->findOrFail($projetoId);
 
-        // MÁGICA: Injeta os anexos (GED), checklists, dependências e apontamentos diretamente na resposta
-        // Isso evita erros 500 por falta de mapeamento de relacionamentos complexos nos Models.
         $tarefaIds = [];
         foreach ($projeto->etapas as $etapa) {
             foreach ($etapa->tarefas as $tarefa) {
@@ -25346,20 +25436,17 @@ class KanbanController extends Controller
         }
 
         if (count($tarefaIds) > 0) {
-            // Anexos do Cofre Digital (GED)
             $anexos = \App\Models\GedDocumento::where('tenant_id', $user->tenant_id)
                 ->where('entidade_vinculada_type', 'App\Models\Tarefa')
                 ->whereIn('entidade_vinculada_id', $tarefaIds)
                 ->get()
                 ->groupBy('entidade_vinculada_id');
 
-            // Checklists
             $checklists = DB::table('prj_tarefa_checklists')
                 ->whereIn('tarefa_id', $tarefaIds)
                 ->get()
                 ->groupBy('tarefa_id');
 
-            // Apontamentos (lê os cronômetros ativos do próprio usuário logado)
             $apontamentos = DB::table('prj_apontamentos')
                 ->whereIn('tarefa_id', $tarefaIds)
                 ->where('usuario_id', $usuarioId)
@@ -25368,7 +25455,6 @@ class KanbanController extends Controller
                 ->get()
                 ->groupBy('tarefa_id');
 
-            // Dependências (Blockers)
             $dependencias = DB::table('prj_tarefa_dependencias')
                 ->join('prj_tarefas', 'prj_tarefa_dependencias.depende_de_id', '=', 'prj_tarefas.id')
                 ->whereIn('prj_tarefa_dependencias.tarefa_id', $tarefaIds)
@@ -25376,13 +25462,20 @@ class KanbanController extends Controller
                 ->get()
                 ->groupBy('tarefa_id');
 
-            // Amarração em Memória
+            // Busca dados ricos da prioridade dinâmica para colorir o card
+            $dictPrioridades = DB::table('prj_prioridades_tarefas')->where('tenant_id', $user->tenant_id)->get()->keyBy('id');
+
             foreach ($projeto->etapas as $etapa) {
                 foreach ($etapa->tarefas as $tarefa) {
                     $tarefa->anexos = $anexos->get($tarefa->id, []);
                     $tarefa->checklists = $checklists->get($tarefa->id, []);
                     $tarefa->apontamentos = $apontamentos->get($tarefa->id, []);
                     $tarefa->dependencias = $dependencias->get($tarefa->id, []);
+
+                    // Acopla os metadados visuais da prioridade dinâmica
+                    if ($tarefa->prioridade_id && $dictPrioridades->has($tarefa->prioridade_id)) {
+                        $tarefa->prioridade_dinamica = $dictPrioridades[$tarefa->prioridade_id];
+                    }
                 }
             }
         }
@@ -25412,19 +25505,10 @@ class KanbanController extends Controller
     {
         $validated = $request->validate([
             'titulo' => 'required|string|max:200',
-            'prioridade' => 'nullable|string|in:BAIXA,MEDIA,ALTA,CRITICA'
+            'prioridade_id' => 'nullable|uuid|exists:prj_prioridades_tarefas,id'
         ]);
 
         $etapa = Etapa::findOrFail($etapaId);
-
-        // Converte a string do React para o integer que o banco espera
-        $prioridadeInt = match ($validated['prioridade'] ?? 'MEDIA') {
-            'CRITICA' => 1,
-            'ALTA' => 2,
-            'MEDIA' => 3,
-            'BAIXA' => 4,
-            default => 3,
-        };
 
         $tarefa = Tarefa::create([
             'id' => (string) Str::uuid(),
@@ -25432,7 +25516,8 @@ class KanbanController extends Controller
             'projeto_id' => $etapa->projeto_id,
             'etapa_id' => $etapa->id,
             'titulo' => $validated['titulo'],
-            'prioridade' => $prioridadeInt,
+            'prioridade' => 2, // Legado de ordenação visual mantido para compatibilidade
+            'prioridade_id' => $validated['prioridade_id'] ?? null, // Nova tabela de domínio
         ]);
 
         return response()->json(['data' => $tarefa], 201);
@@ -25446,9 +25531,7 @@ class KanbanController extends Controller
 
     public function adicionarChecklist(Request $request, string $tarefaId): JsonResponse
     {
-        $validated = $request->validate([
-            'descricao' => 'required|string|max:255'
-        ]);
+        $validated = $request->validate(['descricao' => 'required|string|max:255']);
 
         $item = PrjTarefaChecklist::create([
             'id' => (string) Str::uuid(),
@@ -25471,13 +25554,8 @@ class KanbanController extends Controller
 
     public function adicionarDependencia(Request $request, string $tarefaId): JsonResponse
     {
-        $validated = $request->validate([
-            'depende_de_id' => 'required|uuid|exists:prj_tarefas,id'
-        ]);
-
+        $validated = $request->validate(['depende_de_id' => 'required|uuid|exists:prj_tarefas,id']);
         $tarefa = Tarefa::findOrFail($tarefaId);
-
-        // Evita duplicidade usando o syncWithoutDetaching
         $tarefa->dependencias()->syncWithoutDetaching([$validated['depende_de_id']]);
 
         return response()->json(['message' => 'Dependência adicionada com sucesso.']);
@@ -25489,6 +25567,71 @@ class KanbanController extends Controller
         $tarefa->dependencias()->detach($dependeDeId);
 
         return response()->json(['message' => 'Dependência removida com sucesso.']);
+    }
+
+    public function alterarPrioridade(Request $request, $tarefaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'prioridade_id' => 'required|uuid|exists:prj_prioridades_tarefas,id'
+        ]);
+
+        $tarefa = Tarefa::where('tenant_id', $tenantId)->findOrFail($tarefaId);
+        $tarefa->update(['prioridade_id' => $validated['prioridade_id']]);
+
+        return response()->json(['message' => 'Prioridade atualizada com sucesso!']);
+    }
+
+    public function criarEtapa(Request $request, $projetoId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7'
+        ]);
+
+        $ordem = Etapa::where('projeto_id', $projetoId)->max('ordem') + 1;
+
+        $etapa = Etapa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $projetoId,
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'] ?? '#3b82f6',
+            'ordem' => $ordem
+        ]);
+
+        return response()->json(['message' => 'Etapa criada com sucesso!', 'data' => $etapa], 201);
+    }
+
+    public function renomearEtapa(Request $request, $etapaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7'
+        ]);
+
+        $etapa = Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
+        $etapa->update([
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'] ?? $etapa->cor_hex
+        ]);
+
+        return response()->json(['message' => 'Etapa atualizada com sucesso!']);
+    }
+
+    public function excluirEtapa(Request $request, $etapaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $etapa = Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
+
+        if ($etapa->tarefas()->count() > 0) {
+            return response()->json(['message' => 'Não é possível excluir uma etapa com tarefas. Mova ou apague as tarefas primeiro.'], 400);
+        }
+
+        $etapa->delete();
+        return response()->json(['message' => 'Etapa excluída com sucesso!']);
     }
 }
 
@@ -27031,6 +27174,97 @@ class PessoaController extends Controller
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PmoConfigController.php
+========================================
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class PmoConfigController extends Controller
+{
+    // Mapa seguro que traduz a rota para a tabela correta no banco
+    private array $tabelas = [
+        'status' => 'prj_status_projetos',
+        'prioridades' => 'prj_prioridades_tarefas',
+        'tipos' => 'prj_tipos_projetos',
+        'departamentos' => 'prj_departamentos',
+        'categorias_custos' => 'prj_categorias_custos',
+    ];
+
+    private function getTabela(string $dominio): ?string
+    {
+        return $this->tabelas[$dominio] ?? null;
+    }
+
+    public function index(Request $request, string $dominio): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        $tenantId = $request->user()->tenant_id;
+        $dados = DB::table($tabela)->where('tenant_id', $tenantId)->orderBy('nome')->get();
+
+        return response()->json(['data' => $dados]);
+    }
+
+    public function store(Request $request, string $dominio): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        $payload = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7',
+            'peso' => 'nullable|integer'
+        ]);
+
+        $payload['id'] = (string) Str::uuid();
+        $payload['tenant_id'] = $request->user()->tenant_id;
+        $payload['created_at'] = now();
+        $payload['updated_at'] = now();
+
+        DB::table($tabela)->insert($payload);
+
+        return response()->json(['message' => 'Registro criado com sucesso!', 'data' => $payload], 201);
+    }
+
+    public function update(Request $request, string $dominio, string $id): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        $payload = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7',
+            'peso' => 'nullable|integer'
+        ]);
+        $payload['updated_at'] = now();
+
+        DB::table($tabela)->where('tenant_id', $request->user()->tenant_id)->where('id', $id)->update($payload);
+
+        return response()->json(['message' => 'Registro atualizado com sucesso!']);
+    }
+
+    public function destroy(Request $request, string $dominio, string $id): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        DB::table($tabela)->where('tenant_id', $request->user()->tenant_id)->where('id', $id)->delete();
+        return response()->json(['message' => 'Registro excluído!']);
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PontoController.php
 ========================================
 
@@ -27343,6 +27577,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Models\Tarefa;
 
 class ProjetoController extends Controller
 {
@@ -27450,26 +27685,6 @@ class ProjetoController extends Controller
         ]);
     }
 
-    public function alterarStatus(Request $request, string $id): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
-
-        $validated = $request->validate([
-            'status' => 'required|string|in:ATIVO,CONCLUIDO,CANCELADO'
-        ]);
-
-        $projeto->status = $validated['status'];
-        $projeto->save();
-
-        return response()->json([
-            'data' => [
-                'message' => "Projeto marcado como {$validated['status']}!",
-                'projeto' => $projeto
-            ]
-        ]);
-    }
-
     public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse
     {
         $validated = $request->validate(['orcamento_previsto' => 'required|numeric|min:0']);
@@ -27477,6 +27692,93 @@ class ProjetoController extends Controller
         $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
 
         return response()->json(['data' => $projeto]);
+    }
+    public function gantt(Request $request, string $projetoId): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $tarefas = \App\Models\Projetos\Tarefa::where('tenant_id', $tenantId)
+            ->whereHas('etapa', function($q) use ($projetoId) {
+                $q->where('projeto_id', $projetoId);
+            })
+            ->whereNotNull('data_inicio_prevista')
+            ->whereNotNull('data_fim_prevista')
+            ->with('responsavel:id,name')
+            ->orderBy('data_inicio_prevista')
+            ->get(['id', 'titulo', 'data_inicio_prevista', 'data_fim_prevista', 'responsavel_id', 'status']);
+
+        return response()->json(['data' => $tarefas]);
+    }
+
+    public function capacidade(Request $request, string $projetoId): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // Puxa as horas apontadas agrupadas por usuário neste projeto
+        $apontamentos = \App\Models\Apontamento::where('tenant_id', $tenantId)
+            ->whereHas('tarefa.etapa', function($q) use ($projetoId) {
+                $q->where('projeto_id', $projetoId);
+            })
+            ->select('usuario_id', DB::raw('SUM(EXTRACT(EPOCH FROM (fim - inicio))/3600) as horas_realizadas'))
+            ->whereNotNull('fim')
+            ->groupBy('usuario_id')
+            ->get()
+            ->keyBy('usuario_id');
+
+        // Cruzamento com o limite do usuário no projeto (Resource Planning)
+        $equipe = DB::table('prj_projeto_usuarios')
+            ->join('users', 'prj_projeto_usuarios.usuario_id', '=', 'users.id')
+            ->where('prj_projeto_usuarios.projeto_id', $projetoId)
+            ->select('users.id', 'users.name', 'prj_projeto_usuarios.limite_horas_semanais')
+            ->get();
+
+        $capacidade = $equipe->map(function($membro) use ($apontamentos) {
+            $realizadas = $apontamentos->has($membro->id) ? (float) $apontamentos[$membro->id]->horas_realizadas : 0;
+            $limite = (float) $membro->limite_horas_semanais;
+            $percentual = $limite > 0 ? min(100, ($realizadas / $limite) * 100) : 0;
+
+            return [
+                'id' => $membro->id,
+                'nome' => $membro->name,
+                'limite_horas' => $limite,
+                'horas_realizadas' => round($realizadas, 2),
+                'percentual_uso' => round($percentual, 1),
+                'status' => $percentual > 90 ? 'OVERBOOKED' : ($percentual > 70 ? 'ATENCAO' : 'OK')
+            ];
+        });
+
+        return response()->json(['data' => $capacidade]);
+    }
+    public function alterarStatus(Request $request, $id): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate(['status' => 'required|string']);
+
+        $projeto = \App\Models\Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+        $projeto->update(['status' => $validated['status']]);
+
+        return response()->json(['message' => 'Status do projeto atualizado com sucesso!', 'data' => $projeto]);
+    }
+    public function listarStatus(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $status = \Illuminate\Support\Facades\DB::table('prj_status_projetos')
+            ->where('tenant_id', $tenantId)
+            ->orderBy('nome')
+            ->get();
+
+        // Fallback: Se o tenant não configurou nada, gera os básicos para não quebrar a UI
+        if ($status->isEmpty()) {
+            $basicos = [
+                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Ativo', 'cor_hex' => '#4f46e5'],
+                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Concluído', 'cor_hex' => '#10b981'],
+                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Pausado', 'cor_hex' => '#f59e0b']
+            ];
+            \Illuminate\Support\Facades\DB::table('prj_status_projetos')->insert($basicos);
+            $status = collect($basicos);
+        }
+
+        return response()->json(['data' => $status]);
     }
 }
 
@@ -30755,22 +31057,70 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\GedDocumento.php
 
 namespace App\Models;
 
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class GedDocumento extends Model
 {
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
     protected $table = 'ged_documentos';
-    public $incrementing = false;
-    protected $keyType = 'string';
+    protected $fillable = [
+        'tenant_id', 'empresa_id', 'pasta_id',
+        'entidade_vinculada_type', 'entidade_vinculada_id',
+        'nome_original', 'caminho_s3', 'mime_type', 'tamanho_bytes', 'usuario_upload_id'
+    ];
 
-    protected $guarded = [];
-
-    /**
-     * Ligação Polimórfica (Permite que o documento seja anexado a Projetos, OS, DP, etc)
-     */
-    public function entidade_vinculada()
+    public function entidadeVinculada()
     {
-        return $this->morphTo();
+        return $this->morphTo(__FUNCTION__, 'entidade_vinculada_type', 'entidade_vinculada_id');
+    }
+
+    public function pasta()
+    {
+        return $this->belongsTo(GedPasta::class, 'pasta_id');
+    }
+
+    public function uploader()
+    {
+        return $this->belongsTo(User::class, 'usuario_upload_id');
+    }
+}
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\GedPasta.php
+========================================
+
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class GedPasta extends Model
+{
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'ged_pastas';
+    protected $fillable = ['tenant_id', 'empresa_id', 'pasta_pai_id', 'nome', 'is_sistema'];
+
+    public function subpastas()
+    {
+        return $this->hasMany(GedPasta::class, 'pasta_pai_id')->orderBy('nome');
+    }
+
+    public function documentos()
+    {
+        return $this->hasMany(GedDocumento::class, 'pasta_id')->orderBy('nome_original');
     }
 }
 
@@ -41472,6 +41822,379 @@ return new class extends Migration
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_182441_create_ged_tables.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (!Schema::hasTable('ged_pastas')) {
+            Schema::create('ged_pastas', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('empresa_id')->nullable()->index();
+                $table->uuid('pasta_pai_id')->nullable()->index();
+                $table->string('nome', 150);
+                $table->boolean('is_sistema')->default(false);
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+
+        if (!Schema::hasTable('ged_documentos')) {
+            Schema::create('ged_documentos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('empresa_id')->nullable()->index();
+                $table->uuid('pasta_id')->nullable()->index();
+                $table->string('entidade_vinculada_type')->nullable()->index();
+                $table->uuid('entidade_vinculada_id')->nullable()->index();
+                $table->string('nome_original', 255);
+                $table->string('caminho_s3', 500);
+                $table->string('mime_type', 100);
+                $table->unsignedBigInteger('tamanho_bytes');
+                $table->uuid('usuario_upload_id')->index();
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('ged_documentos');
+        Schema::dropIfExists('ged_pastas');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_190140_add_empresa_id_to_ged_documentos.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('ged_documentos', function (Blueprint $table) {
+            if (!Schema::hasColumn('ged_documentos', 'empresa_id')) {
+                $table->uuid('empresa_id')->nullable()->index()->after('tenant_id');
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('ged_documentos', function (Blueprint $table) {
+            if (Schema::hasColumn('ged_documentos', 'empresa_id')) {
+                $table->dropColumn('empresa_id');
+            }
+        });
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_190635_add_missing_columns_to_ged_documentos.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('ged_documentos', function (Blueprint $table) {
+            if (!Schema::hasColumn('ged_documentos', 'mime_type')) {
+                $table->string('mime_type', 100)->nullable()->after('caminho_s3');
+            }
+            if (!Schema::hasColumn('ged_documentos', 'tamanho_bytes')) {
+                $table->unsignedBigInteger('tamanho_bytes')->default(0)->after('mime_type');
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('ged_documentos', function (Blueprint $table) {
+            if (Schema::hasColumn('ged_documentos', 'mime_type')) {
+                $table->dropColumn('mime_type');
+            }
+            if (Schema::hasColumn('ged_documentos', 'tamanho_bytes')) {
+                $table->dropColumn('tamanho_bytes');
+            }
+        });
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_191144_add_usuario_upload_id_to_ged_documentos.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('ged_documentos', function (Blueprint $table) {
+            if (!Schema::hasColumn('ged_documentos', 'usuario_upload_id')) {
+                $table->uuid('usuario_upload_id')->nullable()->index()->after('tamanho_bytes');
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('ged_documentos', function (Blueprint $table) {
+            if (Schema::hasColumn('ged_documentos', 'usuario_upload_id')) {
+                $table->dropColumn('usuario_upload_id');
+            }
+        });
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_20_200745_add_enterprise_fields_to_pmo_tables.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // Adiciona datas para o Gantt nas Tarefas
+        Schema::table('prj_tarefas', function (Blueprint $table) {
+            if (!Schema::hasColumn('prj_tarefas', 'data_inicio_prevista')) {
+                $table->date('data_inicio_prevista')->nullable()->after('descricao');
+            }
+            if (!Schema::hasColumn('prj_tarefas', 'data_fim_prevista')) {
+                $table->date('data_fim_prevista')->nullable()->after('data_inicio_prevista');
+            }
+        });
+
+        // Adiciona Limite de Horas na tabela de Equipe do Projeto (assumindo nomenclatura padrao prj_projeto_usuarios)
+        // Se a sua tabela de equipe tiver outro nome, ajuste aqui antes de rodar.
+        if (Schema::hasTable('prj_projeto_usuarios')) {
+            Schema::table('prj_projeto_usuarios', function (Blueprint $table) {
+                if (!Schema::hasColumn('prj_projeto_usuarios', 'limite_horas_semanais')) {
+                    $table->decimal('limite_horas_semanais', 5, 2)->default(40.00)->after('usuario_id');
+                }
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::table('prj_tarefas', function (Blueprint $table) {
+            if (Schema::hasColumn('prj_tarefas', 'data_inicio_prevista')) $table->dropColumn('data_inicio_prevista');
+            if (Schema::hasColumn('prj_tarefas', 'data_fim_prevista')) $table->dropColumn('data_fim_prevista');
+        });
+        if (Schema::hasTable('prj_projeto_usuarios')) {
+            Schema::table('prj_projeto_usuarios', function (Blueprint $table) {
+                if (Schema::hasColumn('prj_projeto_usuarios', 'limite_horas_semanais')) $table->dropColumn('limite_horas_semanais');
+            });
+        }
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_21_145004_create_pmo_domain_tables.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // Tabela de Domínio para Status de Projetos
+        if (!Schema::hasTable('prj_status_projetos')) {
+            Schema::create('prj_status_projetos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->string('nome', 100);
+                $table->string('cor_hex', 7)->default('#64748b'); // Ex: #10b981 (Emerald)
+                $table->boolean('bloqueia_edicao')->default(false);
+                $table->timestamps();
+            });
+        }
+
+        // Tabela de Domínio para Prioridades de Tarefas
+        if (!Schema::hasTable('prj_prioridades_tarefas')) {
+            Schema::create('prj_prioridades_tarefas', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->string('nome', 100);
+                $table->integer('peso');
+                $table->string('cor_hex', 7)->default('#64748b');
+                $table->timestamps();
+            });
+        }
+
+        // CORREÇÃO AQUI: prj_projetos em vez de projetos
+        if (Schema::hasTable('prj_projetos')) {
+            Schema::table('prj_projetos', function (Blueprint $table) {
+                if (!Schema::hasColumn('prj_projetos', 'status_projeto_id')) {
+                    $table->uuid('status_projeto_id')->nullable()->after('status');
+                }
+            });
+        }
+
+        if (Schema::hasTable('prj_tarefas')) {
+            Schema::table('prj_tarefas', function (Blueprint $table) {
+                if (!Schema::hasColumn('prj_tarefas', 'prioridade_id')) {
+                    $table->uuid('prioridade_id')->nullable()->after('prioridade');
+                }
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasTable('prj_projetos')) {
+            Schema::table('prj_projetos', function (Blueprint $table) {
+                if (Schema::hasColumn('prj_projetos', 'status_projeto_id')) {
+                    $table->dropColumn('status_projeto_id');
+                }
+            });
+        }
+        if (Schema::hasTable('prj_tarefas')) {
+            Schema::table('prj_tarefas', function (Blueprint $table) {
+                if (Schema::hasColumn('prj_tarefas', 'prioridade_id')) {
+                    $table->dropColumn('prioridade_id');
+                }
+            });
+        }
+        Schema::dropIfExists('prj_prioridades_tarefas');
+        Schema::dropIfExists('prj_status_projetos');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_21_153528_create_extended_pmo_domain_tables.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tipos de Projetos (Ex: Manutenção Civil, Implantação de Software)
+        if (!Schema::hasTable('prj_tipos_projetos')) {
+            Schema::create('prj_tipos_projetos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->string('nome', 100);
+                $table->string('cor_hex', 7)->default('#3b82f6');
+                $table->timestamps();
+            });
+        }
+
+        // 2. Departamentos (Ex: TI, Engenharia, Financeiro)
+        if (!Schema::hasTable('prj_departamentos')) {
+            Schema::create('prj_departamentos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->string('nome', 100);
+                $table->timestamps();
+            });
+        }
+
+        // 3. Categorias de Custo (Ex: Materiais, Terceiros, Viagens)
+        if (!Schema::hasTable('prj_categorias_custos')) {
+            Schema::create('prj_categorias_custos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->string('nome', 100);
+                $table->timestamps();
+            });
+        }
+
+        // 4. Injetar as amarrações nas tabelas pai (sem quebrar dados legados)
+        if (Schema::hasTable('prj_projetos')) {
+            Schema::table('prj_projetos', function (Blueprint $table) {
+                if (!Schema::hasColumn('prj_projetos', 'tipo_projeto_id')) $table->uuid('tipo_projeto_id')->nullable()->after('status_projeto_id');
+                if (!Schema::hasColumn('prj_projetos', 'departamento_id')) $table->uuid('departamento_id')->nullable()->after('tipo_projeto_id');
+            });
+        }
+
+        // Assumindo que a sua tabela de custos chama prj_custos (se for outro nome, ajuste aqui)
+        if (Schema::hasTable('prj_custos')) {
+            Schema::table('prj_custos', function (Blueprint $table) {
+                if (!Schema::hasColumn('prj_custos', 'categoria_custo_id')) $table->uuid('categoria_custo_id')->nullable()->after('valor');
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        // Rollbacks seguros
+        if (Schema::hasTable('prj_projetos')) {
+            Schema::table('prj_projetos', function (Blueprint $table) {
+                if (Schema::hasColumn('prj_projetos', 'tipo_projeto_id')) $table->dropColumn('tipo_projeto_id');
+                if (Schema::hasColumn('prj_projetos', 'departamento_id')) $table->dropColumn('departamento_id');
+            });
+        }
+        if (Schema::hasTable('prj_custos')) {
+            Schema::table('prj_custos', function (Blueprint $table) {
+                if (Schema::hasColumn('prj_custos', 'categoria_custo_id')) $table->dropColumn('categoria_custo_id');
+            });
+        }
+        Schema::dropIfExists('prj_categorias_custos');
+        Schema::dropIfExists('prj_departamentos');
+        Schema::dropIfExists('prj_tipos_projetos');
+    }
+};
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\DatabaseSeeder.php
 ========================================
 
@@ -42522,7 +43245,8 @@ use App\Http\Controllers\Api\KanbanController;
 use App\Http\Controllers\Api\ProjetoController;
 use App\Http\Controllers\Api\TimesheetController;
 use App\Http\Controllers\Api\ProjetoGestaoController;
-use App\Http\Controllers\Api\GedController; // <== Adicionado o import do GED
+use App\Http\Controllers\Api\GedController;
+use App\Http\Controllers\Api\PmoConfigController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -42816,15 +43540,27 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::delete('/veiculos/{id}', [FrotaVeiculoController::class, 'destroy']);
         Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
+    // Dentro do seu grupo de auth Sanctum + IdentifyTenant, adicione:
+    Route::prefix('pmo/configuracoes')->group(function () {
+        Route::get('/{dominio}', [PmoConfigController::class, 'index']);
+        Route::post('/{dominio}', [PmoConfigController::class, 'store']);
+        Route::put('/{dominio}/{id}', [PmoConfigController::class, 'update']);
+        Route::delete('/{dominio}/{id}', [PmoConfigController::class, 'destroy']);
+    });
 
     // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
     // ==========================================
-Route::prefix('projetos')->middleware('check.projeto.status')->group(function () {
+    Route::prefix('projetos')->middleware('check.projeto.status')->group(function () {
         Route::get('/', [ProjetoController::class, 'index']);
         Route::post('/', [ProjetoController::class, 'store']);
-        Route::put('/{id}', [ProjetoController::class, 'update']); // <== ROTA CORRIGIDA (/api/projetos/{id})
+        Route::put('/{id}', [ProjetoController::class, 'update']);
         Route::put('/{projetoId}/orcamento', [ProjetoController::class, 'atualizarOrcamento']);
+
+        // --- Novas Rotas Nativas do Enterprise PMO ---
+        Route::get('/{projetoId}/gantt', [ProjetoController::class, 'gantt']);
+        Route::get('/{projetoId}/capacidade', [ProjetoController::class, 'capacidade']);
+        // ---------------------------------------------
 
         Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
         Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
@@ -42847,6 +43583,19 @@ Route::prefix('projetos')->middleware('check.projeto.status')->group(function ()
 
         Route::post('/tarefas/{tarefaId}/dependencias', [KanbanController::class, 'adicionarDependencia']);
         Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [KanbanController::class, 'removerDependencia']);
+
+        // Rotas corretivas (Status, Taxonomia e Prioridades)
+        Route::patch('/{id}/status', [ProjetoController::class, 'alterarStatus'])->withoutMiddleware('check.projeto.status');
+        Route::patch('/tarefas/{tarefaId}/prioridade', [KanbanController::class, 'alterarPrioridade']);
+        Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
+
+        // Parâmetros de Domínio PMO
+        Route::get('/parametros/status', [ProjetoController::class, 'listarStatus']);
+        Route::get('/parametros/prioridades', [KanbanController::class, 'listarPrioridades']);
+         Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
+        // Novas rotas de Taxonomia de Fluxos (Etapas)
+        Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
+        Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
     });
 
     // ==========================================
