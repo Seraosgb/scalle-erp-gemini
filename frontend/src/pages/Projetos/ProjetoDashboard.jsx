@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity, Edit2 } from 'lucide-react';
+import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity, Edit2, Plus } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export default function ProjetoDashboard() {
@@ -12,10 +12,8 @@ export default function ProjetoDashboard() {
     const [activeTab, setActiveTab] = useState('board');
     const [loading, setLoading] = useState(true);
 
-    // Listas Dinâmicas (Tabelas de Domínio PMO)
     const [parametrosStatus, setParametrosStatus] = useState([]);
     const [parametrosPrioridades, setParametrosPrioridades] = useState([]);
-
     const [clientes, setClientes] = useState([]);
     const [modalConfig, setModalConfig] = useState(false);
     const [formConfig, setFormConfig] = useState({ nome: '', descricao: '', cliente_id: '' });
@@ -23,13 +21,23 @@ export default function ProjetoDashboard() {
     const [modalBlocker, setModalBlocker] = useState(null);
     const [dependenciaIdSelecionada, setDependenciaIdSelecionada] = useState('');
 
-    // Novos Modais Dinâmicos
+    // Gestão de Modais (Substituindo os antigos window.prompt)
     const [modalStatus, setModalStatus] = useState(false);
     const [novoStatusId, setNovoStatusId] = useState('');
+
     const [modalPrioridade, setModalPrioridade] = useState({ open: false, tarefaId: '' });
     const [novaPrioridadeId, setNovaPrioridadeId] = useState('');
+
     const [modalTarefa, setModalTarefa] = useState({ open: false, etapaId: '' });
     const [formTarefa, setFormTarefa] = useState({ titulo: '', prioridade_id: '' });
+
+    const [modalBudget, setModalBudget] = useState(false);
+    const [novoBudget, setNovoBudget] = useState('');
+
+    const [modalChecklist, setModalChecklist] = useState({ open: false, tarefaId: '' });
+    const [novoChecklistDesc, setNovoChecklistDesc] = useState('');
+
+    const [modalEtapa, setModalEtapa] = useState({ open: false, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' });
 
     useEffect(() => {
         if (projetoId) {
@@ -51,6 +59,7 @@ export default function ProjetoDashboard() {
                 descricao: projData.descricao || '',
                 cliente_id: projData.cliente_id || ''
             });
+            setNovoBudget(projData.orcamento_previsto || '');
         } catch (error) {
             console.error("Erro ao buscar o projeto:", error);
         } finally {
@@ -64,17 +73,14 @@ export default function ProjetoDashboard() {
             await api.put(`/projetos/${projetoId}`, formConfig);
             setModalConfig(false);
             carregarProjeto();
-            alert("Projeto atualizado com sucesso!");
-        } catch (error) {
-            alert("Erro ao atualizar projeto.");
-        }
+        } catch (error) { alert("Erro ao atualizar projeto."); }
     };
 
-    const atualizarBudget = async () => {
-        const novoValor = window.prompt("Digite o novo valor do Orçamento (Budget):", projeto?.orcamento_previsto);
-        if (!novoValor || isNaN(novoValor)) return;
+    const salvarBudget = async (e) => {
+        e.preventDefault();
         try {
-            await api.put(`/projetos/${projetoId}/orcamento`, { orcamento_previsto: parseFloat(novoValor) });
+            await api.put(`/projetos/${projetoId}/orcamento`, { orcamento_previsto: parseFloat(novoBudget) });
+            setModalBudget(false);
             carregarProjeto();
         } catch (error) { alert("Erro ao atualizar budget."); }
     };
@@ -86,7 +92,7 @@ export default function ProjetoDashboard() {
             await api.patch(`/projetos/${projetoId}/status`, { status_projeto_id: novoStatusId });
             setModalStatus(false);
             carregarProjeto();
-        } catch (error) { alert("Erro ao alterar status. Verifique se o backend foi atualizado."); }
+        } catch (error) { alert("Erro ao alterar status."); }
     };
 
     const adicionarTarefa = async (e) => {
@@ -100,15 +106,6 @@ export default function ProjetoDashboard() {
         } catch (error) { alert("Erro ao criar tarefa."); }
     };
 
-    const renomearEtapa = async (etapaId, nomeAtual) => {
-        const novoNome = window.prompt("Renomear coluna/etapa do Kanban:", nomeAtual);
-        if (!novoNome || novoNome === nomeAtual) return;
-        try {
-            await api.put(`/projetos/etapas/${etapaId}`, { nome: novoNome });
-            carregarProjeto();
-        } catch (error) { alert("Erro ao renomear etapa."); }
-    };
-
     const alterarPrioridade = async (e) => {
         e.preventDefault();
         if (!novaPrioridadeId) return;
@@ -118,6 +115,30 @@ export default function ProjetoDashboard() {
             setNovaPrioridadeId('');
             carregarProjeto();
         } catch (error) { alert("Erro ao alterar prioridade."); }
+    };
+
+    const salvarEtapa = async (e) => {
+        e.preventDefault();
+        if (!modalEtapa.nome) return;
+        try {
+            if (modalEtapa.isEdit) {
+                await api.put(`/projetos/etapas/${modalEtapa.id}`, { nome: modalEtapa.nome, cor_hex: modalEtapa.cor_hex });
+            } else {
+                await api.post(`/projetos/${projetoId}/etapas`, { nome: modalEtapa.nome, cor_hex: modalEtapa.cor_hex });
+            }
+            setModalEtapa({ open: false, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao salvar etapa."); }
+    };
+
+    const deletarEtapa = async (id) => {
+        if (!window.confirm("Deseja realmente excluir esta coluna? Apenas colunas vazias podem ser excluídas.")) return;
+        try {
+            await api.delete(`/projetos/etapas/${id}`);
+            carregarProjeto();
+        } catch (error) {
+            alert(error.response?.data?.message || "Erro ao excluir etapa.");
+        }
     };
 
     const handleDragEnd = async (result) => {
@@ -178,11 +199,13 @@ export default function ProjetoDashboard() {
         } catch (error) { alert('Falha ao processar apontamento.'); }
     };
 
-    const adicionarChecklist = async (tarefaId) => {
-        const descricao = window.prompt("Qual o item de verificação para esta tarefa?");
-        if (!descricao) return;
+    const salvarChecklist = async (e) => {
+        e.preventDefault();
+        if (!novoChecklistDesc) return;
         try {
-            await api.post(`/projetos/tarefas/${tarefaId}/checklists`, { descricao });
+            await api.post(`/projetos/tarefas/${modalChecklist.tarefaId}/checklists`, { descricao: novoChecklistDesc });
+            setModalChecklist({ open: false, tarefaId: '' });
+            setNovoChecklistDesc('');
             carregarProjeto();
         } catch (error) { alert("Erro ao adicionar checklist."); }
     };
@@ -198,20 +221,16 @@ export default function ProjetoDashboard() {
             }));
             setProjeto({ ...projeto, etapas: novasEtapas });
             await api.patch(`/projetos/tarefas/checklists/${checklistId}/toggle`);
-        } catch (error) {
-            carregarProjeto();
-        }
+        } catch (error) { carregarProjeto(); }
     };
 
     const handleFileUpload = async (tarefaId, event) => {
         const file = event.target.files[0];
         if (!file) return;
-
         const formData = new FormData();
         formData.append('arquivo', file);
         formData.append('entidade_type', 'App\\Models\\Tarefa');
         formData.append('entidade_id', tarefaId);
-
         try {
             await api.post('/ged/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
             alert('Arquivo anexado com sucesso!');
@@ -243,7 +262,6 @@ export default function ProjetoDashboard() {
     if (loading) return <div className="p-8 text-center text-slate-500 font-bold">Carregando painel do projeto...</div>;
     if (!projeto) return <div className="p-8 text-center text-rose-500">Projeto não encontrado.</div>;
 
-    // Estilização Dinâmica do Status Atual do Projeto
     const statusDinamico = parametrosStatus.find(s => s.id === projeto.status_projeto_id);
     const statusNome = statusDinamico?.nome || projeto.status || 'ATIVO';
     const statusCor = statusDinamico?.cor_hex || '#4f46e5';
@@ -263,7 +281,6 @@ export default function ProjetoDashboard() {
                                     onClick={() => { setNovoStatusId(projeto.status_projeto_id); setModalStatus(true); }}
                                     className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer hover:opacity-80 transition shadow-sm border"
                                     style={{ backgroundColor: `${statusCor}20`, color: statusCor, borderColor: `${statusCor}50` }}
-                                    title="Clique para alterar o status do projeto"
                                 >
                                     {statusNome}
                                 </span>
@@ -273,7 +290,7 @@ export default function ProjetoDashboard() {
                             </h1>
                             <p className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-2">
                                 Budget: R$ {Number(projeto.orcamento_previsto).toLocaleString('pt-BR')}
-                                <button onClick={atualizarBudget} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
+                                <button onClick={() => setModalBudget(true)} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
                                 &nbsp; • &nbsp; Custo Real: <span className="text-rose-400">R$ {Number(projeto.custo_total_real || 0).toLocaleString('pt-BR')}</span>
                             </p>
                         </div>
@@ -317,15 +334,20 @@ export default function ProjetoDashboard() {
                                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#3b82f6' }}></span>
                                         <span
                                             className="text-sm uppercase tracking-wider cursor-pointer hover:text-indigo-400 flex items-center gap-1"
-                                            title="Clique para renomear esta etapa"
-                                            onClick={() => renomearEtapa(etapa.id, etapa.nome)}
+                                            title="Editar Taxonomia da Etapa"
+                                            onClick={() => setModalEtapa({ open: true, isEdit: true, id: etapa.id, nome: etapa.nome, cor_hex: etapa.cor_hex || '#3b82f6' })}
                                         >
                                             {etapa.nome} <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                         </span>
                                     </div>
-                                    <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
-                                        {etapa.tarefas?.length || 0}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
+                                            {etapa.tarefas?.length || 0}
+                                        </span>
+                                        <button onClick={() => deletarEtapa(etapa.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-opacity cursor-pointer" title="Excluir Coluna">
+                                            <Trash2 size={12}/>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <Droppable droppableId={String(etapa.id)}>
@@ -364,7 +386,7 @@ export default function ProjetoDashboard() {
                                                                         <Paperclip size={14}/>
                                                                         <input type="file" className="hidden" onChange={(e) => handleFileUpload(tarefa.id, e)} />
                                                                     </label>
-                                                                    <button onClick={() => adicionarChecklist(tarefa.id)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Item Checklist">
+                                                                    <button onClick={() => setModalChecklist({ open: true, tarefaId: tarefa.id })} className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Item Checklist">
                                                                         <CheckSquare size={14}/>
                                                                     </button>
                                                                 </div>
@@ -453,8 +475,43 @@ export default function ProjetoDashboard() {
                                 </Droppable>
                             </div>
                         ))}
+
+                        <div className="min-w-[320px] flex items-start">
+                            <button
+                                onClick={() => setModalEtapa({ open: true, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' })}
+                                className="w-full bg-slate-900/50 border border-dashed border-slate-700 rounded-xl p-4 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                                <Plus size={18} /> Nova Coluna (Etapa)
+                            </button>
+                        </div>
                     </div>
                 </DragDropContext>
+            )}
+
+            {/* MODAL: CRIAR OU EDITAR ETAPA (TAXONOMIA DO FLUXO) */}
+            {modalEtapa.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarEtapa} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">
+                            {modalEtapa.isEdit ? 'Editar Coluna Kanban' : 'Nova Coluna Kanban'}
+                        </h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nome da Etapa</label>
+                            <input type="text" required value={modalEtapa.nome} onChange={e => setModalEtapa({...modalEtapa, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Cor de Identificação</label>
+                            <div className="flex gap-3 items-center">
+                                <input type="color" value={modalEtapa.cor_hex} onChange={e => setModalEtapa({...modalEtapa, cor_hex: e.target.value})} className="w-12 h-12 rounded cursor-pointer bg-slate-950 border border-slate-800" />
+                                <span className="text-sm font-mono text-slate-300">{modalEtapa.cor_hex}</span>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalEtapa({ open: false, isEdit: false, id: '', nome: '', cor_hex: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar Etapa</button>
+                        </div>
+                    </form>
+                </div>
             )}
 
             {/* MODAL: MUDAR STATUS DO PROJETO */}
@@ -474,6 +531,23 @@ export default function ProjetoDashboard() {
                         <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                             <button type="button" onClick={() => setModalStatus(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
                             <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Aplicar Status</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: BUDGET DO PROJETO */}
+            {modalBudget && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarBudget} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Orçamento Previsto</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Valor (R$)</label>
+                            <input type="number" step="0.01" required value={novoBudget} onChange={e => setNovoBudget(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalBudget(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Atualizar Budget</button>
                         </div>
                     </form>
                 </div>
@@ -500,6 +574,23 @@ export default function ProjetoDashboard() {
                         <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                             <button type="button" onClick={() => setModalTarefa({ open: false, etapaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
                             <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Criar Tarefa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: CHECKLIST */}
+            {modalChecklist.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarChecklist} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Novo Item de Verificação</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Descrição do Checklist</label>
+                            <input type="text" required value={novoChecklistDesc} onChange={e => setNovoChecklistDesc(e.target.value)} placeholder="Ex: Validar assinaturas do documento" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalChecklist({ open: false, tarefaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
                         </div>
                     </form>
                 </div>

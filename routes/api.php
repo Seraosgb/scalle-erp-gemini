@@ -397,5 +397,9 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
             ]);
             return app(GedController::class)->upload($request);
         });
+        Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
+        // Novas rotas de Taxonomia de Fluxos (Etapas)
+        Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
+        Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
     });
 });

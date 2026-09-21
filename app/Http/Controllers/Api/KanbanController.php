@@ -207,14 +207,55 @@ class KanbanController extends Controller
         return response()->json(['message' => 'Prioridade atualizada com sucesso!']);
     }
 
+    public function criarEtapa(Request $request, $projetoId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7'
+        ]);
+
+        $ordem = Etapa::where('projeto_id', $projetoId)->max('ordem') + 1;
+
+        $etapa = Etapa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $projetoId,
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'] ?? '#3b82f6',
+            'ordem' => $ordem
+        ]);
+
+        return response()->json(['message' => 'Etapa criada com sucesso!', 'data' => $etapa], 201);
+    }
+
     public function renomearEtapa(Request $request, $etapaId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $validated = $request->validate(['nome' => 'required|string|max:100']);
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7'
+        ]);
 
         $etapa = Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
-        $etapa->update(['nome' => $validated['nome']]);
+        $etapa->update([
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'] ?? $etapa->cor_hex
+        ]);
 
-        return response()->json(['message' => 'Etapa renomeada com sucesso!']);
+        return response()->json(['message' => 'Etapa atualizada com sucesso!']);
+    }
+
+    public function excluirEtapa(Request $request, $etapaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $etapa = Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
+
+        if ($etapa->tarefas()->count() > 0) {
+            return response()->json(['message' => 'Não é possível excluir uma etapa com tarefas. Mova ou apague as tarefas primeiro.'], 400);
+        }
+
+        $etapa->delete();
+        return response()->json(['message' => 'Etapa excluída com sucesso!']);
     }
 }
