@@ -12,6 +12,10 @@ export default function ProjetoDashboard() {
     const [activeTab, setActiveTab] = useState('board');
     const [loading, setLoading] = useState(true);
 
+    // Listas Dinâmicas (Tabelas de Domínio PMO)
+    const [parametrosStatus, setParametrosStatus] = useState([]);
+    const [parametrosPrioridades, setParametrosPrioridades] = useState([]);
+
     const [clientes, setClientes] = useState([]);
     const [modalConfig, setModalConfig] = useState(false);
     const [formConfig, setFormConfig] = useState({ nome: '', descricao: '', cliente_id: '' });
@@ -19,10 +23,20 @@ export default function ProjetoDashboard() {
     const [modalBlocker, setModalBlocker] = useState(null);
     const [dependenciaIdSelecionada, setDependenciaIdSelecionada] = useState('');
 
+    // Novos Modais Dinâmicos
+    const [modalStatus, setModalStatus] = useState(false);
+    const [novoStatusId, setNovoStatusId] = useState('');
+    const [modalPrioridade, setModalPrioridade] = useState({ open: false, tarefaId: '' });
+    const [novaPrioridadeId, setNovaPrioridadeId] = useState('');
+    const [modalTarefa, setModalTarefa] = useState({ open: false, etapaId: '' });
+    const [formTarefa, setFormTarefa] = useState({ titulo: '', prioridade_id: '' });
+
     useEffect(() => {
         if (projetoId) {
             carregarProjeto();
             api.get('/pessoas?tipo=CLIENTE').then(res => setClientes(res.data?.data?.data || res.data?.data || []));
+            api.get('/projetos/parametros/status').then(res => setParametrosStatus(res.data?.data || []));
+            api.get('/projetos/parametros/prioridades').then(res => setParametrosPrioridades(res.data?.data || []));
         }
     }, [projetoId]);
 
@@ -50,6 +64,7 @@ export default function ProjetoDashboard() {
             await api.put(`/projetos/${projetoId}`, formConfig);
             setModalConfig(false);
             carregarProjeto();
+            alert("Projeto atualizado com sucesso!");
         } catch (error) {
             alert("Erro ao atualizar projeto.");
         }
@@ -64,33 +79,23 @@ export default function ProjetoDashboard() {
         } catch (error) { alert("Erro ao atualizar budget."); }
     };
 
-    const alterarStatusProjeto = async (statusAtual) => {
-        const novoStatus = window.prompt("Novo status (ATIVO, PAUSADO, CONCLUIDO, CANCELADO):", statusAtual || 'ATIVO');
-        if (!novoStatus) return;
-
-        const statusClean = novoStatus.toUpperCase().trim();
-        if (!['ATIVO', 'PAUSADO', 'CONCLUIDO', 'CANCELADO'].includes(statusClean)) {
-            alert('Status inválido. Utilize: ATIVO, PAUSADO, CONCLUIDO ou CANCELADO.');
-            return;
-        }
-
+    const alterarStatusProjeto = async (e) => {
+        e.preventDefault();
+        if (!novoStatusId) return;
         try {
-            await api.patch(`/projetos/${projetoId}/status`, { status: statusClean });
+            await api.patch(`/projetos/${projetoId}/status`, { status_projeto_id: novoStatusId });
+            setModalStatus(false);
             carregarProjeto();
-        } catch (error) {
-            alert("Erro ao alterar status. Verifique se o backend foi atualizado.");
-        }
+        } catch (error) { alert("Erro ao alterar status. Verifique se o backend foi atualizado."); }
     };
 
-    const adicionarTarefa = async (etapaId) => {
-        const titulo = window.prompt("Qual o título da nova tarefa?");
-        if (!titulo) return;
-
-        const prio = window.prompt("Nível de prioridade (1=ALTA, 2=MÉDIA, 3=BAIXA):", "2");
-        const prioridadeFinal = ['1', '2', '3'].includes(prio) ? Number(prio) : 2;
-
+    const adicionarTarefa = async (e) => {
+        e.preventDefault();
+        if (!formTarefa.titulo) return;
         try {
-            await api.post(`/projetos/etapas/${etapaId}/tarefas`, { titulo, prioridade: prioridadeFinal });
+            await api.post(`/projetos/etapas/${modalTarefa.etapaId}/tarefas`, formTarefa);
+            setModalTarefa({ open: false, etapaId: '' });
+            setFormTarefa({ titulo: '', prioridade_id: '' });
             carregarProjeto();
         } catch (error) { alert("Erro ao criar tarefa."); }
     };
@@ -104,11 +109,13 @@ export default function ProjetoDashboard() {
         } catch (error) { alert("Erro ao renomear etapa."); }
     };
 
-    const alterarPrioridade = async (tarefaId, atual) => {
-        const nova = window.prompt("Altere a prioridade desta tarefa (1=ALTA, 2=MÉDIA, 3=BAIXA):", atual);
-        if (!nova || !['1', '2', '3'].includes(nova.toString())) return;
+    const alterarPrioridade = async (e) => {
+        e.preventDefault();
+        if (!novaPrioridadeId) return;
         try {
-            await api.patch(`/projetos/tarefas/${tarefaId}/prioridade`, { prioridade: Number(nova) });
+            await api.patch(`/projetos/tarefas/${modalPrioridade.tarefaId}/prioridade`, { prioridade_id: novaPrioridadeId });
+            setModalPrioridade({ open: false, tarefaId: '' });
+            setNovaPrioridadeId('');
             carregarProjeto();
         } catch (error) { alert("Erro ao alterar prioridade."); }
     };
@@ -236,6 +243,11 @@ export default function ProjetoDashboard() {
     if (loading) return <div className="p-8 text-center text-slate-500 font-bold">Carregando painel do projeto...</div>;
     if (!projeto) return <div className="p-8 text-center text-rose-500">Projeto não encontrado.</div>;
 
+    // Estilização Dinâmica do Status Atual do Projeto
+    const statusDinamico = parametrosStatus.find(s => s.id === projeto.status_projeto_id);
+    const statusNome = statusDinamico?.nome || projeto.status || 'ATIVO';
+    const statusCor = statusDinamico?.cor_hex || '#4f46e5';
+
     return (
         <div className="min-h-screen flex flex-col space-y-4 relative text-slate-200">
             <header className="bg-slate-900 border border-slate-800 shadow-sm rounded-2xl p-5">
@@ -248,16 +260,12 @@ export default function ProjetoDashboard() {
                             <h1 className="text-2xl font-bold text-white flex items-center gap-3">
                                 {projeto.nome}
                                 <span
-                                    onClick={() => alterarStatusProjeto(projeto.status)}
-                                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer transition shadow-sm ${
-                                        projeto.status === 'CONCLUIDO' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800 hover:bg-emerald-900' :
-                                        projeto.status === 'PAUSADO' ? 'bg-amber-950 text-amber-400 border border-amber-800 hover:bg-amber-900' :
-                                        projeto.status === 'CANCELADO' ? 'bg-rose-950 text-rose-400 border border-rose-800 hover:bg-rose-900' :
-                                        'bg-indigo-950 text-indigo-400 border border-indigo-800 hover:bg-indigo-900'
-                                    }`}
+                                    onClick={() => { setNovoStatusId(projeto.status_projeto_id); setModalStatus(true); }}
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer hover:opacity-80 transition shadow-sm border"
+                                    style={{ backgroundColor: `${statusCor}20`, color: statusCor, borderColor: `${statusCor}50` }}
                                     title="Clique para alterar o status do projeto"
                                 >
-                                    {projeto.status || 'ATIVO'}
+                                    {statusNome}
                                 </span>
                                 {!projeto.cliente_id && (
                                     <span className="text-[10px] bg-rose-950/40 text-rose-400 border border-rose-900 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
@@ -329,6 +337,9 @@ export default function ProjetoDashboard() {
                                         >
                                             {etapa.tarefas?.map((tarefa, index) => {
                                                 const isRodando = tarefa.apontamentos && tarefa.apontamentos.length > 0;
+                                                const prioNome = tarefa.prioridade_dinamica?.nome || `Prio: ${tarefa.prioridade}`;
+                                                const prioCor = tarefa.prioridade_dinamica?.cor_hex || '#64748b';
+
                                                 return (
                                                     <Draggable key={tarefa.id} draggableId={String(tarefa.id)} index={index}>
                                                         {(provided, snapshot) => (
@@ -403,15 +414,12 @@ export default function ProjetoDashboard() {
 
                                                                 <div className="mt-3 flex justify-between items-center pt-3 border-t border-slate-800/50">
                                                                     <span
-                                                                        onClick={() => alterarPrioridade(tarefa.id, tarefa.prioridade)}
+                                                                        onClick={() => { setNovaPrioridadeId(tarefa.prioridade_id); setModalPrioridade({ open: true, tarefaId: tarefa.id }); }}
                                                                         title="Clique para mudar a prioridade"
-                                                                        className={`text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer hover:opacity-80 transition ${
-                                                                        tarefa.prioridade === 1 ? 'bg-rose-950 text-rose-400' :
-                                                                        tarefa.prioridade === 2 ? 'bg-orange-950 text-orange-400' :
-                                                                        tarefa.prioridade === 3 ? 'bg-blue-950 text-blue-400' :
-                                                                        'bg-slate-800 text-slate-400'
-                                                                    }`}>
-                                                                        Prio: {tarefa.prioridade}
+                                                                        className="text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer hover:opacity-80 transition border uppercase"
+                                                                        style={{ backgroundColor: `${prioCor}20`, color: prioCor, borderColor: `${prioCor}50` }}
+                                                                    >
+                                                                        {prioNome}
                                                                     </span>
 
                                                                     <button
@@ -435,7 +443,7 @@ export default function ProjetoDashboard() {
                                             {provided.placeholder}
 
                                             <button
-                                                onClick={() => adicionarTarefa(etapa.id)}
+                                                onClick={() => setModalTarefa({ open: true, etapaId: etapa.id })}
                                                 className="w-full py-2 mt-2 rounded-lg border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-xs font-bold"
                                             >
                                                 + Nova Tarefa
@@ -449,6 +457,76 @@ export default function ProjetoDashboard() {
                 </DragDropContext>
             )}
 
+            {/* MODAL: MUDAR STATUS DO PROJETO */}
+            {modalStatus && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={alterarStatusProjeto} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alterar Status do Projeto</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Selecione o novo status:</label>
+                            <select required value={novoStatusId} onChange={e => setNovoStatusId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Selecione...</option>
+                                {parametrosStatus.map(s => (
+                                    <option key={s.id} value={s.id}>{s.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalStatus(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Aplicar Status</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: NOVA TAREFA (COM PRIORIDADE DINÂMICA) */}
+            {modalTarefa.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={adicionarTarefa} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Criar Nova Tarefa</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Título da Tarefa *</label>
+                            <input type="text" required value={formTarefa.titulo} onChange={e => setFormTarefa({...formTarefa, titulo: e.target.value})} placeholder="O que precisa ser feito?" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nível de Prioridade</label>
+                            <select value={formTarefa.prioridade_id} onChange={e => setFormTarefa({...formTarefa, prioridade_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Padrão (Média)</option>
+                                {parametrosPrioridades.map(p => (
+                                    <option key={p.id} value={p.id}>{p.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalTarefa({ open: false, etapaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Criar Tarefa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: ALTERAR PRIORIDADE IN-LINE */}
+            {modalPrioridade.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={alterarPrioridade} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alterar Prioridade</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Selecione a nova prioridade:</label>
+                            <select required value={novaPrioridadeId} onChange={e => setNovaPrioridadeId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Selecione...</option>
+                                {parametrosPrioridades.map(p => (
+                                    <option key={p.id} value={p.id}>{p.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalPrioridade({ open: false, tarefaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
             {/* Modal de Dependências (Blockers) */}
             {modalBlocker && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -460,19 +538,12 @@ export default function ProjetoDashboard() {
                         <p className="text-sm text-slate-400">
                             A tarefa <strong className="text-white">{modalBlocker.titulo}</strong> só poderá ser iniciada após a conclusão de:
                         </p>
-
-                        <select
-                            required
-                            value={dependenciaIdSelecionada}
-                            onChange={e => setDependenciaIdSelecionada(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer"
-                        >
+                        <select required value={dependenciaIdSelecionada} onChange={e => setDependenciaIdSelecionada(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
                             <option value="">Selecione a tarefa pré-requisito...</option>
                             {todasAsTarefas.filter(t => t.id !== modalBlocker.id).map(t => (
                                 <option key={t.id} value={t.id}>{t.titulo}</option>
                             ))}
                         </select>
-
                         <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
                             <button type="button" onClick={() => setModalBlocker(null)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
                             <button type="submit" className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-bold transition shadow-lg shadow-rose-600/20 cursor-pointer">Bloquear Tarefa</button>
@@ -491,17 +562,14 @@ export default function ProjetoDashboard() {
                             </h3>
                             <button type="button" onClick={() => setModalConfig(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1">Nome do Projeto *</label>
                             <input type="text" required value={formConfig.nome} onChange={e => setFormConfig({...formConfig, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500" />
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1">Descrição</label>
                             <textarea rows="2" value={formConfig.descricao} onChange={e => setFormConfig({...formConfig, descricao: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500"></textarea>
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1">Cliente Vinculado (Obrigatório para Faturamento)</label>
                             <select value={formConfig.cliente_id} onChange={e => setFormConfig({...formConfig, cliente_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500 cursor-pointer">
@@ -512,7 +580,6 @@ export default function ProjetoDashboard() {
                             </select>
                             <p className="text-[10px] text-amber-500 mt-1 font-semibold">Sem este vínculo o Motor Fiscal não consegue emitir a Nota (NF-e/NFS-e).</p>
                         </div>
-
                         <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                             <button type="button" onClick={() => setModalConfig(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
                             <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition shadow-md cursor-pointer">Salvar Configurações</button>
