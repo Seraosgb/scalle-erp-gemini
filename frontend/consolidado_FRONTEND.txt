@@ -3955,8 +3955,13 @@ import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
 import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
 import FrotaPage from './pages/frota/FrotaDashboard';
 import ProjetosList from './pages/Projetos/ProjetosList';
-import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
 import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
+
+// GED (Cofre Digital)
+import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
+
+// PMO Configurações
+import PmoConfig from './pages/Configuracoes/PmoConfig';
 
 // Instância global do React Query Client
 const queryClient = new QueryClient({
@@ -4019,13 +4024,13 @@ export default function App() {
             {/* Projetos & B2B */}
             <Route path="projetos" element={<ProjetosList />} />
             <Route path="projetos/:id" element={<ProjetoDashboard />} />
+            <Route path="pmo/config" element={<PmoConfig />} />
 
             {/* Financeiro, Fiscal & Controladoria */}
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="fiscal/test" element={<FiscalTestScreen />} />
-            <Route path="FiscalTestScreen" element={<FiscalTestScreen />} />
 
             {/* Governança, Equipe & Billing */}
             <Route path="usuarios" element={<UsuariosPage />} />
@@ -4045,7 +4050,6 @@ export default function App() {
             {/* Módulo Master (SaaS Owner) */}
             <Route path="master" element={<MasterPage />} />
             <Route path="master/auditoria" element={<AuditoriaE2EView />} />
-            <Route path="master/auditoria-e2e" element={<Navigate to="/app/master/auditoria" replace />} />
           </Route>
 
           {/* Fallback Global */}
@@ -4385,6 +4389,8 @@ export default function AppLayout() {
     { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
     { name: 'Gestão de Projetos (PMO)', path: '/app/projetos', icon: Kanban, end: false },
+    // A ROTA ABAIXO FOI CORRIGIDA PARA CORRESPONDER AO APP.JSX
+    { name: 'Configuração do PMO', path: '/app/configuracoes/pmo', icon: Settings, end: false },
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
@@ -6183,6 +6189,203 @@ export default function CotacoesComprasPage() {
     </div>
   );
 }
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\pages\Configuracoes\PmoConfig.jsx
+========================================
+
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { Settings, Plus, Edit2, Trash2, Tag, AlertCircle, Building2, DollarSign, Target, Activity } from 'lucide-react';
+
+const TABS = [
+    { id: 'status', label: 'Status dos Projetos', icon: Activity, hasColor: true, hasPeso: false },
+    { id: 'prioridades', label: 'Prioridades das Tarefas', icon: Target, hasColor: true, hasPeso: true },
+    { id: 'tipos', label: 'Tipos de Projetos', icon: Tag, hasColor: true, hasPeso: false },
+    { id: 'departamentos', label: 'Departamentos', icon: Building2, hasColor: false, hasPeso: false },
+    { id: 'categorias_custos', label: 'Categorias de Custo', icon: DollarSign, hasColor: false, hasPeso: false },
+];
+
+export default function PmoConfig() {
+    const [activeTab, setActiveTab] = useState('status');
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [modal, setModal] = useState({ open: false, isEdit: false, item: null });
+    const [form, setForm] = useState({ nome: '', cor_hex: '#3b82f6', peso: 0 });
+
+    const currentTabSpec = TABS.find(t => t.id === activeTab);
+
+    useEffect(() => {
+        carregarDados();
+    }, [activeTab]);
+
+    const carregarDados = async () => {
+        setLoading(true);
+        try {
+            const res = await api.get(`/pmo/configuracoes/${activeTab}`);
+            setData(res.data.data || []);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSalvar = async (e) => {
+        e.preventDefault();
+        try {
+            if (modal.isEdit) {
+                await api.put(`/pmo/configuracoes/${activeTab}/${modal.item.id}`, form);
+            } else {
+                await api.post(`/pmo/configuracoes/${activeTab}`, form);
+            }
+            setModal({ open: false, isEdit: false, item: null });
+            carregarDados();
+        } catch (error) {
+            alert("Erro ao salvar configuração.");
+        }
+    };
+
+    const handleDeletar = async (id) => {
+        if (!window.confirm("Deseja realmente apagar este registro? Certifique-se de que nenhum projeto dependa dele.")) return;
+        try {
+            await api.delete(`/pmo/configuracoes/${activeTab}/${id}`);
+            carregarDados();
+        } catch (error) {
+            alert("Erro ao deletar.");
+        }
+    };
+
+    const openModal = (item = null) => {
+        if (item) {
+            setForm({ nome: item.nome, cor_hex: item.cor_hex || '#3b82f6', peso: item.peso || 0 });
+            setModal({ open: true, isEdit: true, item });
+        } else {
+            setForm({ nome: '', cor_hex: '#3b82f6', peso: 0 });
+            setModal({ open: true, isEdit: false, item: null });
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex flex-col space-y-6 text-slate-200">
+            <header className="bg-slate-900 border border-slate-800 shadow-sm rounded-2xl p-6 flex items-center gap-4">
+                <div className="p-3 bg-indigo-500/10 rounded-xl"><Settings className="text-indigo-400 h-6 w-6" /></div>
+                <div>
+                    <h1 className="text-2xl font-bold text-white">Taxonomia e Parâmetros (PMO)</h1>
+                    <p className="text-xs text-slate-400 mt-1">Gerencie globalmente os domínios do módulo de projetos da sua empresa.</p>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* Menu Lateral de Abas */}
+                <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
+                    {TABS.map(tab => {
+                        const Icon = tab.icon;
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition cursor-pointer text-left ${
+                                    activeTab === tab.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                                }`}
+                            >
+                                <Icon className="w-4 h-4" /> {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* Conteúdo Dinâmico Principal */}
+                <div className="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-4 mb-4">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <currentTabSpec.icon className="text-indigo-400 w-5 h-5" />
+                            Gerenciar {currentTabSpec.label}
+                        </h2>
+                        <button onClick={() => openModal()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center gap-2 cursor-pointer">
+                            <Plus size={16} /> Adicionar Novo
+                        </button>
+                    </div>
+
+                    {loading ? (
+                        <div className="p-8 text-center text-slate-500">Carregando dados...</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm text-slate-300">
+                                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
+                                    <tr>
+                                        <th className="p-4">Nome do Parâmetro</th>
+                                        {currentTabSpec.hasPeso && <th className="p-4 text-center">Peso (Ord.)</th>}
+                                        <th className="p-4 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/60">
+                                    {data.length === 0 ? (
+                                        <tr><td colSpan="3" className="p-8 text-center text-slate-500">Nenhum registro encontrado para esta categoria.</td></tr>
+                                    ) : data.map(item => (
+                                        <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                                            <td className="p-4 flex items-center gap-3">
+                                                {currentTabSpec.hasColor && (
+                                                    <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: item.cor_hex || '#3b82f6' }}></span>
+                                                )}
+                                                <span className="font-bold text-white">{item.nome}</span>
+                                            </td>
+                                            {currentTabSpec.hasPeso && <td className="p-4 text-center font-mono">{item.peso}</td>}
+                                            <td className="p-4 text-right flex justify-end gap-2">
+                                                <button onClick={() => openModal(item)} className="p-2 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded transition cursor-pointer" title="Editar"><Edit2 size={14}/></button>
+                                                <button onClick={() => handleDeletar(item.id)} className="p-2 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded transition cursor-pointer" title="Excluir"><Trash2 size={14}/></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* MODAL UNIVERSAL DO CRUD */}
+            {modal.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={handleSalvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">
+                            {modal.isEdit ? 'Editar Registro' : 'Novo Registro'}
+                        </h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nome *</label>
+                            <input type="text" required value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+
+                        {currentTabSpec.hasColor && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Cor de Identificação</label>
+                                <div className="flex gap-3 items-center">
+                                    <input type="color" value={form.cor_hex} onChange={e => setForm({...form, cor_hex: e.target.value})} className="w-12 h-12 rounded cursor-pointer bg-slate-950 border border-slate-800" />
+                                    <span className="text-sm font-mono text-slate-300">{form.cor_hex}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {currentTabSpec.hasPeso && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Peso/Ordem de Grandeza (Numérico)</label>
+                                <input type="number" required value={form.peso} onChange={e => setForm({...form, peso: e.target.value})} placeholder="Ex: 100" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                                <p className="text-[10px] text-slate-500 mt-1">Números maiores aparecem no topo das listas de prioridade.</p>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModal({ open: false, isEdit: false, item: null })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+}
+
 
 
 ========================================
@@ -10462,230 +10665,284 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\pages\Ged\CofreDigitalPage.j
 
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
-import { Folder, File, FileText, Upload, FolderPlus, ArrowLeft, MoreVertical, Search, Lock, ShieldCheck } from 'lucide-react';
+import {
+  Folder, FileText, Upload, Plus, ChevronRight,
+  HardDrive, ShieldCheck, Image as ImageIcon,
+  FileArchive, FileSpreadsheet, File, X, AlertTriangle, CheckCircle2,
+  Download
+} from 'lucide-react';
 
 export default function CofreDigitalPage() {
-    const [pastas, setPastas] = useState([]);
-    const [documentos, setDocumentos] = useState([]);
-    const [pastaAtual, setPastaAtual] = useState(null); // null = Raiz
-    const [breadcrumbs, setBreadcrumbs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [busca, setBusca] = useState('');
-    const fileInputRef = useRef(null);
+  const [pastaAtual, setPastaAtual] = useState(null);
+  const [caminho, setCaminho] = useState([]);
+  const [pastas, setPastas] = useState([]);
+  const [documentos, setDocumentos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
-    const carregarPasta = async (pastaId = null) => {
-        setLoading(true);
-        try {
-            const params = pastaId ? { pasta_id: pastaId } : {};
-            if (busca) params.search = busca;
+  const [modalNovaPasta, setModalNovaPasta] = useState(false);
+  const [nomePasta, setNomePasta] = useState('');
+  const fileInputRef = useRef(null);
 
-            const res = await api.get('/ged/listar', { params });
-            const data = res.data?.data || res.data;
+  const carregarCofre = async (pastaId = null) => {
+    setLoading(true);
+    try {
+      const res = await api.get('/ged/listar', { params: { pasta_id: pastaId } });
+      const { caminho: novoCaminho, pastas: novasPastas, documentos: novosDocs } = res.data.data;
 
-            setPastas(data.pastas || []);
-            setDocumentos(data.documentos || []);
+      setCaminho(novoCaminho || []);
+      setPastas(novasPastas || []);
+      setDocumentos(novosDocs || []);
+      setPastaAtual(pastaId);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao carregar o diretório do Cofre Digital.' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            if (data.pasta_atual) {
-                setPastaAtual(data.pasta_atual);
-                setBreadcrumbs(data.breadcrumbs || []);
-            } else {
-                setPastaAtual(null);
-                setBreadcrumbs([]);
-            }
-        } catch (err) {
-            console.error("Erro ao carregar GED", err);
-        } finally {
-            setLoading(false);
-        }
-    };
+  useEffect(() => {
+    carregarCofre();
+  }, []);
 
-    useEffect(() => {
-        carregarPasta(pastaAtual?.id);
-    }, [busca]); // Recarrega se a busca mudar
+  const handleCriarPasta = async (e) => {
+    e.preventDefault();
+    if (!nomePasta.trim()) return;
+    try {
+      await api.post('/ged/pastas', { nome: nomePasta, pasta_pai_id: pastaAtual });
+      setModalNovaPasta(false);
+      setNomePasta('');
+      setFeedback({ tipo: 'sucesso', msg: 'Pasta corporativa criada com sucesso!' });
+      carregarCofre(pastaAtual);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao criar pasta.' });
+    }
+  };
 
-    const entrarNaPasta = (pasta) => {
-        setBusca('');
-        carregarPasta(pasta.id);
-    };
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    const voltarParaRaiz = () => {
-        setBusca('');
-        carregarPasta(null);
-    };
+    // Bloqueio preventivo no Frontend antes do Middleware (20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      setFeedback({ tipo: 'erro', msg: 'O arquivo excede o limite máximo de 20MB.' });
+      return;
+    }
 
-    const criarNovaPasta = async () => {
-        const nome = prompt("Nome da nova pasta:");
-        if (!nome) return;
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('arquivo', file);
+    if (pastaAtual) {
+      formData.append('pasta_id', pastaAtual);
+    }
 
-        try {
-            await api.post('/ged/pastas', {
-                nome,
-                pasta_pai_id: pastaAtual ? pastaAtual.id : null,
-                cor_hex: '#4f46e5'
-            });
-            carregarPasta(pastaAtual?.id);
-        } catch (err) {
-            alert("Erro ao criar pasta.");
-        }
-    };
+    try {
+      await api.post('/ged/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setFeedback({ tipo: 'sucesso', msg: 'Arquivo criptografado e armazenado no Cofre!' });
+      carregarCofre(pastaAtual);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao enviar o arquivo. Verifique a cota do seu plano.' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
-    const handleUploadClick = () => {
-        fileInputRef.current?.click();
-    };
+  const getFileIcon = (mimeType) => {
+    if (mimeType.includes('image')) return <ImageIcon className="h-8 w-8 text-emerald-400" />;
+    if (mimeType.includes('pdf')) return <FileText className="h-8 w-8 text-rose-400" />;
+    if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) return <FileSpreadsheet className="h-8 w-8 text-emerald-500" />;
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return <FileArchive className="h-8 w-8 text-amber-500" />;
+    return <File className="h-8 w-8 text-slate-400" />;
+  };
 
-    const processarUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+  const formatBytes = (bytes, decimals = 2) => {
+    if (!+bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+  };
 
-        const formData = new FormData();
-        formData.append('arquivo', file);
-        if (pastaAtual) {
-            formData.append('pasta_id', pastaAtual.id);
-        }
-
-        try {
-            await api.post('/ged/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            alert("Arquivo salvo no Cofre Digital com segurança!");
-            carregarPasta(pastaAtual?.id);
-        } catch (err) {
-            alert(err.response?.data?.error?.message || "Erro no upload do arquivo.");
-        } finally {
-            e.target.value = null; // Reseta o input
-        }
-    };
-
-    const formatBytes = (bytes, decimals = 2) => {
-        if (!+bytes) return '0 Bytes';
-        const k = 1024, dm = decimals < 0 ? 0 : decimals, sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-    };
-
-    const getFileIcon = (ext) => {
-        if (['pdf'].includes(ext)) return <FileText className="text-rose-500" />;
-        if (['jpg', 'jpeg', 'png'].includes(ext)) return <File className="text-emerald-500" />;
-        if (['xls', 'xlsx', 'csv'].includes(ext)) return <File className="text-green-600" />;
-        return <File className="text-indigo-400" />;
-    };
-
-    return (
-        <div className="p-6 max-w-7xl mx-auto text-slate-200 space-y-6">
-            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                        <ShieldCheck className="h-6 w-6 text-emerald-400" />
-                        Cofre Digital & GED
-                    </h1>
-                    <p className="text-sm text-slate-400 mt-1">Gestão Eletrônica de Documentos protegida por Tenant</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                        <input
-                            type="text"
-                            placeholder="Buscar arquivos..."
-                            value={busca}
-                            onChange={(e) => setBusca(e.target.value)}
-                            className="w-full sm:w-64 pl-9 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500"
-                        />
-                    </div>
-                    <button onClick={criarNovaPasta} className="p-2 bg-slate-900 border border-slate-700 hover:border-slate-500 rounded-xl text-slate-300 hover:text-white transition" title="Nova Pasta">
-                        <FolderPlus className="h-5 w-5" />
-                    </button>
-                    <button onClick={handleUploadClick} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition">
-                        <Upload className="h-4 w-4" /> Upload
-                    </button>
-                    <input type="file" ref={fileInputRef} className="hidden" onChange={processarUpload} />
-                </div>
-            </header>
-
-            {/* Navegação / Breadcrumbs */}
-            <div className="flex items-center gap-2 text-sm bg-slate-900 px-4 py-2.5 rounded-lg border border-slate-800">
-                <button onClick={voltarParaRaiz} className={`font-semibold transition ${!pastaAtual ? 'text-white' : 'text-slate-400 hover:text-indigo-400 cursor-pointer'}`}>
-                    Meu Cofre
-                </button>
-                {breadcrumbs.map((b, index) => (
-                    <React.Fragment key={b.id}>
-                        <span className="text-slate-600">/</span>
-                        <button onClick={() => carregarPasta(b.id)} className={`font-semibold transition ${index === breadcrumbs.length - 1 ? 'text-white' : 'text-slate-400 hover:text-indigo-400 cursor-pointer'}`}>
-                            {b.nome}
-                        </button>
-                    </React.Fragment>
-                ))}
-            </div>
-
-            {loading ? (
-                <div className="p-12 text-center text-slate-500 font-bold">Descriptografando diretório...</div>
-            ) : (
-                <div className="space-y-6">
-                    {/* PASTAS */}
-                    {pastas.length > 0 && (
-                        <div className="space-y-3">
-                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pastas</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                {pastas.map(pasta => (
-                                    <div
-                                        key={pasta.id}
-                                        onDoubleClick={() => entrarNaPasta(pasta)}
-                                        className="bg-slate-900 border border-slate-800 hover:border-indigo-500 p-4 rounded-2xl cursor-pointer group transition shadow-sm select-none"
-                                    >
-                                        <div className="flex justify-between items-start mb-2">
-                                            <Folder className="h-8 w-8" style={{ color: pasta.cor_hex || '#4f46e5' }} fill={pasta.cor_hex || '#4f46e5'} fillOpacity={0.2} />
-                                            {pasta.is_sistema && <Lock className="h-3 w-3 text-slate-600" title="Pasta nativa do sistema" />}
-                                        </div>
-                                        <p className="font-bold text-slate-200 text-sm truncate group-hover:text-indigo-400 transition">{pasta.nome}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* DOCUMENTOS */}
-                    {documentos.length > 0 && (
-                        <div className="space-y-3">
-                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-t border-slate-800 pt-4">Arquivos</h3>
-                            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-                                <table className="w-full text-left text-sm text-slate-300">
-                                    <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400">
-                                        <tr>
-                                            <th className="p-4 font-semibold">Nome do Arquivo</th>
-                                            <th className="p-4 font-semibold hidden sm:table-cell">Data Modificação</th>
-                                            <th className="p-4 font-semibold text-right">Tamanho</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-800/60">
-                                        {documentos.map(doc => (
-                                            <tr key={doc.id} className="hover:bg-slate-800/40 transition group cursor-pointer" onClick={() => window.open(`${api.defaults.baseURL.replace('/api', '')}/storage/${doc.caminho_s3}`, '_blank')}>
-                                                <td className="p-4 flex items-center gap-3 text-white font-medium">
-                                                    {getFileIcon(doc.extensao?.toLowerCase())}
-                                                    <span className="truncate max-w-[200px] sm:max-w-md group-hover:text-indigo-400 transition">{doc.nome_original}</span>
-                                                </td>
-                                                <td className="p-4 text-slate-400 hidden sm:table-cell">
-                                                    {new Date(doc.created_at).toLocaleDateString('pt-BR')}
-                                                </td>
-                                                <td className="p-4 text-right font-mono text-slate-400">
-                                                    {formatBytes(doc.tamanho_bytes)}
-                                                    <button className="ml-4 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-white transition" title="Opções"><MoreVertical size={16}/></button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {pastas.length === 0 && documentos.length === 0 && (
-                        <div className="p-16 text-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30">
-                            Nenhum documento ou pasta neste diretório.
-                        </div>
-                    )}
-                </div>
-            )}
+  return (
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 text-slate-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <ShieldCheck className="h-6 w-6 text-indigo-500" />
+            Cofre Digital (GED)
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">Gestão Eletrônica de Documentos corporativos e anexos</p>
         </div>
-    );
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setModalNovaPasta(true)}
+            className="flex items-center gap-2 bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200 font-bold py-2 px-4 rounded-xl transition cursor-pointer"
+          >
+            <Folder className="h-4 w-4" /> Nova Pasta
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-xl shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+          >
+            <Upload className="h-4 w-4" /> {uploading ? 'Enviando...' : 'Fazer Upload'}
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleUpload}
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3.5 rounded-xl flex items-center justify-between text-sm font-medium shadow-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+            {feedback.msg}
+          </div>
+          <button onClick={() => setFeedback(null)} className="hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Navegação / Breadcrumbs */}
+      <div className="flex items-center gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800 overflow-x-auto text-sm font-semibold whitespace-nowrap shadow-sm">
+        <button
+          onClick={() => carregarCofre(null)}
+          className={`flex items-center gap-1.5 cursor-pointer transition ${!pastaAtual ? 'text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <HardDrive className="h-4 w-4" /> Disco Raiz
+        </button>
+
+        {caminho.map((p, index) => (
+          <React.Fragment key={p.id}>
+            <ChevronRight className="h-4 w-4 text-slate-600 shrink-0" />
+            <button
+              onClick={() => carregarCofre(p.id)}
+              className={`cursor-pointer transition ${index === caminho.length - 1 ? 'text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              {p.nome}
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Explorer Area */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 min-h-[400px] shadow-sm">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-64 text-slate-500 space-y-3">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="font-bold">Acessando o cofre seguro...</p>
+          </div>
+        ) : pastas.length === 0 && documentos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-slate-500 border border-dashed border-slate-700 rounded-xl bg-slate-950/50">
+            <Folder className="h-12 w-12 text-slate-700 mb-3" />
+            <p className="font-bold">Esta pasta está vazia.</p>
+            <p className="text-xs mt-1">Crie uma nova subpasta ou faça upload de um arquivo.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {/* Pastas */}
+            {pastas.map((pasta) => (
+              <div
+                key={pasta.id}
+                onClick={() => carregarCofre(pasta.id)}
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/50 p-4 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition group shadow-sm"
+              >
+                <Folder className="h-10 w-10 text-indigo-400 group-hover:text-indigo-300 mb-2 transition" fill="currentColor" fillOpacity={0.2} />
+                <span className="text-xs font-bold text-slate-200 group-hover:text-white line-clamp-2 w-full px-1">{pasta.nome}</span>
+              </div>
+            ))}
+
+            {/* Documentos */}
+            {documentos.map((doc) => {
+              const urlBase = api.defaults.baseURL?.replace('/api', '') || '';
+              const docUrl = `${urlBase}/storage/${doc.caminho_s3}`;
+
+              return (
+                <a
+                  key={doc.id}
+                  href={docUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-600 p-4 rounded-xl flex flex-col items-center justify-between text-center cursor-pointer transition group shadow-sm relative h-32"
+                  title={`${doc.nome_original} \nEnviado por: ${doc.uploader?.name || 'Sistema'}`}
+                >
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
+                    <div className="bg-slate-800 p-1 rounded text-slate-300 hover:text-white">
+                      <Download className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex items-center justify-center mt-2">
+                    {getFileIcon(doc.mime_type)}
+                  </div>
+
+                  <div className="w-full mt-2">
+                    <span className="text-xs font-semibold text-slate-200 group-hover:text-white line-clamp-1 break-all px-1">
+                      {doc.nome_original}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">
+                      {formatBytes(doc.tamanho_bytes)}
+                    </span>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal Nova Pasta */}
+      {modalNovaPasta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 bg-slate-950/50">
+              <h3 className="font-bold text-white flex items-center gap-2">
+                <Folder className="h-5 w-5 text-indigo-400" /> Criar Nova Pasta
+              </h3>
+            </div>
+            <form onSubmit={handleCriarPasta} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1">Nome da Pasta</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="Ex: Contratos, Relatórios..."
+                  value={nomePasta}
+                  onChange={(e) => setNomePasta(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNovaPasta(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-md transition cursor-pointer"
+                >
+                  Criar Pasta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 
@@ -15527,7 +15784,7 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\pages\Projetos\ProjetoDashbo
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X } from 'lucide-react';
+import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity, Edit2, Plus } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 export default function ProjetoDashboard() {
@@ -15538,7 +15795,8 @@ export default function ProjetoDashboard() {
     const [activeTab, setActiveTab] = useState('board');
     const [loading, setLoading] = useState(true);
 
-    // Clientes para o Modal de Configurações
+    const [parametrosStatus, setParametrosStatus] = useState([]);
+    const [parametrosPrioridades, setParametrosPrioridades] = useState([]);
     const [clientes, setClientes] = useState([]);
     const [modalConfig, setModalConfig] = useState(false);
     const [formConfig, setFormConfig] = useState({ nome: '', descricao: '', cliente_id: '' });
@@ -15546,10 +15804,30 @@ export default function ProjetoDashboard() {
     const [modalBlocker, setModalBlocker] = useState(null);
     const [dependenciaIdSelecionada, setDependenciaIdSelecionada] = useState('');
 
+    // Gestão de Modais (Substituindo os antigos window.prompt)
+    const [modalStatus, setModalStatus] = useState(false);
+    const [novoStatusId, setNovoStatusId] = useState('');
+
+    const [modalPrioridade, setModalPrioridade] = useState({ open: false, tarefaId: '' });
+    const [novaPrioridadeId, setNovaPrioridadeId] = useState('');
+
+    const [modalTarefa, setModalTarefa] = useState({ open: false, etapaId: '' });
+    const [formTarefa, setFormTarefa] = useState({ titulo: '', prioridade_id: '' });
+
+    const [modalBudget, setModalBudget] = useState(false);
+    const [novoBudget, setNovoBudget] = useState('');
+
+    const [modalChecklist, setModalChecklist] = useState({ open: false, tarefaId: '' });
+    const [novoChecklistDesc, setNovoChecklistDesc] = useState('');
+
+    const [modalEtapa, setModalEtapa] = useState({ open: false, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' });
+
     useEffect(() => {
         if (projetoId) {
             carregarProjeto();
             api.get('/pessoas?tipo=CLIENTE').then(res => setClientes(res.data?.data?.data || res.data?.data || []));
+            api.get('/projetos/parametros/status').then(res => setParametrosStatus(res.data?.data || []));
+            api.get('/projetos/parametros/prioridades').then(res => setParametrosPrioridades(res.data?.data || []));
         }
     }, [projetoId]);
 
@@ -15564,6 +15842,7 @@ export default function ProjetoDashboard() {
                 descricao: projData.descricao || '',
                 cliente_id: projData.cliente_id || ''
             });
+            setNovoBudget(projData.orcamento_previsto || '');
         } catch (error) {
             console.error("Erro ao buscar o projeto:", error);
         } finally {
@@ -15577,33 +15856,76 @@ export default function ProjetoDashboard() {
             await api.put(`/projetos/${projetoId}`, formConfig);
             setModalConfig(false);
             carregarProjeto();
-            alert("Projeto atualizado com sucesso!");
-        } catch (error) {
-            alert("Erro ao atualizar projeto.");
-        }
+        } catch (error) { alert("Erro ao atualizar projeto."); }
     };
 
-    const atualizarBudget = async () => {
-        const novoValor = window.prompt("Digite o novo valor do Orçamento (Budget):", projeto?.orcamento_previsto);
-        if (!novoValor || isNaN(novoValor)) return;
+    const salvarBudget = async (e) => {
+        e.preventDefault();
         try {
-            await api.put(`/projetos/${projetoId}/orcamento`, { orcamento_previsto: parseFloat(novoValor) });
+            await api.put(`/projetos/${projetoId}/orcamento`, { orcamento_previsto: parseFloat(novoBudget) });
+            setModalBudget(false);
             carregarProjeto();
         } catch (error) { alert("Erro ao atualizar budget."); }
     };
 
-    const adicionarTarefa = async (etapaId) => {
-        const titulo = window.prompt("Qual o título da nova tarefa?");
-        if (!titulo) return;
+    const alterarStatusProjeto = async (e) => {
+        e.preventDefault();
+        if (!novoStatusId) return;
         try {
-            await api.post(`/projetos/etapas/${etapaId}/tarefas`, { titulo, prioridade: 'MEDIA' });
+            await api.patch(`/projetos/${projetoId}/status`, { status_projeto_id: novoStatusId });
+            setModalStatus(false);
+            carregarProjeto();
+        } catch (error) { alert("Erro ao alterar status."); }
+    };
+
+    const adicionarTarefa = async (e) => {
+        e.preventDefault();
+        if (!formTarefa.titulo) return;
+        try {
+            await api.post(`/projetos/etapas/${modalTarefa.etapaId}/tarefas`, formTarefa);
+            setModalTarefa({ open: false, etapaId: '' });
+            setFormTarefa({ titulo: '', prioridade_id: '' });
             carregarProjeto();
         } catch (error) { alert("Erro ao criar tarefa."); }
     };
 
+    const alterarPrioridade = async (e) => {
+        e.preventDefault();
+        if (!novaPrioridadeId) return;
+        try {
+            await api.patch(`/projetos/tarefas/${modalPrioridade.tarefaId}/prioridade`, { prioridade_id: novaPrioridadeId });
+            setModalPrioridade({ open: false, tarefaId: '' });
+            setNovaPrioridadeId('');
+            carregarProjeto();
+        } catch (error) { alert("Erro ao alterar prioridade."); }
+    };
+
+    const salvarEtapa = async (e) => {
+        e.preventDefault();
+        if (!modalEtapa.nome) return;
+        try {
+            if (modalEtapa.isEdit) {
+                await api.put(`/projetos/etapas/${modalEtapa.id}`, { nome: modalEtapa.nome, cor_hex: modalEtapa.cor_hex });
+            } else {
+                await api.post(`/projetos/${projetoId}/etapas`, { nome: modalEtapa.nome, cor_hex: modalEtapa.cor_hex });
+            }
+            setModalEtapa({ open: false, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao salvar etapa."); }
+    };
+
+    const deletarEtapa = async (id) => {
+        if (!window.confirm("Deseja realmente excluir esta coluna? Apenas colunas vazias podem ser excluídas.")) return;
+        try {
+            await api.delete(`/projetos/etapas/${id}`);
+            carregarProjeto();
+        } catch (error) {
+            alert(error.response?.data?.message || "Erro ao excluir etapa.");
+        }
+    };
+
     const handleDragEnd = async (result) => {
         const { destination, source, draggableId } = result;
-
         if (!destination) return;
         if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
@@ -15620,7 +15942,7 @@ export default function ProjetoDashboard() {
         const [tarefaMovida] = tarefasOrigem.splice(source.index, 1);
 
         if (tarefaMovida.dependencias?.length > 0 && source.droppableId !== destination.droppableId) {
-            alert(`⚠️ TAREFA BLOQUEADA\n\nEsta tarefa depende de ${tarefaMovida.dependencias.length} pré-requisito(s). Conclua as dependências primeiro.`);
+            alert(`⚠️ TAREFA BLOQUEADA\n\nEsta tarefa depende de pré-requisitos. Conclua as dependências primeiro.`);
             return;
         }
 
@@ -15635,10 +15957,8 @@ export default function ProjetoDashboard() {
 
             etapaOrigem.tarefas = tarefasOrigem;
             etapaDestino.tarefas = tarefasDestino;
-
             novasEtapas[etapaOrigemIndex] = etapaOrigem;
             novasEtapas[etapaDestinoIndex] = etapaDestino;
-
             setProjeto({ ...projeto, etapas: novasEtapas });
 
             try {
@@ -15662,11 +15982,13 @@ export default function ProjetoDashboard() {
         } catch (error) { alert('Falha ao processar apontamento.'); }
     };
 
-    const adicionarChecklist = async (tarefaId) => {
-        const descricao = window.prompt("Qual o item de verificação para esta tarefa?");
-        if (!descricao) return;
+    const salvarChecklist = async (e) => {
+        e.preventDefault();
+        if (!novoChecklistDesc) return;
         try {
-            await api.post(`/projetos/tarefas/${tarefaId}/checklists`, { descricao });
+            await api.post(`/projetos/tarefas/${modalChecklist.tarefaId}/checklists`, { descricao: novoChecklistDesc });
+            setModalChecklist({ open: false, tarefaId: '' });
+            setNovoChecklistDesc('');
             carregarProjeto();
         } catch (error) { alert("Erro ao adicionar checklist."); }
     };
@@ -15682,27 +16004,21 @@ export default function ProjetoDashboard() {
             }));
             setProjeto({ ...projeto, etapas: novasEtapas });
             await api.patch(`/projetos/tarefas/checklists/${checklistId}/toggle`);
-        } catch (error) {
-            carregarProjeto();
-        }
+        } catch (error) { carregarProjeto(); }
     };
 
     const handleFileUpload = async (tarefaId, event) => {
         const file = event.target.files[0];
         if (!file) return;
-
         const formData = new FormData();
         formData.append('arquivo', file);
         formData.append('entidade_type', 'App\\Models\\Tarefa');
         formData.append('entidade_id', tarefaId);
-
         try {
             await api.post('/ged/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
-            alert('Arquivo anexado com sucesso ao Cofre Digital!');
+            alert('Arquivo anexado com sucesso!');
             carregarProjeto();
-        } catch (error) {
-            alert('Erro ao anexar arquivo ao GED.');
-        }
+        } catch (error) { alert('Erro ao anexar arquivo.'); }
     };
 
     const adicionarDependencia = async (e) => {
@@ -15729,6 +16045,10 @@ export default function ProjetoDashboard() {
     if (loading) return <div className="p-8 text-center text-slate-500 font-bold">Carregando painel do projeto...</div>;
     if (!projeto) return <div className="p-8 text-center text-rose-500">Projeto não encontrado.</div>;
 
+    const statusDinamico = parametrosStatus.find(s => s.id === projeto.status_projeto_id);
+    const statusNome = statusDinamico?.nome || projeto.status || 'ATIVO';
+    const statusCor = statusDinamico?.cor_hex || '#4f46e5';
+
     return (
         <div className="min-h-screen flex flex-col space-y-4 relative text-slate-200">
             <header className="bg-slate-900 border border-slate-800 shadow-sm rounded-2xl p-5">
@@ -15740,13 +16060,20 @@ export default function ProjetoDashboard() {
                         <div>
                             <h1 className="text-2xl font-bold text-white flex items-center gap-3">
                                 {projeto.nome}
+                                <span
+                                    onClick={() => { setNovoStatusId(projeto.status_projeto_id); setModalStatus(true); }}
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer hover:opacity-80 transition shadow-sm border"
+                                    style={{ backgroundColor: `${statusCor}20`, color: statusCor, borderColor: `${statusCor}50` }}
+                                >
+                                    {statusNome}
+                                </span>
                                 {!projeto.cliente_id && (
-                                    <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
+                                    <span className="text-[10px] bg-rose-950/40 text-rose-400 border border-rose-900 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
                                 )}
                             </h1>
                             <p className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-2">
                                 Budget: R$ {Number(projeto.orcamento_previsto).toLocaleString('pt-BR')}
-                                <button onClick={atualizarBudget} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
+                                <button onClick={() => setModalBudget(true)} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
                                 &nbsp; • &nbsp; Custo Real: <span className="text-rose-400">R$ {Number(projeto.custo_total_real || 0).toLocaleString('pt-BR')}</span>
                             </p>
                         </div>
@@ -15759,6 +16086,7 @@ export default function ProjetoDashboard() {
                 <div className="flex flex-wrap gap-2 pt-4">
                     {[
                         { id: 'board', label: 'Kanban', icon: Kanban },
+                        { id: 'gantt', label: 'Gantt & Capacidade', icon: CalendarDays },
                         { id: 'entregaveis', label: 'Entregáveis', icon: PackageCheck },
                         { id: 'custos', label: 'Custos & Despesas', icon: DollarSign },
                         { id: 'equipe', label: 'Alocação Equipe', icon: Users }
@@ -15784,14 +16112,25 @@ export default function ProjetoDashboard() {
                     <div className="flex space-x-4 overflow-x-auto h-full pb-4 items-start">
                         {projeto.etapas?.map(etapa => (
                             <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl min-w-[320px] max-w-[320px] flex flex-col max-h-[75vh]">
-                                <div className="p-3 font-bold text-slate-100 rounded-t-xl flex justify-between items-center border-b border-slate-800 bg-slate-950/40">
+                                <div className="p-3 font-bold text-slate-100 rounded-t-xl flex justify-between items-center border-b border-slate-800 bg-slate-950/40 group">
                                     <div className="flex items-center gap-2">
                                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#3b82f6' }}></span>
-                                        <span className="text-sm uppercase tracking-wider">{etapa.nome}</span>
+                                        <span
+                                            className="text-sm uppercase tracking-wider cursor-pointer hover:text-indigo-400 flex items-center gap-1"
+                                            title="Editar Taxonomia da Etapa"
+                                            onClick={() => setModalEtapa({ open: true, isEdit: true, id: etapa.id, nome: etapa.nome, cor_hex: etapa.cor_hex || '#3b82f6' })}
+                                        >
+                                            {etapa.nome} <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </span>
                                     </div>
-                                    <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
-                                        {etapa.tarefas?.length || 0}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
+                                            {etapa.tarefas?.length || 0}
+                                        </span>
+                                        <button onClick={() => deletarEtapa(etapa.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-opacity cursor-pointer" title="Excluir Coluna">
+                                            <Trash2 size={12}/>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <Droppable droppableId={String(etapa.id)}>
@@ -15803,6 +16142,9 @@ export default function ProjetoDashboard() {
                                         >
                                             {etapa.tarefas?.map((tarefa, index) => {
                                                 const isRodando = tarefa.apontamentos && tarefa.apontamentos.length > 0;
+                                                const prioNome = tarefa.prioridade_dinamica?.nome || `Prio: ${tarefa.prioridade}`;
+                                                const prioCor = tarefa.prioridade_dinamica?.cor_hex || '#64748b';
+
                                                 return (
                                                     <Draggable key={tarefa.id} draggableId={String(tarefa.id)} index={index}>
                                                         {(provided, snapshot) => (
@@ -15819,14 +16161,15 @@ export default function ProjetoDashboard() {
                                                                     borderLeftColor: etapa.cor_hex || '#3b82f6'
                                                                 }}
                                                             >
-                                                                <div className="absolute top-2 right-2 flex gap-1 transition-opacity duration-200">                                                                    <button onClick={() => setModalBlocker(tarefa)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Dependência (Blocker)">
+                                                                <div className="absolute top-2 right-2 flex gap-1 transition-opacity duration-200">
+                                                                    <button onClick={() => setModalBlocker(tarefa)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Dependência (Blocker)">
                                                                         <LinkIcon size={14}/>
                                                                     </button>
                                                                     <label className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Anexar Arquivo (GED)">
                                                                         <Paperclip size={14}/>
                                                                         <input type="file" className="hidden" onChange={(e) => handleFileUpload(tarefa.id, e)} />
                                                                     </label>
-                                                                    <button onClick={() => adicionarChecklist(tarefa.id)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Item Checklist">
+                                                                    <button onClick={() => setModalChecklist({ open: true, tarefaId: tarefa.id })} className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Item Checklist">
                                                                         <CheckSquare size={14}/>
                                                                     </button>
                                                                 </div>
@@ -15875,13 +16218,13 @@ export default function ProjetoDashboard() {
                                                                 )}
 
                                                                 <div className="mt-3 flex justify-between items-center pt-3 border-t border-slate-800/50">
-                                                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
-                                                                        tarefa.prioridade === 1 ? 'bg-rose-950 text-rose-400' :
-                                                                        tarefa.prioridade === 2 ? 'bg-orange-950 text-orange-400' :
-                                                                        tarefa.prioridade === 3 ? 'bg-blue-950 text-blue-400' :
-                                                                        'bg-slate-800 text-slate-400'
-                                                                    }`}>
-                                                                        Prio: {tarefa.prioridade}
+                                                                    <span
+                                                                        onClick={() => { setNovaPrioridadeId(tarefa.prioridade_id); setModalPrioridade({ open: true, tarefaId: tarefa.id }); }}
+                                                                        title="Clique para mudar a prioridade"
+                                                                        className="text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer hover:opacity-80 transition border uppercase"
+                                                                        style={{ backgroundColor: `${prioCor}20`, color: prioCor, borderColor: `${prioCor}50` }}
+                                                                    >
+                                                                        {prioNome}
                                                                     </span>
 
                                                                     <button
@@ -15905,7 +16248,7 @@ export default function ProjetoDashboard() {
                                             {provided.placeholder}
 
                                             <button
-                                                onClick={() => adicionarTarefa(etapa.id)}
+                                                onClick={() => setModalTarefa({ open: true, etapaId: etapa.id })}
                                                 className="w-full py-2 mt-2 rounded-lg border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-xs font-bold"
                                             >
                                                 + Nova Tarefa
@@ -15915,8 +16258,147 @@ export default function ProjetoDashboard() {
                                 </Droppable>
                             </div>
                         ))}
+
+                        <div className="min-w-[320px] flex items-start">
+                            <button
+                                onClick={() => setModalEtapa({ open: true, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' })}
+                                className="w-full bg-slate-900/50 border border-dashed border-slate-700 rounded-xl p-4 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                                <Plus size={18} /> Nova Coluna (Etapa)
+                            </button>
+                        </div>
                     </div>
                 </DragDropContext>
+            )}
+
+            {/* MODAL: CRIAR OU EDITAR ETAPA (TAXONOMIA DO FLUXO) */}
+            {modalEtapa.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarEtapa} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">
+                            {modalEtapa.isEdit ? 'Editar Coluna Kanban' : 'Nova Coluna Kanban'}
+                        </h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nome da Etapa</label>
+                            <input type="text" required value={modalEtapa.nome} onChange={e => setModalEtapa({...modalEtapa, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Cor de Identificação</label>
+                            <div className="flex gap-3 items-center">
+                                <input type="color" value={modalEtapa.cor_hex} onChange={e => setModalEtapa({...modalEtapa, cor_hex: e.target.value})} className="w-12 h-12 rounded cursor-pointer bg-slate-950 border border-slate-800" />
+                                <span className="text-sm font-mono text-slate-300">{modalEtapa.cor_hex}</span>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalEtapa({ open: false, isEdit: false, id: '', nome: '', cor_hex: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar Etapa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: MUDAR STATUS DO PROJETO */}
+            {modalStatus && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={alterarStatusProjeto} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alterar Status do Projeto</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Selecione o novo status:</label>
+                            <select required value={novoStatusId} onChange={e => setNovoStatusId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Selecione...</option>
+                                {parametrosStatus.map(s => (
+                                    <option key={s.id} value={s.id}>{s.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalStatus(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Aplicar Status</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: BUDGET DO PROJETO */}
+            {modalBudget && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarBudget} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Orçamento Previsto</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Valor (R$)</label>
+                            <input type="number" step="0.01" required value={novoBudget} onChange={e => setNovoBudget(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalBudget(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Atualizar Budget</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: NOVA TAREFA (COM PRIORIDADE DINÂMICA) */}
+            {modalTarefa.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={adicionarTarefa} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Criar Nova Tarefa</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Título da Tarefa *</label>
+                            <input type="text" required value={formTarefa.titulo} onChange={e => setFormTarefa({...formTarefa, titulo: e.target.value})} placeholder="O que precisa ser feito?" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nível de Prioridade</label>
+                            <select value={formTarefa.prioridade_id} onChange={e => setFormTarefa({...formTarefa, prioridade_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Padrão (Média)</option>
+                                {parametrosPrioridades.map(p => (
+                                    <option key={p.id} value={p.id}>{p.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalTarefa({ open: false, etapaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Criar Tarefa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: CHECKLIST */}
+            {modalChecklist.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarChecklist} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Novo Item de Verificação</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Descrição do Checklist</label>
+                            <input type="text" required value={novoChecklistDesc} onChange={e => setNovoChecklistDesc(e.target.value)} placeholder="Ex: Validar assinaturas do documento" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalChecklist({ open: false, tarefaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: ALTERAR PRIORIDADE IN-LINE */}
+            {modalPrioridade.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={alterarPrioridade} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alterar Prioridade</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Selecione a nova prioridade:</label>
+                            <select required value={novaPrioridadeId} onChange={e => setNovaPrioridadeId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Selecione...</option>
+                                {parametrosPrioridades.map(p => (
+                                    <option key={p.id} value={p.id}>{p.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalPrioridade({ open: false, tarefaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
             )}
 
             {/* Modal de Dependências (Blockers) */}
@@ -15930,19 +16412,12 @@ export default function ProjetoDashboard() {
                         <p className="text-sm text-slate-400">
                             A tarefa <strong className="text-white">{modalBlocker.titulo}</strong> só poderá ser iniciada após a conclusão de:
                         </p>
-
-                        <select
-                            required
-                            value={dependenciaIdSelecionada}
-                            onChange={e => setDependenciaIdSelecionada(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer"
-                        >
+                        <select required value={dependenciaIdSelecionada} onChange={e => setDependenciaIdSelecionada(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
                             <option value="">Selecione a tarefa pré-requisito...</option>
                             {todasAsTarefas.filter(t => t.id !== modalBlocker.id).map(t => (
                                 <option key={t.id} value={t.id}>{t.titulo}</option>
                             ))}
                         </select>
-
                         <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
                             <button type="button" onClick={() => setModalBlocker(null)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
                             <button type="submit" className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-bold transition shadow-lg shadow-rose-600/20 cursor-pointer">Bloquear Tarefa</button>
@@ -15961,17 +16436,14 @@ export default function ProjetoDashboard() {
                             </h3>
                             <button type="button" onClick={() => setModalConfig(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1">Nome do Projeto *</label>
                             <input type="text" required value={formConfig.nome} onChange={e => setFormConfig({...formConfig, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500" />
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1">Descrição</label>
                             <textarea rows="2" value={formConfig.descricao} onChange={e => setFormConfig({...formConfig, descricao: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500"></textarea>
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1">Cliente Vinculado (Obrigatório para Faturamento)</label>
                             <select value={formConfig.cliente_id} onChange={e => setFormConfig({...formConfig, cliente_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500 cursor-pointer">
@@ -15982,7 +16454,6 @@ export default function ProjetoDashboard() {
                             </select>
                             <p className="text-[10px] text-amber-500 mt-1 font-semibold">Sem este vínculo o Motor Fiscal não consegue emitir a Nota (NF-e/NFS-e).</p>
                         </div>
-
                         <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                             <button type="button" onClick={() => setModalConfig(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
                             <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition shadow-md cursor-pointer">Salvar Configurações</button>
@@ -15991,9 +16462,11 @@ export default function ProjetoDashboard() {
                 </div>
             )}
 
+            {/* Renderização Dinâmica das Abas */}
             {activeTab === 'equipe' && projeto && <TabEquipe projeto={projeto} api={api} onReload={carregarProjeto} />}
             {activeTab === 'custos' && projeto && <TabCustos projeto={projeto} api={api} onReload={carregarProjeto} />}
             {activeTab === 'entregaveis' && projeto && <TabEntregaveis projeto={projeto} api={api} onReload={carregarProjeto} />}
+            {activeTab === 'gantt' && projeto && <TabGanttCapacidade projetoId={projeto.id} api={api} />}
         </div>
     );
 }
@@ -16002,11 +16475,124 @@ export default function ProjetoDashboard() {
 // SUB-COMPONENTES DAS ABAS
 // ==========================================
 
+function TabGanttCapacidade({ projetoId, api }) {
+    return (
+        <div className="flex flex-col gap-6">
+            <GanttChart projetoId={projetoId} api={api} />
+            <ResourceCapacity projetoId={projetoId} api={api} />
+        </div>
+    );
+}
+
+function GanttChart({ projetoId, api }) {
+    const [tarefas, setTarefas] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get(`/projetos/${projetoId}/gantt`).then(res => {
+            setTarefas(res.data.data);
+            setLoading(false);
+        }).catch(() => setLoading(false));
+    }, [projetoId, api]);
+
+    if (loading) return <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-400">Carregando cronograma...</div>;
+    if (tarefas.length === 0) return <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-500">Nenhuma tarefa com datas definidas (Início e Fim) para compor o Gantt.</div>;
+
+    const minDate = new Date(Math.min(...tarefas.map(t => new Date(t.data_inicio_prevista))));
+    const maxDate = new Date(Math.max(...tarefas.map(t => new Date(t.data_fim_prevista))));
+    const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 overflow-x-auto shadow-sm">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><CalendarDays className="h-5 w-5 text-indigo-400" /> Cronograma (Gantt)</h3>
+            <div className="min-w-[800px]">
+                <div className="flex border-b border-slate-800 pb-2 mb-4 text-xs text-slate-400 font-mono">
+                    <div className="w-64 shrink-0 font-bold">Tarefa & Responsável</div>
+                    <div className="flex-1 flex justify-between px-2">
+                        <span>{minDate.toLocaleDateString('pt-BR')}</span>
+                        <span>{maxDate.toLocaleDateString('pt-BR')}</span>
+                    </div>
+                </div>
+                {tarefas.map(t => {
+                    const tStart = new Date(t.data_inicio_prevista);
+                    const tEnd = new Date(t.data_fim_prevista);
+                    const offsetDays = Math.ceil((tStart - minDate) / (1000 * 60 * 60 * 24));
+                    const durationDays = Math.ceil((tEnd - tStart) / (1000 * 60 * 60 * 24)) + 1;
+
+                    const leftPercent = (offsetDays / totalDays) * 100;
+                    const widthPercent = (durationDays / totalDays) * 100;
+
+                    return (
+                        <div key={t.id} className="flex items-center mb-3 text-sm group">
+                            <div className="w-64 shrink-0 pr-4">
+                                <div className="text-slate-200 truncate font-semibold" title={t.titulo}>{t.titulo}</div>
+                                <div className="text-[10px] text-slate-500 truncate">{t.responsavel?.name || 'Sem responsável'}</div>
+                            </div>
+                            <div className="flex-1 relative h-7 bg-slate-950 rounded-md border border-slate-800">
+                                <div
+                                    className="absolute top-0 h-full rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-md cursor-pointer flex items-center justify-center px-2 text-[10px] text-white font-bold whitespace-nowrap overflow-hidden"
+                                    style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+                                    title={`${t.titulo} (${durationDays} dias)`}
+                                >
+                                    {durationDays}d
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function ResourceCapacity({ projetoId, api }) {
+    const [capacidade, setCapacidade] = useState([]);
+
+    useEffect(() => {
+        api.get(`/projetos/${projetoId}/capacidade`).then(res => setCapacidade(res.data.data));
+    }, [projetoId, api]);
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Activity className="h-5 w-5 text-emerald-400" /> Gestão de Capacidade da Equipe</h3>
+            <div className="space-y-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {capacidade.length === 0 ? <p className="text-slate-500 text-sm">Nenhum membro com horas alocadas neste projeto.</p> : capacidade.map(membro => (
+                    <div key={membro.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                        <div className="flex justify-between items-end mb-2">
+                            <div>
+                                <span className="font-bold text-slate-200">{membro.nome}</span>
+                                <p className="text-xs text-slate-400 mt-0.5">Limite: {membro.limite_horas}h / semana</p>
+                            </div>
+                            <div className="text-right">
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                    membro.status === 'OVERBOOKED' ? 'bg-rose-950 text-rose-400 border border-rose-900' :
+                                    membro.status === 'ATENCAO' ? 'bg-amber-950 text-amber-400 border border-amber-900' :
+                                    'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                                }`}>
+                                    {membro.horas_realizadas}h consumidas ({membro.percentual_uso}%)
+                                </span>
+                            </div>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                    membro.percentual_uso > 90 ? 'bg-rose-500' : membro.percentual_uso > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                                }`}
+                                style={{ width: `${Math.min(membro.percentual_uso, 100)}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function TabEquipe({ projeto, api, onReload }) {
     const [equipe, setEquipe] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
     const [modal, setModal] = useState(false);
-    const [form, setForm] = useState({ usuario_id: '', custo_hora: '' });
+    const [form, setForm] = useState({ usuario_id: '', custo_hora: '', limite_horas_semanais: '40' });
 
     const carregar = () => api.get(`/projetos/${projeto.id}/equipe`).then(res => setEquipe(res.data.data));
 
@@ -16032,14 +16618,19 @@ function TabEquipe({ projeto, api, onReload }) {
             </div>
             <table className="w-full text-left text-sm text-slate-300">
                 <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-                    <tr><th className="p-4">Membro da Equipe</th><th className="p-4 text-right">Custo Hora (R$)</th></tr>
+                    <tr>
+                        <th className="p-4">Membro da Equipe</th>
+                        <th className="p-4 text-center">Carga Máxima</th>
+                        <th className="p-4 text-right">Custo Hora (R$)</th>
+                    </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                     {equipe.length === 0 ? (
-                        <tr><td colSpan="2" className="p-8 text-center text-slate-500">Nenhum membro alocado ao projeto.</td></tr>
+                        <tr><td colSpan="3" className="p-8 text-center text-slate-500">Nenhum membro alocado ao projeto.</td></tr>
                     ) : equipe.map(m => (
                         <tr key={m.id} className="hover:bg-slate-800/40 transition">
                             <td className="p-4 text-white font-medium">{m.nome_usuario || 'Usuário do Sistema'}</td>
+                            <td className="p-4 text-center text-slate-400 font-mono">{m.limite_horas_semanais || '40.00'}h / sem</td>
                             <td className="p-4 text-right font-mono font-bold text-emerald-400">R$ {Number(m.custo_hora).toFixed(2)}</td>
                         </tr>
                     ))}
@@ -16048,7 +16639,7 @@ function TabEquipe({ projeto, api, onReload }) {
 
             {modal && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                    <form onSubmit={salvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                    <form onSubmit={salvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-md space-y-4 shadow-2xl">
                         <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alocar Novo Membro</h3>
                         <div>
                             <label className="text-xs font-bold text-slate-400 mb-1 block">Usuário do Sistema</label>
@@ -16057,9 +16648,15 @@ function TabEquipe({ projeto, api, onReload }) {
                                 {usuarios.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 mb-1 block">Custo Hora (R$)</label>
-                            <input type="number" step="0.01" required value={form.custo_hora} onChange={e => setForm({...form, custo_hora: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Custo Hora (R$)</label>
+                                <input type="number" step="0.01" required value={form.custo_hora} onChange={e => setForm({...form, custo_hora: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Limite (Horas/Semana)</label>
+                                <input type="number" step="1" required value={form.limite_horas_semanais} onChange={e => setForm({...form, limite_horas_semanais: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                            </div>
                         </div>
                         <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                             <button type="button" onClick={() => setModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
@@ -16087,7 +16684,7 @@ function TabCustos({ projeto, api, onReload }) {
             setModal(false);
             setForm({ descricao: '', valor: '', data_custo: new Date().toISOString().split('T')[0] });
             carregar();
-            onReload(); // Atualiza o header do projeto
+            onReload();
         } catch (err) { alert("Erro ao lançar despesa."); }
     };
 
