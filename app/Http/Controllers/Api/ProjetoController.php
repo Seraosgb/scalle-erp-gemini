@@ -9,31 +9,18 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use App\Models\Tarefa;
 
 class ProjetoController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $query = Projeto::where('tenant_id', $tenantId)
+
+        $projetos = Projeto::where('tenant_id', $tenantId)
             ->withCount('tarefas')
-            ->with('cliente:id,nome_razao_social,cpf_cnpj');
-
-        if ($request->filled('status') && $request->status !== 'TODOS') {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('search')) {
-            $search = $request->get('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('nome', 'ILIKE', "%{$search}%")
-                  ->orWhere('descricao', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('cliente', fn($c) => $c->where('nome_razao_social', 'ILIKE', "%{$search}%"));
-            });
-        }
-
-        $projetos = $query->orderByDesc('created_at')->paginate(20);
+            ->with('etapas')
+            ->orderByDesc('created_at')
+            ->paginate(15);
 
         return response()->json($projetos);
     }
@@ -58,10 +45,7 @@ class ProjetoController extends Controller
                 'orcamento_previsto' => $validated['orcamento_previsto'] ?? 0.00,
             ]);
 
-            $proj->status = 'ATIVO';
-            $proj->save();
-
-            // Scaffolding dinâmico Kanban
+            // Scaffolding dinâmico do Kanban
             $etapasPadrao = [
                 ['nome' => 'Backlog', 'cor_hex' => '#64748b'],
                 ['nome' => 'A Fazer', 'cor_hex' => '#e2e8f0'],
@@ -95,118 +79,70 @@ class ProjetoController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
-
         $validated = $request->validate([
             'nome' => 'required|string|max:200',
             'descricao' => 'nullable|string',
-            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
+            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id'
         ]);
 
-        $projeto->update([
-            'nome' => $validated['nome'],
-            'descricao' => $validated['descricao'] ?? null,
-            'cliente_id' => $validated['cliente_id'] ?? null,
-        ]);
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+        $projeto->update($validated);
 
-        return response()->json([
-            'data' => [
-                'message' => 'Configurações do projeto atualizadas com sucesso!',
-                'projeto' => $projeto
-            ]
-        ]);
+        return response()->json(['message' => 'Projeto atualizado com sucesso!']);
     }
 
-    public function atualizarOrcamento(Request $request, string $projetoId): JsonResponse
+    public function alterarStatus(Request $request, string $id): JsonResponse
     {
-        $validated = $request->validate(['orcamento_previsto' => 'required|numeric|min:0']);
-        $projeto = Projeto::where('tenant_id', $request->user()->tenant_id)->findOrFail($projetoId);
+        $tenantId = $request->user()->tenant_id;
+
+        // MÁGICA DA COMPATIBILIDADE RETROATIVA
+        // Aceita 'status' legado ou o novo 'status_projeto_id' dinâmico
+        $validated = $request->validate([
+            'status_projeto_id' => 'nullable|uuid|exists:prj_status_projetos,id',
+            'status' => 'nullable|string|max:50'
+        ]);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if (!empty($validated['status_projeto_id'])) {
+            $projeto->update(['status_projeto_id' => $validated['status_projeto_id']]);
+        } elseif (!empty($validated['status'])) {
+            $projeto->update(['status' => $validated['status']]);
+        } else {
+            return response()->json(['error' => 'O campo status_projeto_id é obrigatório.'], 422);
+        }
+
+        return response()->json(['message' => 'Status do projeto atualizado com sucesso!']);
+    }
+
+    public function atualizarOrcamento(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'orcamento_previsto' => 'required|numeric|min:0'
+        ]);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
         $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
 
-        return response()->json(['data' => $projeto]);
-    }
-    public function gantt(Request $request, string $projetoId): \Illuminate\Http\JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-
-        $tarefas = \App\Models\Projetos\Tarefa::where('tenant_id', $tenantId)
-            ->whereHas('etapa', function($q) use ($projetoId) {
-                $q->where('projeto_id', $projetoId);
-            })
-            ->whereNotNull('data_inicio_prevista')
-            ->whereNotNull('data_fim_prevista')
-            ->with('responsavel:id,name')
-            ->orderBy('data_inicio_prevista')
-            ->get(['id', 'titulo', 'data_inicio_prevista', 'data_fim_prevista', 'responsavel_id', 'status']);
-
-        return response()->json(['data' => $tarefas]);
+        return response()->json(['message' => 'Orçamento do projeto atualizado com sucesso!']);
     }
 
-    public function capacidade(Request $request, string $projetoId): \Illuminate\Http\JsonResponse
+    public function listarStatus(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-
-        // Puxa as horas apontadas agrupadas por usuário neste projeto
-        $apontamentos = \App\Models\Apontamento::where('tenant_id', $tenantId)
-            ->whereHas('tarefa.etapa', function($q) use ($projetoId) {
-                $q->where('projeto_id', $projetoId);
-            })
-            ->select('usuario_id', DB::raw('SUM(EXTRACT(EPOCH FROM (fim - inicio))/3600) as horas_realizadas'))
-            ->whereNotNull('fim')
-            ->groupBy('usuario_id')
-            ->get()
-            ->keyBy('usuario_id');
-
-        // Cruzamento com o limite do usuário no projeto (Resource Planning)
-        $equipe = DB::table('prj_projeto_usuarios')
-            ->join('users', 'prj_projeto_usuarios.usuario_id', '=', 'users.id')
-            ->where('prj_projeto_usuarios.projeto_id', $projetoId)
-            ->select('users.id', 'users.name', 'prj_projeto_usuarios.limite_horas_semanais')
-            ->get();
-
-        $capacidade = $equipe->map(function($membro) use ($apontamentos) {
-            $realizadas = $apontamentos->has($membro->id) ? (float) $apontamentos[$membro->id]->horas_realizadas : 0;
-            $limite = (float) $membro->limite_horas_semanais;
-            $percentual = $limite > 0 ? min(100, ($realizadas / $limite) * 100) : 0;
-
-            return [
-                'id' => $membro->id,
-                'nome' => $membro->name,
-                'limite_horas' => $limite,
-                'horas_realizadas' => round($realizadas, 2),
-                'percentual_uso' => round($percentual, 1),
-                'status' => $percentual > 90 ? 'OVERBOOKED' : ($percentual > 70 ? 'ATENCAO' : 'OK')
-            ];
-        });
-
-        return response()->json(['data' => $capacidade]);
-    }
-    public function alterarStatus(Request $request, $id): \Illuminate\Http\JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $validated = $request->validate(['status' => 'required|string']);
-
-        $projeto = \App\Models\Projeto::where('tenant_id', $tenantId)->findOrFail($id);
-        $projeto->update(['status' => $validated['status']]);
-
-        return response()->json(['message' => 'Status do projeto atualizado com sucesso!', 'data' => $projeto]);
-    }
-    public function listarStatus(Request $request): \Illuminate\Http\JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-        $status = \Illuminate\Support\Facades\DB::table('prj_status_projetos')
+        $status = DB::table('prj_status_projetos')
             ->where('tenant_id', $tenantId)
             ->orderBy('nome')
             ->get();
 
-        // Fallback: Se o tenant não configurou nada, gera os básicos para não quebrar a UI
         if ($status->isEmpty()) {
             $basicos = [
-                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Ativo', 'cor_hex' => '#4f46e5'],
-                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Concluído', 'cor_hex' => '#10b981'],
-                ['id' => Str::uuid()->toString(), 'tenant_id' => $tenantId, 'nome' => 'Pausado', 'cor_hex' => '#f59e0b']
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Ativo', 'cor_hex' => '#4f46e5'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Concluído', 'cor_hex' => '#10b981'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Pausado', 'cor_hex' => '#f59e0b']
             ];
-            \Illuminate\Support\Facades\DB::table('prj_status_projetos')->insert($basicos);
+            DB::table('prj_status_projetos')->insert($basicos);
             $status = collect($basicos);
         }
 
