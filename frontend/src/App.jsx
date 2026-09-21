@@ -114,6 +114,7 @@ export default function App() {
             {/* Projetos & B2B */}
             <Route path="projetos" element={<ProjetosList />} />
             <Route path="projetos/:id" element={<ProjetoDashboard />} />
+            <Route path="pmo/config" element={<PmoConfig />} />
 
             {/* Financeiro, Fiscal & Controladoria */}
             <Route path="financeiro" element={<FinanceiroPage />} />

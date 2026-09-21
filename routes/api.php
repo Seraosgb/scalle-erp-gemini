@@ -41,7 +41,8 @@ use App\Http\Controllers\Api\KanbanController;
 use App\Http\Controllers\Api\ProjetoController;
 use App\Http\Controllers\Api\TimesheetController;
 use App\Http\Controllers\Api\ProjetoGestaoController;
-use App\Http\Controllers\Api\GedController; // <== Adicionado o import do GED
+use App\Http\Controllers\Api\GedController;
+use App\Http\Controllers\Api\PmoConfigController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -335,6 +336,13 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::delete('/veiculos/{id}', [FrotaVeiculoController::class, 'destroy']);
         Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
+    // Dentro do seu grupo de auth Sanctum + IdentifyTenant, adicione:
+    Route::prefix('pmo/configuracoes')->group(function () {
+        Route::get('/{dominio}', [PmoConfigController::class, 'index']);
+        Route::post('/{dominio}', [PmoConfigController::class, 'store']);
+        Route::put('/{dominio}/{id}', [PmoConfigController::class, 'update']);
+        Route::delete('/{dominio}/{id}', [PmoConfigController::class, 'destroy']);
+    });
 
     // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
@@ -380,6 +388,10 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         // Parâmetros de Domínio PMO
         Route::get('/parametros/status', [ProjetoController::class, 'listarStatus']);
         Route::get('/parametros/prioridades', [KanbanController::class, 'listarPrioridades']);
+         Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
+        // Novas rotas de Taxonomia de Fluxos (Etapas)
+        Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
+        Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
     });
 
     // ==========================================
@@ -397,9 +409,5 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
             ]);
             return app(GedController::class)->upload($request);
         });
-        Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
-        // Novas rotas de Taxonomia de Fluxos (Etapas)
-        Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
-        Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
     });
 });

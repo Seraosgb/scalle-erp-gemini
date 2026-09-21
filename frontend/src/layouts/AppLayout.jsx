@@ -10,6 +10,7 @@ import {
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
 
+
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [empresas, setEmpresas] = useState([]);
@@ -98,6 +99,7 @@ export default function AppLayout() {
     { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
     { name: 'Gestão de Projetos (PMO)', path: '/app/projetos', icon: Kanban, end: false },
+    { name: 'Configuração do PMO', path: '/app/pmo/config', icon: Settings, end: false },
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
