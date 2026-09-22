@@ -148,4 +148,160 @@ class ProjetoController extends Controller
 
         return response()->json(['data' => $status]);
     }
+
+    // ==========================================
+    // INTEGRAÇÃO FINANCEIRA: CUSTOS & DESPESAS
+    // ==========================================
+    public function custos(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $custos = DB::table('prj_custos')
+            ->where('tenant_id', $tenantId)
+            ->where('projeto_id', $id)
+            ->orderByDesc('data_custo')
+            ->get();
+
+        return response()->json(['data' => $custos]);
+    }
+
+    public function storeCusto(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'descricao' => 'required|string|max:255',
+            'valor' => 'required|numeric|min:0.01',
+            'data_custo' => 'required|date'
+        ]);
+
+        DB::transaction(function() use ($validated, $id, $tenantId, $empresaId, $projeto) {
+            $custoId = (string) Str::uuid();
+
+            // 1. Grava no Diário do Projeto
+            DB::table('prj_custos')->insert([
+                'id' => $custoId,
+                'tenant_id' => $tenantId,
+                'projeto_id' => $id,
+                'descricao' => $validated['descricao'],
+                'valor' => $validated['valor'],
+                'data_custo' => $validated['data_custo'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // 2. Integração Transparente com Contas a Pagar
+            \App\Models\TituloFinanceiro::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => null, // Despesa genérica do projeto (sem fornecedor fixo no MVP)
+                'natureza' => 'PAGAR',
+                'documento_numero' => 'PRJ-CST-' . substr($custoId, 0, 6),
+                'parcela_numero' => 1,
+                'total_parcelas' => 1,
+                'origem_tipo' => 'projetos_custo',
+                'origem_id' => $id,
+                'data_emissao' => now()->toDateString(),
+                'data_vencimento' => $validated['data_custo'],
+                'valor_original' => $validated['valor'],
+                'valor_saldo_aberto' => $validated['valor'],
+                'valor_pago_acumulado' => 0.00,
+                'status' => 'ABERTO',
+                'historico' => "Custo de Projeto [{$projeto->nome}]: {$validated['descricao']}",
+            ]);
+
+            // 3. Incrementa o custo real do projeto para o Dashboard
+            if (\Illuminate\Support\Facades\Schema::hasColumn('prj_projetos', 'custo_total_real')) {
+                $projeto->increment('custo_total_real', $validated['valor']);
+            }
+        });
+
+        return response()->json(['data' => ['message' => 'Custo lançado e Contas a Pagar gerado com sucesso!']]);
+    }
+
+    // ==========================================
+    // INTEGRAÇÃO FINANCEIRA: FATURAMENTO (MILESTONES)
+    // ==========================================
+    public function entregaveis(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $entregaveis = DB::table('prj_entregaveis')
+            ->where('tenant_id', $tenantId)
+            ->where('projeto_id', $id)
+            ->orderBy('data_prevista')
+            ->get();
+
+        return response()->json(['data' => $entregaveis]);
+    }
+
+    public function storeEntregavel(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:255',
+            'valor_faturamento' => 'required|numeric|min:0.01',
+            'data_prevista' => 'nullable|date'
+        ]);
+
+        DB::table('prj_entregaveis')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $id,
+            'titulo' => $validated['titulo'],
+            'valor_faturamento' => $validated['valor_faturamento'],
+            'data_prevista' => $validated['data_prevista'],
+            'status' => 'PENDENTE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['data' => ['message' => 'Marco de faturamento planejado com sucesso.']]);
+    }
+
+    public function faturarEntregavel(Request $request, string $entregavelId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        $entregavel = DB::table('prj_entregaveis')->where('tenant_id', $tenantId)->where('id', $entregavelId)->first();
+
+        if (!$entregavel) return response()->json(['error' => 'Entregável não encontrado.'], 404);
+        if ($entregavel->status === 'FATURADO') return response()->json(['error' => 'Este marco já foi faturado.'], 422);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($entregavel->projeto_id);
+
+        if (!$projeto->cliente_id) {
+            return response()->json(['error' => 'O projeto não possui um cliente vinculado para emitir a cobrança.'], 422);
+        }
+
+        DB::transaction(function() use ($entregavel, $projeto, $tenantId, $empresaId) {
+            // 1. Marca o Entregável como faturado
+            DB::table('prj_entregaveis')->where('id', $entregavel->id)->update(['status' => 'FATURADO', 'updated_at' => now()]);
+
+            // 2. Integração Transparente com Contas a Receber
+            \App\Models\TituloFinanceiro::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => $projeto->cliente_id,
+                'natureza' => 'RECEBER',
+                'documento_numero' => 'PRJ-FAT-' . substr($entregavel->id, 0, 6),
+                'parcela_numero' => 1,
+                'total_parcelas' => 1,
+                'origem_tipo' => 'projetos_faturamento',
+                'origem_id' => $projeto->id,
+                'data_emissao' => now()->toDateString(),
+                'data_vencimento' => now()->addDays(15)->toDateString(), // Prazo comercial de 15 dias
+                'valor_original' => $entregavel->valor_faturamento,
+                'valor_saldo_aberto' => $entregavel->valor_faturamento,
+                'valor_pago_acumulado' => 0.00,
+                'status' => 'ABERTO',
+                'historico' => "Faturamento do Projeto [{$projeto->nome}]: Marco {$entregavel->titulo}",
+            ]);
+        });
+
+        return response()->json(['data' => ['message' => 'Fatura gerada com sucesso e injetada no Contas a Receber!']]);
+    }
 }

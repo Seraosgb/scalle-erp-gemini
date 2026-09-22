@@ -392,6 +392,14 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         // Novas rotas de Taxonomia de Fluxos (Etapas)
         Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
         Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
+
+        // Financeiro do PMO: Custos e Entregáveis
+        Route::get('/{projetoId}/custos', [ProjetoController::class, 'custos']);
+        Route::post('/{projetoId}/custos', [ProjetoController::class, 'storeCusto']);
+
+        Route::get('/{projetoId}/entregaveis', [ProjetoController::class, 'entregaveis']);
+        Route::post('/{projetoId}/entregaveis', [ProjetoController::class, 'storeEntregavel']);
+        Route::post('/entregaveis/{entregavelId}/faturar', [ProjetoController::class, 'faturarEntregavel']);
     });
 
     // ==========================================

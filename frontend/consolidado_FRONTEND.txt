@@ -15831,7 +15831,10 @@ export default function ProjetoDashboard() {
         if (projetoId) {
             carregarProjeto();
             api.get('/pessoas?tipo=CLIENTE').then(res => setClientes(res.data?.data?.data || res.data?.data || []));
-            api.get('/projetos/parametros/status').then(res => setParametrosStatus(res.data?.data || []));
+            api.get('/projetos/parametros/status').then(res => {
+                const stat = res.data?.data || [];
+                setParametrosStatus(stat);
+            });
             api.get('/projetos/parametros/prioridades').then(res => setParametrosPrioridades(res.data?.data || []));
         }
     }, [projetoId]);
@@ -15875,12 +15878,22 @@ export default function ProjetoDashboard() {
 
     const alterarStatusProjeto = async (e) => {
         e.preventDefault();
-        if (!novoStatusId) return;
+        if (!novoStatusId) {
+            alert('Por favor, selecione um status.');
+            return;
+        }
+
         try {
-            await api.patch(`/projetos/${projetoId}/status`, { status_projeto_id: novoStatusId });
+            // CORREÇÃO AQUI: Garante que estamos a enviar um payload limpo com o UUID.
+            await api.patch(`/projetos/${projetoId}/status`, {
+                status_projeto_id: novoStatusId
+            });
             setModalStatus(false);
             carregarProjeto();
-        } catch (error) { alert("Erro ao alterar status."); }
+        } catch (error) {
+            console.error(error.response);
+            alert("Erro ao alterar status. " + (error.response?.data?.message || 'Verifique o console para detalhes.'));
+        }
     };
 
     const adicionarTarefa = async (e) => {
@@ -15929,7 +15942,6 @@ export default function ProjetoDashboard() {
         }
     };
 
-    // Mecânica principal de Arrasto (Padrão Gemini)
     const handleDragEnd = async (result) => {
         const { destination, source, draggableId } = result;
         if (!destination) return;
@@ -16066,14 +16078,17 @@ export default function ProjetoDashboard() {
                         <div>
                             <h1 className="text-2xl font-bold text-white flex items-center gap-3">
                                 {projeto.nome}
-                                <span
-                                    onClick={() => { setNovoStatusId(projeto.status_projeto_id); setModalStatus(true); }}
+                                <button
+                                    onClick={() => {
+                                        setNovoStatusId(projeto.status_projeto_id || (parametrosStatus.length > 0 ? parametrosStatus[0].id : ''));
+                                        setModalStatus(true);
+                                    }}
                                     className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer hover:opacity-80 transition shadow-sm border"
                                     style={{ backgroundColor: `${statusCor}20`, color: statusCor, borderColor: `${statusCor}50` }}
                                     title="Clique para alterar o status do projeto"
                                 >
                                     {statusNome}
-                                </span>
+                                </button>
                                 {!projeto.cliente_id && (
                                     <span className="text-[10px] bg-rose-950/40 text-rose-400 border border-rose-900 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
                                 )}
