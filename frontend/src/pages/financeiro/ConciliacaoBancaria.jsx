@@ -113,7 +113,8 @@ export default function ConciliacaoBancaria() {
             setModalAvulso(false);
             setFeedback({ tipo: 'sucesso', msg: 'Lançamento avulso criado e conciliado!' });
         } catch (err) {
-            setFeedback({ tipo: 'erro', msg: 'Erro ao criar lançamento manual.' });
+            const erroMensagem = err.response?.data?.message || err.response?.data?.error?.message || 'Erro ao criar lançamento manual.';
+            setFeedback({ tipo: 'erro', msg: erroMensagem });
         } finally {
             setLoading(false);
         }
