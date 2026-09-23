@@ -127,7 +127,6 @@ export default function App() {
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="financeiro/conciliacao" element={<ConciliacaoBancaria />} />
             <Route path="controladoria/config" element={<ControladoriaConfig />} />
-            <Route path="controladoria/config" element={<ControladoriaConfig />} />
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="fiscal/test" element={<FiscalTestScreen />} />
