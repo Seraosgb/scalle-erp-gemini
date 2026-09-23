@@ -211,13 +211,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::put('/os/{id}/pecas/{itemId}/almoxarifado', [OrdemServicoController::class, 'tratarPecaAlmoxarifado']);
     Route::put('/os/{id}/dados-tecnicos', [OrdemServicoController::class, 'atualizarDadosTecnicos']);
 
-    // Financeiro & Tesouraria
-    Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);
-    Route::get('/financeiro/contas', [FinanceiroController::class, 'contas']);
-    Route::get('/financeiro/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
-    Route::post('/financeiro/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
-    Route::get('/contas', [FinanceiroController::class, 'contas']);
-    Route::post('/contas', [FinanceiroController::class, 'storeConta']);
+   // Financeiro & Tesouraria
+    Route::prefix('financeiro')->group(function () {
+        Route::get('/titulos', [FinanceiroController::class, 'titulos']);
+        Route::post('/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
+
+        Route::get('/contas', [FinanceiroController::class, 'contas']);
+        Route::post('/contas', [FinanceiroController::class, 'storeConta']);
+        Route::get('/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
+    });
 
     // Controladoria (DRE, Planos de Contas e Centros de Custo)
         Route::prefix('controladoria')->group(function () {
