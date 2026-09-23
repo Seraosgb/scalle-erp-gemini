@@ -1,32 +1,158 @@
-<?php
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-use App\Http\Middleware\CheckSubscriptionStatus;
-use App\Http\Middleware\IdentifyTenant;
-use Illuminate\Foundation\Application;
-use Illuminate\Foundation\Configuration\Exceptions;
-use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Request;
+// Layout Principal com Sidebar
+import AppLayout from './layouts/AppLayout';
 
-return Application::configure(basePath: dirname(__DIR__))
-    ->withRouting(
-        web: __DIR__.'/../routes/web.php',
-        api: __DIR__.'/../routes/api.php',
-        commands: __DIR__.'/../routes/console.php',
-        health: '/up',
-    )
-    ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->api(append: [
-            IdentifyTenant::class,
-            CheckSubscriptionStatus::class,
-        ]);
-         $middleware->alias([
-            'check.master' => \App\Http\Middleware\CheckMaster::class,
-            // Adicione a linha abaixo:
-            'check.projeto.status' => \App\Http\Middleware\CheckProjetoStatus::class,
-        ]);
-    })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
-        );
-    })->create();
+// Páginas de Autenticação e Públicas
+import Login from './pages/Login';
+import PortalOsPage from './pages/portal/PortalOsPage';
+import LandingCrm from './pages/public/LandingCrm';
+
+// Páginas Operacionais e Corporativas
+import DashboardPage from './pages/dashboard/DashboardPage';
+import WmsPage from './pages/wms/WmsPage';
+import OrdensServicoPage from './pages/os/OrdensServicoPage';
+import PcpPage from './pages/pcp/PcpPage';
+import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
+import VendasPage from './pages/vendas/VendasPage';
+import PdvPage from './pages/vendas/PdvPage';
+import ComprasPage from './pages/compras/ComprasPage';
+import CotacoesComprasPage from './pages/compras/CotacoesComprasPage';
+import FinanceiroPage from './pages/financeiro/FinanceiroPage';
+import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
+import FiscalPage from './pages/fiscal/FiscalPage';
+import FiscalTestScreen from './pages/fiscal/FiscalTestScreen';
+import UsuariosPage from './pages/usuarios/UsuariosPage';
+
+// Controladoria
+import ControladoriaConfig from './pages/Configuracoes/ControladoriaConfig';
+
+// CRM & Funil
+import BoardCrm from './pages/crm/BoardCrm';
+import ConfiguracoesCrm from './pages/crm/ConfiguracoesCrm';
+import CrmKanbanView from './Pages/Crm/CrmKanbanView';
+
+// Gestão Master & Billing
+import MasterPage from './pages/master/MasterPage';
+import PainelCobrancaView from './pages/billing/PainelCobrancaView';
+import AuditoriaE2EView from './pages/master/AuditoriaE2EView';
+
+// RH
+import PontoEletronicoPage from './pages/rh/PontoEletronicoPage';
+import ColaboradoresPage from './pages/RH/ColaboradoresPage';
+import PessoasPage from './pages/Cadastros/PessoasPage';
+import HoleritesPage from './pages/RH/HoleritesPage';
+import RecrutamentoPage from './pages/RH/RecrutamentoPage';
+import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
+
+// Portal Colaborador
+import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
+import FrotaPage from './pages/frota/FrotaDashboard';
+import ProjetosList from './pages/Projetos/ProjetosList';
+import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
+
+// GED (Cofre Digital)
+import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
+
+// PMO Configurações
+import PmoConfig from './pages/Configuracoes/PmoConfig';
+
+// Instância global do React Query Client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: false,
+    },
+  },
+});
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          {/* Rotas Públicas */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/portal/os/:token" element={<PortalOsPage />} />
+          <Route path="/crm" element={<LandingCrm />} />
+
+          {/* Aliases e Redirecionamentos de Segurança */}
+          <Route path="/crm/configuracoes" element={<Navigate to="/app/crm/configuracoes" replace />} />
+          <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+
+          {/* Rotas Protegidas sob o Layout Principal (/app) */}
+          <Route path="/app" element={<AppLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+
+            {/* Dashboard */}
+            <Route path="dashboard" element={<DashboardPage />} />
+
+            {/* Portal Colaborador */}
+            <Route path="portal-colaborador" element={<PortalColaboradorPage />} />
+
+            {/* CRM & Vendas */}
+            <Route path="crm" element={<BoardCrm />} />
+            <Route path="crm/kanban" element={<CrmKanbanView />} />
+            <Route path="crm/configuracoes" element={<ConfiguracoesCrm />} />
+            <Route path="vendas" element={<VendasPage />} />
+            <Route path="pdv" element={<PdvPage />} />
+
+            {/* Suprimentos & WMS */}
+            <Route path="wms" element={<WmsPage />} />
+            <Route path="estoque" element={<Navigate to="/app/wms" replace />} />
+            <Route path="compras" element={<ComprasPage />} />
+            <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
+
+            {/* Frota & Operações */}
+            <Route path="frotas" element={<FrotaPage />} />
+
+            {/* Indústria & PCP */}
+            <Route path="pcp" element={<PcpPage />} />
+            <Route path="pcp/terminal" element={<TerminalFabricaPage />} />
+
+            {/* Serviços & CMMS */}
+            <Route path="os" element={<OrdensServicoPage />} />
+            <Route path="ordens-servico" element={<Navigate to="/app/os" replace />} />
+
+            {/* Projetos & B2B */}
+            <Route path="projetos" element={<ProjetosList />} />
+            <Route path="projetos/:id" element={<ProjetoDashboard />} />
+            <Route path="configuracoes/pmo" element={<PmoConfig />} />
+
+            {/* Financeiro, Fiscal & Controladoria */}
+            <Route path="financeiro" element={<FinanceiroPage />} />
+            <Route path="controladoria/config" element={<ControladoriaConfig />} />
+            <Route path="exportacoes" element={<ExportacoesPage />} />
+            <Route path="fiscal" element={<FiscalPage />} />
+            <Route path="fiscal/test" element={<FiscalTestScreen />} />
+
+            {/* Governança, Equipe & Billing */}
+            <Route path="usuarios" element={<UsuariosPage />} />
+            <Route path="billing" element={<PainelCobrancaView />} />
+
+            {/* RH & Gestão de Pessoas */}
+            <Route path="ponto" element={<PontoEletronicoPage />} />
+            <Route path="colaboradores" element={<ColaboradoresPage />} />
+            <Route path="pessoas" element={<PessoasPage />} />
+            <Route path="holerites" element={<HoleritesPage />} />
+            <Route path="recrutamento" element={<RecrutamentoPage />} />
+            <Route path="desempenho-clima" element={<DesempenhoClimaPage />} />
+
+            {/* GED & Documentos */}
+            <Route path="ged" element={<CofreDigitalPage />} />
+
+            {/* Módulo Master (SaaS Owner) */}
+            <Route path="master" element={<MasterPage />} />
+            <Route path="master/auditoria" element={<AuditoriaE2EView />} />
+          </Route>
+
+          {/* Fallback Global */}
+          <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}

@@ -5,7 +5,7 @@ import {
   DollarSign, FileText, Users, LogOut, Menu, X,
   Building2, ShieldAlert, Factory, FileSpreadsheet,
   Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings,
-  CreditCard, FileCheck, Fingerprint, UserSquare
+  CreditCard, FileCheck, Fingerprint, UserSquare, GitMerge
 } from 'lucide-react';
 import { api } from '../services/api';
 import MfaConfigModal from '../components/MfaConfigModal';
@@ -98,9 +98,9 @@ export default function AppLayout() {
     { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
     { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
     { name: 'Gestão de Projetos (PMO)', path: '/app/projetos', icon: Kanban, end: false },
-    // A ROTA ABAIXO FOI CORRIGIDA PARA CORRESPONDER AO APP.JSX
     { name: 'Configuração do PMO', path: '/app/configuracoes/pmo', icon: Settings, end: false },
-    { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign },
+    { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign, end: true },
+    { name: 'Árvore Contábil & DRE', path: '/app/controladoria/config', icon: GitMerge },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
     { name: 'Motor Fiscal', path: '/app/fiscal', icon: FileText },
