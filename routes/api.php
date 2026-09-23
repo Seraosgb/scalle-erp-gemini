@@ -230,6 +230,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         // Conciliação Bancária
         Route::prefix('conciliacao')->group(function () {
             Route::post('/ofx', [ConciliacaoController::class, 'processarOfx']);
+            Route::post('/ofx/manual', [ConciliacaoController::class, 'conciliarManual']);
         });
 
     // Exportações Contábeis & SPED

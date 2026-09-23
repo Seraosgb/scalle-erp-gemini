@@ -118,4 +118,60 @@ class ControladoriaController extends Controller
 
         return response()->json(['data' => ['message' => 'Estrutura contábil e de centros de custo gerada com sucesso!']]);
     }
+
+    public function conciliarManual(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'conta_financeira_id' => 'required|uuid|exists:fin_contas_financeiras,id',
+            'plano_conta_id' => 'required|uuid|exists:fin_planos_contas,id',
+            'centro_custo_id' => 'required|uuid|exists:fin_centros_custos,id',
+            'descricao' => 'required|string|max:200',
+            'valor' => 'required|numeric|min:0.01',
+            'natureza' => 'required|string|in:PAGAR,RECEBER',
+            'data_transacao' => 'required|date',
+            'id_transacao_banco' => 'required|string',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        try {
+            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId, $request) {
+                // 1. Cria o Título já liquidado
+                $novoTitulo = \App\Models\TituloFinanceiro::create([
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'empresa_id' => $empresaId,
+                    'plano_conta_id' => $validated['plano_conta_id'],
+                    'centro_custo_id' => $validated['centro_custo_id'],
+                    'natureza' => $validated['natureza'],
+                    'documento_numero' => 'OFX-' . substr($validated['id_transacao_banco'], -8),
+                    'parcela_numero' => 1,
+                    'total_parcelas' => 1,
+                    'data_emissao' => $validated['data_transacao'],
+                    'data_vencimento' => $validated['data_transacao'],
+                    'valor_original' => $validated['valor'],
+                    'valor_saldo_aberto' => 0,
+                    'valor_pago_acumulado' => $validated['valor'],
+                    'status' => 'LIQUIDADO',
+                    'data_liquidacao' => $validated['data_transacao'],
+                    'historico' => 'Conciliação Avulsa OFX: ' . $validated['descricao'],
+                ]);
+
+                // 2. Altera o saldo do banco (A tabela de MovimentacaoExtrato deve existir ou ser ignorada caso não a usemos estritamente aqui)
+                $conta = \App\Models\ContaFinanceira::findOrFail($validated['conta_financeira_id']);
+                $tipoMov = $validated['natureza'] === 'PAGAR' ? 'SAIDA' : 'ENTRADA';
+
+                $conta->update([
+                    'saldo_atual' => $tipoMov === 'ENTRADA' ? $conta->saldo_atual + $validated['valor'] : $conta->saldo_atual - $validated['valor']
+                ]);
+
+                return $novoTitulo;
+            });
+
+            return response()->json(['data' => ['message' => 'Lançamento avulso criado e conciliado!', 'titulo' => $titulo]]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
 }
