@@ -21,7 +21,10 @@ return new class extends Migration
                 $table->boolean('is_ativo')->default(true);
                 $table->timestamps();
                 $table->softDeletes();
+            });
 
+            // FK adicionada num bloco separado para garantir que a tabela já existe no PostgreSQL
+            Schema::table('fin_planos_contas', function (Blueprint $table) {
                 $table->foreign('parent_id')->references('id')->on('fin_planos_contas')->onDelete('cascade');
             });
         }
@@ -38,7 +41,10 @@ return new class extends Migration
                 $table->boolean('is_ativo')->default(true);
                 $table->timestamps();
                 $table->softDeletes();
+            });
 
+            // FK adicionada num bloco separado
+            Schema::table('fin_centros_custos', function (Blueprint $table) {
                 $table->foreign('parent_id')->references('id')->on('fin_centros_custos')->onDelete('cascade');
             });
         }
