@@ -185,8 +185,26 @@ export default function ControladoriaConfig() {
                     {loading ? (
                         <div className="p-8 text-center text-slate-500 animate-pulse font-bold">Carregando estrutura hierárquica...</div>
                     ) : data.length === 0 ? (
-                        <div className="p-12 text-center text-slate-500 border border-dashed border-slate-800 m-4 rounded-xl">
-                            Nenhuma estrutura cadastrada. Clique em "Adicionar Raiz" para começar a montar sua árvore.
+                        <div className="p-12 text-center text-slate-400 border border-dashed border-slate-800 m-4 rounded-xl flex flex-col items-center justify-center space-y-4">
+                            <p>Sua estrutura {activeTab === 'planos_contas' ? 'de contas' : 'de centros de custo'} está vazia.</p>
+                            {activeTab === 'planos_contas' && (
+                                <button
+                                    onClick={async () => {
+                                        setLoading(true);
+                                        try {
+                                            await api.post('/controladoria/gerar-padrao');
+                                            setFeedback({ tipo: 'sucesso', msg: 'Árvore de contas corporativa injetada com sucesso!' });
+                                            carregarDados();
+                                        } catch (err) {
+                                            setFeedback({ tipo: 'erro', msg: 'Falha ao injetar estrutura.' });
+                                            setLoading(false);
+                                        }
+                                    }}
+                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition shadow-lg shadow-indigo-600/30 cursor-pointer"
+                                >
+                                    Gerar Estrutura Corporativa Padrão
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="flex flex-col">

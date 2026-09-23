@@ -223,6 +223,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
 
             Route::get('/centros-custos', [ControladoriaController::class, 'indexCentrosCustos']);
             Route::post('/centros-custos', [ControladoriaController::class, 'storeCentroCusto']);
+
+            Route::post('/gerar-padrao', [ControladoriaController::class, 'gerarEstruturaPadrao']);
         });
 
     // Exportações Contábeis & SPED
