@@ -22099,6 +22099,90 @@ class CompraController extends Controller
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ControladoriaController.php
+========================================
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\CentroCusto;
+use App\Models\PlanoConta;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+
+class ControladoriaController extends Controller
+{
+    // ==========================================
+    // PLANO DE CONTAS
+    // ==========================================
+    public function indexPlanosContas(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // Retorna a árvore hierárquica (apenas raízes que carregam seus filhos)
+        $planos = PlanoConta::where('tenant_id', $tenantId)
+            ->whereNull('parent_id')
+            ->with('children.children') // Até 3 níveis para exibição rápida
+            ->orderBy('codigo')
+            ->get();
+
+        return response()->json(['data' => $planos]);
+    }
+
+    public function storePlanoConta(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'parent_id' => 'nullable|uuid|exists:fin_planos_contas,id',
+            'codigo' => 'required|string|max:50',
+            'nome' => 'required|string|max:150',
+            'tipo' => 'required|string|in:RECEITA,DESPESA,ATIVO,PASSIVO',
+            'is_sintetico' => 'boolean'
+        ]);
+
+        $plano = PlanoConta::create(array_merge($validated, ['tenant_id' => $tenantId]));
+
+        return response()->json(['data' => $plano], 201);
+    }
+
+    // ==========================================
+    // CENTROS DE CUSTO
+    // ==========================================
+    public function indexCentrosCustos(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $centros = CentroCusto::where('tenant_id', $tenantId)
+            ->whereNull('parent_id')
+            ->with('children.children')
+            ->orderBy('codigo')
+            ->get();
+
+        return response()->json(['data' => $centros]);
+    }
+
+    public function storeCentroCusto(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'parent_id' => 'nullable|uuid|exists:fin_centros_custos,id',
+            'codigo' => 'required|string|max:50',
+            'nome' => 'required|string|max:150',
+            'is_sintetico' => 'boolean'
+        ]);
+
+        $centro = CentroCusto::create(array_merge($validated, ['tenant_id' => $tenantId]));
+
+        return response()->json(['data' => $centro], 201);
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\CotacaoCompraController.php
 ========================================
 
@@ -27716,6 +27800,162 @@ class ProjetoController extends Controller
 
         return response()->json(['data' => $status]);
     }
+
+    // ==========================================
+    // INTEGRAÇÃO FINANCEIRA: CUSTOS & DESPESAS
+    // ==========================================
+    public function custos(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $custos = DB::table('prj_custos')
+            ->where('tenant_id', $tenantId)
+            ->where('projeto_id', $id)
+            ->orderByDesc('data_custo')
+            ->get();
+
+        return response()->json(['data' => $custos]);
+    }
+
+    public function storeCusto(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'descricao' => 'required|string|max:255',
+            'valor' => 'required|numeric|min:0.01',
+            'data_custo' => 'required|date'
+        ]);
+
+        DB::transaction(function() use ($validated, $id, $tenantId, $empresaId, $projeto) {
+            $custoId = (string) Str::uuid();
+
+            // 1. Grava no Diário do Projeto
+            DB::table('prj_custos')->insert([
+                'id' => $custoId,
+                'tenant_id' => $tenantId,
+                'projeto_id' => $id,
+                'descricao' => $validated['descricao'],
+                'valor' => $validated['valor'],
+                'data_custo' => $validated['data_custo'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // 2. Integração Transparente com Contas a Pagar
+            \App\Models\TituloFinanceiro::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => null, // Despesa genérica do projeto (sem fornecedor fixo no MVP)
+                'natureza' => 'PAGAR',
+                'documento_numero' => 'PRJ-CST-' . substr($custoId, 0, 6),
+                'parcela_numero' => 1,
+                'total_parcelas' => 1,
+                'origem_tipo' => 'projetos_custo',
+                'origem_id' => $id,
+                'data_emissao' => now()->toDateString(),
+                'data_vencimento' => $validated['data_custo'],
+                'valor_original' => $validated['valor'],
+                'valor_saldo_aberto' => $validated['valor'],
+                'valor_pago_acumulado' => 0.00,
+                'status' => 'ABERTO',
+                'historico' => "Custo de Projeto [{$projeto->nome}]: {$validated['descricao']}",
+            ]);
+
+            // 3. Incrementa o custo real do projeto para o Dashboard
+            if (\Illuminate\Support\Facades\Schema::hasColumn('prj_projetos', 'custo_total_real')) {
+                $projeto->increment('custo_total_real', $validated['valor']);
+            }
+        });
+
+        return response()->json(['data' => ['message' => 'Custo lançado e Contas a Pagar gerado com sucesso!']]);
+    }
+
+    // ==========================================
+    // INTEGRAÇÃO FINANCEIRA: FATURAMENTO (MILESTONES)
+    // ==========================================
+    public function entregaveis(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $entregaveis = DB::table('prj_entregaveis')
+            ->where('tenant_id', $tenantId)
+            ->where('projeto_id', $id)
+            ->orderBy('data_prevista')
+            ->get();
+
+        return response()->json(['data' => $entregaveis]);
+    }
+
+    public function storeEntregavel(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:255',
+            'valor_faturamento' => 'required|numeric|min:0.01',
+            'data_prevista' => 'nullable|date'
+        ]);
+
+        DB::table('prj_entregaveis')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $id,
+            'titulo' => $validated['titulo'],
+            'valor_faturamento' => $validated['valor_faturamento'],
+            'data_prevista' => $validated['data_prevista'],
+            'status' => 'PENDENTE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['data' => ['message' => 'Marco de faturamento planejado com sucesso.']]);
+    }
+
+    public function faturarEntregavel(Request $request, string $entregavelId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        $entregavel = DB::table('prj_entregaveis')->where('tenant_id', $tenantId)->where('id', $entregavelId)->first();
+
+        if (!$entregavel) return response()->json(['error' => 'Entregável não encontrado.'], 404);
+        if ($entregavel->status === 'FATURADO') return response()->json(['error' => 'Este marco já foi faturado.'], 422);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($entregavel->projeto_id);
+
+        if (!$projeto->cliente_id) {
+            return response()->json(['error' => 'O projeto não possui um cliente vinculado para emitir a cobrança.'], 422);
+        }
+
+        DB::transaction(function() use ($entregavel, $projeto, $tenantId, $empresaId) {
+            // 1. Marca o Entregável como faturado
+            DB::table('prj_entregaveis')->where('id', $entregavel->id)->update(['status' => 'FATURADO', 'updated_at' => now()]);
+
+            // 2. Integração Transparente com Contas a Receber
+            \App\Models\TituloFinanceiro::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => $projeto->cliente_id,
+                'natureza' => 'RECEBER',
+                'documento_numero' => 'PRJ-FAT-' . substr($entregavel->id, 0, 6),
+                'parcela_numero' => 1,
+                'total_parcelas' => 1,
+                'origem_tipo' => 'projetos_faturamento',
+                'origem_id' => $projeto->id,
+                'data_emissao' => now()->toDateString(),
+                'data_vencimento' => now()->addDays(15)->toDateString(), // Prazo comercial de 15 dias
+                'valor_original' => $entregavel->valor_faturamento,
+                'valor_saldo_aberto' => $entregavel->valor_faturamento,
+                'valor_pago_acumulado' => 0.00,
+                'status' => 'ABERTO',
+                'historico' => "Faturamento do Projeto [{$projeto->nome}]: Marco {$entregavel->titulo}",
+            ]);
+        });
+
+        return response()->json(['data' => ['message' => 'Fatura gerada com sucesso e injetada no Contas a Receber!']]);
+    }
 }
 
 
@@ -29628,6 +29868,57 @@ class Candidato extends Model
     public function vaga(): BelongsTo
     {
         return $this->belongsTo(Vaga::class, 'vaga_id');
+    }
+}
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CentroCusto.php
+========================================
+
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class CentroCusto extends Model
+{
+    use SoftDeletes, BelongsToTenant;
+
+    protected $table = 'fin_centros_custos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'parent_id', 'codigo', 'nome', 'is_sintetico', 'is_ativo'
+    ];
+
+    protected $casts = [
+        'is_sintetico' => 'boolean',
+        'is_ativo' => 'boolean',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(CentroCusto::class, 'parent_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(CentroCusto::class, 'parent_id')->orderBy('codigo');
     }
 }
 
@@ -32412,6 +32703,57 @@ class Plano extends Model
         return $this->hasMany(Assinatura::class, 'plano_id');
     }
 }
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PlanoConta.php
+========================================
+
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class PlanoConta extends Model
+{
+    use SoftDeletes, BelongsToTenant;
+
+    protected $table = 'fin_planos_contas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'parent_id', 'codigo', 'nome', 'tipo', 'is_sintetico', 'is_ativo'
+    ];
+
+    protected $casts = [
+        'is_sintetico' => 'boolean',
+        'is_ativo' => 'boolean',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(PlanoConta::class, 'parent_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(PlanoConta::class, 'parent_id')->orderBy('codigo');
+    }
+}
+
 
 
 ========================================
@@ -42131,6 +42473,138 @@ return new class extends Migration
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_21_224240_create_pmo_financeiro_tables.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (!Schema::hasTable('prj_custos')) {
+            Schema::create('prj_custos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('projeto_id')->index();
+                $table->string('descricao', 255);
+                $table->decimal('valor', 15, 2);
+                $table->date('data_custo');
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('prj_entregaveis')) {
+            Schema::create('prj_entregaveis', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('projeto_id')->index();
+                $table->string('titulo', 255);
+                $table->decimal('valor_faturamento', 15, 2);
+                $table->date('data_prevista')->nullable();
+                $table->string('status', 50)->default('PENDENTE'); // PENDENTE, FATURADO
+                $table->timestamps();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('prj_entregaveis');
+        Schema::dropIfExists('prj_custos');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_22_235422_create_fin_controladoria_tables.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Plano de Contas (Natureza da despesa/receita)
+        if (!Schema::hasTable('fin_planos_contas')) {
+            Schema::create('fin_planos_contas', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('parent_id')->nullable()->comment('ID da conta pai para hierarquia');
+                $table->string('codigo', 50)->comment('Ex: 1.01.001');
+                $table->string('nome', 150);
+                $table->string('tipo', 50)->comment('RECEITA, DESPESA, ATIVO, PASSIVO');
+                $table->boolean('is_sintetico')->default(false)->comment('True = Apenas agrupadora, False = Aceita lançamentos');
+                $table->boolean('is_ativo')->default(true);
+                $table->timestamps();
+                $table->softDeletes();
+            });
+
+            // FK adicionada num bloco separado para garantir que a tabela já existe no PostgreSQL
+            Schema::table('fin_planos_contas', function (Blueprint $table) {
+                $table->foreign('parent_id')->references('id')->on('fin_planos_contas')->onDelete('cascade');
+            });
+        }
+
+        // 2. Centros de Custo (Local/Departamento do gasto)
+        if (!Schema::hasTable('fin_centros_custos')) {
+            Schema::create('fin_centros_custos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('parent_id')->nullable();
+                $table->string('codigo', 50)->comment('Ex: 01.01');
+                $table->string('nome', 150);
+                $table->boolean('is_sintetico')->default(false);
+                $table->boolean('is_ativo')->default(true);
+                $table->timestamps();
+                $table->softDeletes();
+            });
+
+            // FK adicionada num bloco separado
+            Schema::table('fin_centros_custos', function (Blueprint $table) {
+                $table->foreign('parent_id')->references('id')->on('fin_centros_custos')->onDelete('cascade');
+            });
+        }
+
+        // 3. Amarrar aos Títulos Financeiros existentes de forma retrocompatível
+        if (Schema::hasTable('fin_titulos_financeiros')) {
+            Schema::table('fin_titulos_financeiros', function (Blueprint $table) {
+                if (!Schema::hasColumn('fin_titulos_financeiros', 'plano_conta_id')) {
+                    $table->uuid('plano_conta_id')->nullable()->after('status');
+                }
+                if (!Schema::hasColumn('fin_titulos_financeiros', 'centro_custo_id')) {
+                    $table->uuid('centro_custo_id')->nullable()->after('plano_conta_id');
+                }
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasTable('fin_titulos_financeiros')) {
+            Schema::table('fin_titulos_financeiros', function (Blueprint $table) {
+                if (Schema::hasColumn('fin_titulos_financeiros', 'plano_conta_id')) $table->dropColumn('plano_conta_id');
+                if (Schema::hasColumn('fin_titulos_financeiros', 'centro_custo_id')) $table->dropColumn('centro_custo_id');
+            });
+        }
+        Schema::dropIfExists('fin_centros_custos');
+        Schema::dropIfExists('fin_planos_contas');
+    }
+};
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\DatabaseSeeder.php
 ========================================
 
@@ -43355,6 +43829,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/financeiro/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
     Route::post('/financeiro/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
 
+    // Controladoria (DRE, Planos de Contas e Centros de Custo)
+        Route::prefix('controladoria')->group(function () {
+            Route::get('/planos-contas', [ControladoriaController::class, 'indexPlanosContas']);
+            Route::post('/planos-contas', [ControladoriaController::class, 'storePlanoConta']);
+
+            Route::get('/centros-custos', [ControladoriaController::class, 'indexCentrosCustos']);
+            Route::post('/centros-custos', [ControladoriaController::class, 'storeCentroCusto']);
+        });
+
     // Exportações Contábeis & SPED
     Route::get('/exportacoes/metricas', [ExportacaoContabilController::class, 'metricas']);
     Route::get('/exportacoes/download', [ExportacaoContabilController::class, 'download']);
@@ -43532,6 +44015,14 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         // Novas rotas de Taxonomia de Fluxos (Etapas)
         Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
         Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
+
+        // Financeiro do PMO: Custos e Entregáveis
+        Route::get('/{projetoId}/custos', [ProjetoController::class, 'custos']);
+        Route::post('/{projetoId}/custos', [ProjetoController::class, 'storeCusto']);
+
+        Route::get('/{projetoId}/entregaveis', [ProjetoController::class, 'entregaveis']);
+        Route::post('/{projetoId}/entregaveis', [ProjetoController::class, 'storeEntregavel']);
+        Route::post('/entregaveis/{entregavelId}/faturar', [ProjetoController::class, 'faturarEntregavel']);
     });
 
     // ==========================================

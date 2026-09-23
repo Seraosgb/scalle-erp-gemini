@@ -43,6 +43,7 @@ use App\Http\Controllers\Api\TimesheetController;
 use App\Http\Controllers\Api\ProjetoGestaoController;
 use App\Http\Controllers\Api\GedController;
 use App\Http\Controllers\Api\PmoConfigController;
+use App\Http\Controllers\Api\ControladoriaController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
