@@ -21,6 +21,7 @@ import PdvPage from './pages/vendas/PdvPage';
 import ComprasPage from './pages/compras/ComprasPage';
 import CotacoesComprasPage from './pages/compras/CotacoesComprasPage';
 import FinanceiroPage from './pages/financeiro/FinanceiroPage';
+import ConciliacaoBancaria from './pages/financeiro/ConciliacaoBancaria';
 import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
 import FiscalPage from './pages/fiscal/FiscalPage';
 import FiscalTestScreen from './pages/fiscal/FiscalTestScreen';
@@ -124,6 +125,8 @@ export default function App() {
 
             {/* Financeiro, Fiscal & Controladoria */}
             <Route path="financeiro" element={<FinanceiroPage />} />
+            <Route path="financeiro/conciliacao" element={<ConciliacaoBancaria />} />
+            <Route path="controladoria/config" element={<ControladoriaConfig />} />
             <Route path="controladoria/config" element={<ControladoriaConfig />} />
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />

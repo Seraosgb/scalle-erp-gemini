@@ -100,6 +100,7 @@ export default function AppLayout() {
     { name: 'Gestão de Projetos (PMO)', path: '/app/projetos', icon: Kanban, end: false },
     { name: 'Configuração do PMO', path: '/app/configuracoes/pmo', icon: Settings, end: false },
     { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign, end: true },
+    { name: 'Conciliação Bancária', path: '/app/financeiro/conciliacao', icon: RefreshCw },
     { name: 'Árvore Contábil & DRE', path: '/app/controladoria/config', icon: GitMerge },
     { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
     { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
