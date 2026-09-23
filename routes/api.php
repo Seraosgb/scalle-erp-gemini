@@ -215,6 +215,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/financeiro/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
     Route::post('/financeiro/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
 
+    // Controladoria (DRE, Planos de Contas e Centros de Custo)
+        Route::prefix('controladoria')->group(function () {
+            Route::get('/planos-contas', [ControladoriaController::class, 'indexPlanosContas']);
+            Route::post('/planos-contas', [ControladoriaController::class, 'storePlanoConta']);
+
+            Route::get('/centros-custos', [ControladoriaController::class, 'indexCentrosCustos']);
+            Route::post('/centros-custos', [ControladoriaController::class, 'storeCentroCusto']);
+        });
+
     // Exportações Contábeis & SPED
     Route::get('/exportacoes/metricas', [ExportacaoContabilController::class, 'metricas']);
     Route::get('/exportacoes/download', [ExportacaoContabilController::class, 'download']);
