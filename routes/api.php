@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\ProjetoGestaoController;
 use App\Http\Controllers\Api\GedController;
 use App\Http\Controllers\Api\PmoConfigController;
 use App\Http\Controllers\Api\ControladoriaController;
+use App\Http\Controllers\Api\ConciliacaoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -225,6 +226,10 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
             Route::post('/centros-custos', [ControladoriaController::class, 'storeCentroCusto']);
 
             Route::post('/gerar-padrao', [ControladoriaController::class, 'gerarEstruturaPadrao']);
+        });
+        // Conciliação Bancária
+        Route::prefix('conciliacao')->group(function () {
+            Route::post('/ofx', [ConciliacaoController::class, 'processarOfx']);
         });
 
     // Exportações Contábeis & SPED
