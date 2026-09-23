@@ -7,6 +7,7 @@ use App\Models\CentroCusto;
 use App\Models\PlanoConta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class ControladoriaController extends Controller
 {
