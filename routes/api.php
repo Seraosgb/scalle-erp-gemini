@@ -216,6 +216,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/financeiro/contas', [FinanceiroController::class, 'contas']);
     Route::get('/financeiro/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
     Route::post('/financeiro/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
+    Route::get('/contas', [FinanceiroController::class, 'contas']);
+    Route::post('/contas', [FinanceiroController::class, 'storeConta']);
 
     // Controladoria (DRE, Planos de Contas e Centros de Custo)
         Route::prefix('controladoria')->group(function () {

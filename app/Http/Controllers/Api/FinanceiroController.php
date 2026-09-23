@@ -111,4 +111,46 @@ class FinanceiroController extends Controller
             ], 422);
         }
     }
+    public function storeConta(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'tipo_conta' => 'required|string|in:BANCO,CAIXA,CARTAO_CREDITO',
+            'codigo_banco' => 'nullable|string|max:10',
+            'agencia' => 'nullable|string|max:20',
+            'numero_conta' => 'nullable|string|max:30',
+            'saldo_inicial' => 'nullable|numeric',
+        ]);
+
+        $saldoInicial = (float) ($validated['saldo_inicial'] ?? 0.00);
+
+        try {
+            $conta = ContaFinanceira::create([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'nome' => $validated['nome'],
+                'tipo_conta' => $validated['tipo_conta'],
+                'codigo_banco' => $validated['codigo_banco'] ?? null,
+                'agencia' => $validated['agencia'] ?? null,
+                'numero_conta' => $validated['numero_conta'] ?? null,
+                'saldo_inicial' => $saldoInicial,
+                'saldo_atual' => $saldoInicial,
+                'is_ativo' => true,
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Conta bancária registrada com sucesso!',
+                    'conta' => $conta
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao criar conta bancária: ' . $e->getMessage()]], 422);
+        }
+    }
 }
