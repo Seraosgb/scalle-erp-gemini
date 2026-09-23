@@ -26,6 +26,9 @@ import FiscalPage from './pages/fiscal/FiscalPage';
 import FiscalTestScreen from './pages/fiscal/FiscalTestScreen';
 import UsuariosPage from './pages/usuarios/UsuariosPage';
 
+// Controladoria
+import ControladoriaConfig from './pages/Configuracoes/ControladoriaConfig';
+
 // CRM & Funil
 import BoardCrm from './pages/crm/BoardCrm';
 import ConfiguracoesCrm from './pages/crm/ConfiguracoesCrm';
@@ -117,12 +120,11 @@ export default function App() {
             {/* Projetos & B2B */}
             <Route path="projetos" element={<ProjetosList />} />
             <Route path="projetos/:id" element={<ProjetoDashboard />} />
-
-            {/* CORREÇÃO DA ROTA ABAIXO PARA MATCH COM O MENU */}
             <Route path="configuracoes/pmo" element={<PmoConfig />} />
 
             {/* Financeiro, Fiscal & Controladoria */}
             <Route path="financeiro" element={<FinanceiroPage />} />
+            <Route path="controladoria/config" element={<ControladoriaConfig />} />
             <Route path="exportacoes" element={<ExportacoesPage />} />
             <Route path="fiscal" element={<FiscalPage />} />
             <Route path="fiscal/test" element={<FiscalTestScreen />} />
