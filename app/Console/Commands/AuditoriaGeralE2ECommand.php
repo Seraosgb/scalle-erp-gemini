@@ -49,7 +49,6 @@ class AuditoriaGeralE2ECommand extends Command
         DB::beginTransaction();
 
         try {
-            // Execução em cascata dos 10 Módulos de Teste
             $this->auditarCoreMultiTenant();
             $this->auditarMultiFilial();
             $this->auditarComercialAlcadas();
@@ -64,7 +63,6 @@ class AuditoriaGeralE2ECommand extends Command
         } catch (Exception $e) {
             $this->registrarResultado("FALHA CRÍTICA INESPERADA", false, $e->getMessage(), "Execução Geral");
         } finally {
-            // Rollback obrigatório para manter a integridade da base real de produção intacta
             DB::rollBack();
             $this->line("Rollback transacional executado com sucesso. Base de dados limpa.");
         }
@@ -315,11 +313,34 @@ class AuditoriaGeralE2ECommand extends Command
     private function auditarBillingSoftLock(): void
     {
         $modulo = "8. Billing & Soft-Lock";
+
         $tenantSoftLock = Tenant::create(['id' => (string) Str::uuid(), 'nome_fantasia' => 'SoftLock Test', 'razao_social' => 'SoftLock Test', 'documento' => '99999999000199', 'status' => 'soft_lock']);
+
+        // CORREÇÃO MÓDULO 8: Injetar o Tenant ANTES de criar a assinatura para o trait BelongsToTenant não vazar escopo
+        App::instance('current_tenant_id', $tenantSoftLock->id);
+
+        $plano = Plano::first() ?? Plano::create([
+            'id' => (string) Str::uuid(),
+            'nome' => 'Plano Auditoria',
+            'slug' => 'plano-audit-' . Str::random(4),
+            'valor_mensal' => 199.00,
+            'limite_usuarios' => 10,
+            'cota_storage_bytes' => 10737418240,
+            'is_ativo' => true,
+        ]);
+
+        Assinatura::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantSoftLock->id,
+            'plano_id' => $plano->id,
+            'status' => 'SOFT_LOCK',
+            'data_inicio' => now()->subDays(30)->toDateString(),
+            'data_proximo_vencimento' => now()->subDays(5)->toDateString(),
+            'storage_utilizado_bytes' => 0,
+        ]);
 
         $userTenant = new User(['id' => (string) Str::uuid(), 'tenant_id' => $tenantSoftLock->id, 'name' => 'Inquilino Bloqueado', 'is_master' => false]);
 
-        App::instance('current_tenant_id', $tenantSoftLock->id);
         auth()->setUser($userTenant);
         request()->setUserResolver(fn() => $userTenant);
 
@@ -333,7 +354,12 @@ class AuditoriaGeralE2ECommand extends Command
         $reqGet->setUserResolver(fn() => $userTenant);
         $respGet = $middleware->handle($reqGet, fn() => response()->json(['data' => []], 200));
 
-        $this->registrarResultado("Proteção do Soft-Lock (Bloqueio Escrita, Permite Leitura)", ($respPost->getStatusCode() === 402 && $respGet->getStatusCode() === 200), "402 no POST, 200 no GET", $modulo);
+        $this->registrarResultado(
+            "Proteção do Soft-Lock (Bloqueio Escrita, Permite Leitura)",
+            ($respPost->getStatusCode() === 402 && $respGet->getStatusCode() === 200),
+            "POST retornou {$respPost->getStatusCode()} e GET retornou {$respGet->getStatusCode()}",
+            $modulo
+        );
     }
 
     private function auditarCrm(): void
@@ -377,10 +403,14 @@ class AuditoriaGeralE2ECommand extends Command
         $empresa = Empresa::where('tenant_id', $tenantId)->first();
         App::instance('current_tenant_id', $tenantId);
 
+        // CORREÇÃO MÓDULO 10: Adicionado o destinatario_id que é obrigatório (NOT NULL) no banco de dados
+        $destinatario = Pessoa::where('tenant_id', $tenantId)->first();
+
         $doc = DocumentoFiscal::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresa->id,
+            'destinatario_id' => $destinatario->id,
             'modelo_documento' => '55',
             'numero_documento' => '99999',
             'status' => 'AUTORIZADO',
@@ -388,7 +418,6 @@ class AuditoriaGeralE2ECommand extends Command
             'valor_total' => 100.00,
         ]);
 
-        // Simula a averbação de uma CC-e chamando a atualização do banco
         $doc->update([
             'mensagem_sefaz' => 'CC-e Vinculada com Sucesso. Correção averbada: Retificação do Endereço E2E',
         ]);
@@ -407,7 +436,6 @@ class AuditoriaGeralE2ECommand extends Command
         $caminhoJson = "{$diretorio}/auditoria_{$timestamp}.json";
         $caminhoHtml = "{$diretorio}/auditoria_{$timestamp}.html";
 
-        // 1. Salva JSON estruturado
         File::put($caminhoJson, json_encode([
             'data_execucao' => now()->toIso8601String(),
             'duracao_segundos' => $duracao,
@@ -417,7 +445,6 @@ class AuditoriaGeralE2ECommand extends Command
             'itens' => $this->relatorio,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
-        // 2. Salva Relatório HTML Visual
         $linhasTabela = '';
         foreach ($this->relatorio as $item) {
             $corBadge = $item['status'] === 'PASS' ? '#10b981' : '#ef4444';
