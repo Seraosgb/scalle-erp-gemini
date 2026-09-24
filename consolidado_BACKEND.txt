@@ -22099,6 +22099,165 @@ class CompraController extends Controller
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ConciliacaoController.php
+========================================
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\TituloFinanceiro;
+use App\Models\ContaFinanceira;
+use App\Services\OfxParserService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class ConciliacaoController extends Controller
+{
+    public function processarOfx(Request $request): JsonResponse
+    {
+        $request->validate([
+            'arquivo_ofx' => 'required|file',
+            'conta_financeira_id' => 'required|uuid|exists:fin_contas_financeiras,id',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+
+        try {
+            // 1. Lê e faz o Parse do Arquivo
+            $conteudo = file_get_contents($request->file('arquivo_ofx')->getRealPath());
+            $transacoesBanco = OfxParserService::parse($conteudo);
+
+            // 2. Busca Títulos Financeiros em Aberto no ERP
+            $titulosAbertos = TituloFinanceiro::where('tenant_id', $tenantId)
+                ->whereIn('status', ['ABERTO', 'PARCIAL'])
+                ->with('pessoa')
+                ->get();
+
+            // 3. Motor de Sugestão (Matching Inteligente)
+            foreach ($transacoesBanco as &$transacao) {
+                $transacao['sugestoes'] = [];
+                $transacao['status_conciliacao'] = 'PENDENTE';
+
+                foreach ($titulosAbertos as $titulo) {
+                    // Regra de Match 1: Mesma Natureza e Mesmo Valor Exato
+                    if ($titulo->natureza === $transacao['natureza'] && round($titulo->valor_saldo_aberto, 2) === round($transacao['valor'], 2)) {
+                        $transacao['sugestoes'][] = $titulo;
+                    }
+                }
+
+                // Se encontrou sugestões, ordena para colocar no topo as que têm data de vencimento mais próxima da transação
+                if (!empty($transacao['sugestoes'])) {
+                    usort($transacao['sugestoes'], function($a, $b) use ($transacao) {
+                        $diffA = abs(strtotime($a->data_vencimento) - strtotime($transacao['data']));
+                        $diffB = abs(strtotime($b->data_vencimento) - strtotime($transacao['data']));
+                        return $diffA <=> $diffB;
+                    });
+                }
+            }
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Arquivo OFX processado com sucesso!',
+                    'conta_financeira_id' => $request->conta_financeira_id,
+                    'total_transacoes_lidas' => count($transacoesBanco),
+                    'extrato_processado' => $transacoesBanco,
+                ]
+            ]);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'OFX_PARSE_ERROR',
+                    'message' => 'Falha ao ler o arquivo OFX. Verifique se o formato exportado pelo banco é válido. Detalhes: ' . $e->getMessage()
+                ]
+            ], 422);
+        }
+    }
+
+    public function conciliarManual(Request $request): JsonResponse
+    {
+        // 1. Validação mais flexível para aceitar dados do Parser OFX sem barrar
+        $validated = $request->validate([
+            'conta_financeira_id' => 'required',
+            'plano_conta_id' => 'required',
+            'centro_custo_id' => 'required',
+            'descricao' => 'required|string|max:200',
+            'valor' => 'required|numeric|min:0.01',
+            'natureza' => 'required|string|in:PAGAR,RECEBER',
+            'data_transacao' => 'required|date',
+            'id_transacao_banco' => 'required',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        try {
+            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId) {
+
+                // 2. Cria ou recupera uma Pessoa Genérica para não quebrar a Foreign Key do BD
+                $pessoaPadrao = \App\Models\Pessoa::firstOrCreate(
+                    ['tenant_id' => $tenantId, 'cpf_cnpj' => '00000000000000'],
+                    [
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'tipo_pessoa' => 'PJ',
+                        'nome_razao_social' => 'Operações Bancárias / Avulsos',
+                        'is_fornecedor' => true,
+                        'is_ativo' => true
+                    ]
+                );
+
+                // 3. Usa forceFill para injetar direto no banco ignorando proteções de $fillable do Model
+                $novoTitulo = new \App\Models\TituloFinanceiro();
+                $novoTitulo->forceFill([
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'empresa_id' => $empresaId,
+                    'pessoa_id' => $pessoaPadrao->id, // Pessoa garantida!
+                    'plano_conta_id' => $validated['plano_conta_id'],
+                    'centro_custo_id' => $validated['centro_custo_id'],
+                    'natureza' => $validated['natureza'],
+                    'documento_numero' => 'OFX-' . substr((string)$validated['id_transacao_banco'], -8),
+                    'parcela_numero' => 1,
+                    'total_parcelas' => 1,
+                    'data_emissao' => $validated['data_transacao'],
+                    'data_vencimento' => $validated['data_transacao'],
+                    'valor_original' => $validated['valor'],
+                    'valor_saldo_aberto' => 0,
+                    'valor_pago_acumulado' => $validated['valor'],
+                    'status' => 'LIQUIDADO',
+                    'data_liquidacao' => $validated['data_transacao'],
+                    'historico' => 'Conciliação OFX: ' . $validated['descricao'],
+                ]);
+                $novoTitulo->save();
+
+                // 4. Atualiza o saldo da conta
+                $conta = \App\Models\ContaFinanceira::findOrFail($validated['conta_financeira_id']);
+                $tipoMov = $validated['natureza'] === 'PAGAR' ? 'SAIDA' : 'ENTRADA';
+
+                $conta->update([
+                    'saldo_atual' => $tipoMov === 'ENTRADA'
+                        ? $conta->saldo_atual + $validated['valor']
+                        : $conta->saldo_atual - $validated['valor']
+                ]);
+
+                return $novoTitulo;
+            });
+
+            return response()->json(['data' => ['message' => 'Lançamento avulso criado e conciliado com sucesso!', 'titulo' => $titulo]]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro interno ao salvar: ' . $e->getMessage()]], 422);
+        }
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ControladoriaController.php
 ========================================
 
@@ -22177,6 +22336,106 @@ class ControladoriaController extends Controller
         $centro = CentroCusto::create(array_merge($validated, ['tenant_id' => $tenantId]));
 
         return response()->json(['data' => $centro], 201);
+    }
+
+    // ==========================================
+    // ONBOARDING: GERADOR AUTOMÁTICO
+    // ==========================================
+    public function gerarEstruturaPadrao(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // Evita duplicidade se já houver plano de contas
+        if (\App\Models\PlanoConta::where('tenant_id', $tenantId)->exists()) {
+            return response()->json(['error' => ['message' => 'O Tenant já possui uma estrutura de contas cadastrada.']], 422);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($tenantId) {
+            // 1. RECEITAS
+            $receitaId = (string) Str::uuid();
+            \App\Models\PlanoConta::create(['id' => $receitaId, 'tenant_id' => $tenantId, 'codigo' => '1', 'nome' => 'Receitas', 'tipo' => 'RECEITA', 'is_sintetico' => true]);
+
+            \App\Models\PlanoConta::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $receitaId, 'codigo' => '1.01', 'nome' => 'Receitas Operacionais (Serviços)', 'tipo' => 'RECEITA', 'is_sintetico' => false]);
+            \App\Models\PlanoConta::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $receitaId, 'codigo' => '1.02', 'nome' => 'Receitas com Vendas (Produtos)', 'tipo' => 'RECEITA', 'is_sintetico' => false]);
+
+            // 2. DESPESAS E CUSTOS
+            $despesaId = (string) Str::uuid();
+            \App\Models\PlanoConta::create(['id' => $despesaId, 'tenant_id' => $tenantId, 'codigo' => '2', 'nome' => 'Custos e Despesas', 'tipo' => 'DESPESA', 'is_sintetico' => true]);
+
+            $custoOp = (string) Str::uuid();
+            \App\Models\PlanoConta::create(['id' => $custoOp, 'tenant_id' => $tenantId, 'parent_id' => $despesaId, 'codigo' => '2.01', 'nome' => 'Custos Operacionais', 'tipo' => 'DESPESA', 'is_sintetico' => true]);
+            \App\Models\PlanoConta::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $custoOp, 'codigo' => '2.01.01', 'nome' => 'Compra de Mercadorias / Insumos', 'tipo' => 'DESPESA', 'is_sintetico' => false]);
+            \App\Models\PlanoConta::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $custoOp, 'codigo' => '2.01.02', 'nome' => 'Folha de Pagamento e Encargos', 'tipo' => 'DESPESA', 'is_sintetico' => false]);
+
+            $despesaAdm = (string) Str::uuid();
+            \App\Models\PlanoConta::create(['id' => $despesaAdm, 'tenant_id' => $tenantId, 'parent_id' => $despesaId, 'codigo' => '2.02', 'nome' => 'Despesas Administrativas', 'tipo' => 'DESPESA', 'is_sintetico' => true]);
+            \App\Models\PlanoConta::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $despesaAdm, 'codigo' => '2.02.01', 'nome' => 'Água, Luz, Telefone e Internet', 'tipo' => 'DESPESA', 'is_sintetico' => false]);
+            \App\Models\PlanoConta::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $despesaAdm, 'codigo' => '2.02.02', 'nome' => 'Softwares e Assinaturas (SaaS)', 'tipo' => 'DESPESA', 'is_sintetico' => false]);
+
+            // 3. CENTRO DE CUSTO BASE
+            $ccRaiz = (string) Str::uuid();
+            \App\Models\CentroCusto::create(['id' => $ccRaiz, 'tenant_id' => $tenantId, 'codigo' => '01', 'nome' => 'Matriz Operacional', 'is_sintetico' => true]);
+            \App\Models\CentroCusto::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $ccRaiz, 'codigo' => '01.01', 'nome' => 'Administrativo & Diretoria', 'is_sintetico' => false]);
+            \App\Models\CentroCusto::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'parent_id' => $ccRaiz, 'codigo' => '01.02', 'nome' => 'Operação & Logística', 'is_sintetico' => false]);
+        });
+
+        return response()->json(['data' => ['message' => 'Estrutura contábil e de centros de custo gerada com sucesso!']]);
+    }
+
+    public function conciliarManual(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'conta_financeira_id' => 'required|uuid|exists:fin_contas_financeiras,id',
+            'plano_conta_id' => 'required|uuid|exists:fin_planos_contas,id',
+            'centro_custo_id' => 'required|uuid|exists:fin_centros_custos,id',
+            'descricao' => 'required|string|max:200',
+            'valor' => 'required|numeric|min:0.01',
+            'natureza' => 'required|string|in:PAGAR,RECEBER',
+            'data_transacao' => 'required|date',
+            'id_transacao_banco' => 'required|string',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        try {
+            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId, $request) {
+                // 1. Cria o Título já liquidado
+                $novoTitulo = \App\Models\TituloFinanceiro::create([
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'empresa_id' => $empresaId,
+                    'plano_conta_id' => $validated['plano_conta_id'],
+                    'centro_custo_id' => $validated['centro_custo_id'],
+                    'natureza' => $validated['natureza'],
+                    'documento_numero' => 'OFX-' . substr($validated['id_transacao_banco'], -8),
+                    'parcela_numero' => 1,
+                    'total_parcelas' => 1,
+                    'data_emissao' => $validated['data_transacao'],
+                    'data_vencimento' => $validated['data_transacao'],
+                    'valor_original' => $validated['valor'],
+                    'valor_saldo_aberto' => 0,
+                    'valor_pago_acumulado' => $validated['valor'],
+                    'status' => 'LIQUIDADO',
+                    'data_liquidacao' => $validated['data_transacao'],
+                    'historico' => 'Conciliação Avulsa OFX: ' . $validated['descricao'],
+                ]);
+
+                // 2. Altera o saldo do banco (A tabela de MovimentacaoExtrato deve existir ou ser ignorada caso não a usemos estritamente aqui)
+                $conta = \App\Models\ContaFinanceira::findOrFail($validated['conta_financeira_id']);
+                $tipoMov = $validated['natureza'] === 'PAGAR' ? 'SAIDA' : 'ENTRADA';
+
+                $conta->update([
+                    'saldo_atual' => $tipoMov === 'ENTRADA' ? $conta->saldo_atual + $validated['valor'] : $conta->saldo_atual - $validated['valor']
+                ]);
+
+                return $novoTitulo;
+            });
+
+            return response()->json(['data' => ['message' => 'Lançamento avulso criado e conciliado!', 'titulo' => $titulo]]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
     }
 }
 
@@ -24009,7 +24268,50 @@ class FinanceiroController extends Controller
             ], 422);
         }
     }
+    public function storeConta(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'tipo_conta' => 'required|string|in:BANCO,CAIXA,CARTAO_CREDITO',
+            'codigo_banco' => 'nullable|string|max:10',
+            'agencia' => 'nullable|string|max:20',
+            'numero_conta' => 'nullable|string|max:30',
+            'saldo_inicial' => 'nullable|numeric',
+        ]);
+
+        $saldoInicial = (float) ($validated['saldo_inicial'] ?? 0.00);
+
+        try {
+            $conta = ContaFinanceira::create([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'nome' => $validated['nome'],
+                'tipo_conta' => $validated['tipo_conta'],
+                'codigo_banco' => $validated['codigo_banco'] ?? null,
+                'agencia' => $validated['agencia'] ?? null,
+                'numero_conta' => $validated['numero_conta'] ?? null,
+                'saldo_inicial' => $saldoInicial,
+                'saldo_atual' => $saldoInicial,
+                'is_ativo' => true,
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Conta bancária registrada com sucesso!',
+                    'conta' => $conta
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao criar conta bancária: ' . $e->getMessage()]], 422);
+        }
+    }
 }
+
 
 
 ========================================
@@ -34753,6 +35055,79 @@ class MotorFiscalService
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\OfxParserService.php
+========================================
+
+<?php
+
+namespace App\Services;
+
+class OfxParserService
+{
+    /**
+     * Faz o parse de um arquivo OFX bancário extraindo as transações financeiras.
+     */
+    public static function parse(string $conteudo): array
+    {
+        $transacoes = [];
+
+        // Isola tudo que está dentro de blocos <STMTTRN> ... </STMTTRN> (ou até a próxima tag)
+        preg_match_all('/<STMTTRN>(.*?)<\/STMTTRN>/is', $conteudo, $matches);
+
+        // Fallback caso o banco exporte um OFX 1.0 rudimentar sem a tag de fechamento </STMTTRN>
+        if (empty($matches[1])) {
+            preg_match_all('/<STMTTRN>(.*?)(?=<STMTTRN>|<\/BANKTRANLIST>)/is', $conteudo, $matches);
+        }
+
+        foreach ($matches[1] as $bloco) {
+            $tipoRaw = self::extrairTag($bloco, 'TRNTYPE');
+            $dataRaw = self::extrairTag($bloco, 'DTPOSTED');
+            $valorRaw = self::extrairTag($bloco, 'TRNAMT');
+            $idBanco = self::extrairTag($bloco, 'FITID');
+            $descricaoRaw = self::extrairTag($bloco, 'MEMO') ?: self::extrairTag($bloco, 'NAME');
+
+            // Formatação da Data (YYYYMMDD)
+            $dataBase = substr($dataRaw, 0, 8);
+            $dataFormatada = substr($dataBase, 0, 4) . '-' . substr($dataBase, 4, 2) . '-' . substr($dataBase, 6, 2);
+
+            // Formatação do Valor
+            $valor = (float) str_replace(',', '.', $valorRaw);
+
+            // Determinar Natureza
+            $natureza = $valor < 0 ? 'PAGAR' : 'RECEBER';
+
+            // Limpeza de encoding para evitar erros em caracteres com acentos (típico de extratos)
+            $descricaoLimpa = mb_convert_encoding(trim($descricaoRaw), 'UTF-8', mb_detect_encoding(trim($descricaoRaw), 'UTF-8, ISO-8859-1', true));
+
+            $transacoes[] = [
+                'id_transacao_banco' => $idBanco,
+                'tipo_ofx' => $tipoRaw,
+                'natureza' => $natureza,
+                'data' => $dataFormatada,
+                'valor' => abs($valor),
+                'valor_original' => $valor,
+                'descricao' => $descricaoLimpa,
+            ];
+        }
+
+        // Ordena por data
+        usort($transacoes, fn($a, $b) => strtotime($a['data']) <=> strtotime($b['data']));
+
+        return $transacoes;
+    }
+
+    private static function extrairTag(string $bloco, string $tag): string
+    {
+        if (preg_match('/<'.$tag.'>([^<]+)/i', $bloco, $match)) {
+            return trim($match[1]);
+        }
+        return '';
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\OrdemServicoService.php
 ========================================
 
@@ -43657,6 +44032,8 @@ use App\Http\Controllers\Api\TimesheetController;
 use App\Http\Controllers\Api\ProjetoGestaoController;
 use App\Http\Controllers\Api\GedController;
 use App\Http\Controllers\Api\PmoConfigController;
+use App\Http\Controllers\Api\ControladoriaController;
+use App\Http\Controllers\Api\ConciliacaoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -43823,11 +44200,15 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::put('/os/{id}/pecas/{itemId}/almoxarifado', [OrdemServicoController::class, 'tratarPecaAlmoxarifado']);
     Route::put('/os/{id}/dados-tecnicos', [OrdemServicoController::class, 'atualizarDadosTecnicos']);
 
-    // Financeiro & Tesouraria
-    Route::get('/financeiro/titulos', [FinanceiroController::class, 'titulos']);
-    Route::get('/financeiro/contas', [FinanceiroController::class, 'contas']);
-    Route::get('/financeiro/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
-    Route::post('/financeiro/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
+   // Financeiro & Tesouraria
+    Route::prefix('financeiro')->group(function () {
+        Route::get('/titulos', [FinanceiroController::class, 'titulos']);
+        Route::post('/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
+
+        Route::get('/contas', [FinanceiroController::class, 'contas']);
+        Route::post('/contas', [FinanceiroController::class, 'storeConta']);
+        Route::get('/contas/{id}/extrato', [FinanceiroController::class, 'extrato']);
+    });
 
     // Controladoria (DRE, Planos de Contas e Centros de Custo)
         Route::prefix('controladoria')->group(function () {
@@ -43836,6 +44217,13 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
 
             Route::get('/centros-custos', [ControladoriaController::class, 'indexCentrosCustos']);
             Route::post('/centros-custos', [ControladoriaController::class, 'storeCentroCusto']);
+
+            Route::post('/gerar-padrao', [ControladoriaController::class, 'gerarEstruturaPadrao']);
+        });
+        // Conciliação Bancária
+        Route::prefix('conciliacao')->group(function () {
+            Route::post('/ofx', [ConciliacaoController::class, 'processarOfx']);
+            Route::post('/ofx/manual', [ConciliacaoController::class, 'conciliarManual']);
         });
 
     // Exportações Contábeis & SPED

@@ -82,6 +82,7 @@ export default function ConciliacaoBancaria() {
                 forma_pagamento: 'TRANSFERENCIA',
             });
             marcarComoConciliado(transacao.id_transacao_banco);
+            setFeedback({ tipo: 'sucesso', msg: 'Transação conciliada e título liquidado com sucesso!' });
         } catch (err) {
             setFeedback({ tipo: 'erro', msg: 'Erro ao conciliar título existente.' });
         } finally {
@@ -96,25 +97,34 @@ export default function ConciliacaoBancaria() {
     };
 
     const handleConciliarAvulso = async (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
+
+        if (!formAvulso.plano_conta_id || !formAvulso.centro_custo_id) {
+            setFeedback({ tipo: 'erro', msg: 'Por favor, selecione o Plano de Contas e o Centro de Custo.' });
+            return;
+        }
+
         setLoading(true);
         try {
-            await api.post('/conciliacao/ofx/manual', {
+            const payload = {
                 conta_financeira_id: contaSelecionada,
                 plano_conta_id: formAvulso.plano_conta_id,
                 centro_custo_id: formAvulso.centro_custo_id,
-                descricao: transacaoAvulsa.descricao,
-                valor: transacaoAvulsa.valor,
+                descricao: transacaoAvulsa.descricao || 'Despesa/Receita Avulsa',
+                valor: parseFloat(transacaoAvulsa.valor),
                 natureza: transacaoAvulsa.natureza,
                 data_transacao: transacaoAvulsa.data,
-                id_transacao_banco: transacaoAvulsa.id_transacao_banco
-            });
+                id_transacao_banco: String(transacaoAvulsa.id_transacao_banco || Date.now())
+            };
+
+            const res = await api.post('/conciliacao/ofx/manual', payload);
+
             marcarComoConciliado(transacaoAvulsa.id_transacao_banco);
             setModalAvulso(false);
-            setFeedback({ tipo: 'sucesso', msg: 'Lançamento avulso criado e conciliado!' });
+            setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Lançamento avulso criado e conciliado!' });
         } catch (err) {
-            const erroMensagem = err.response?.data?.message || err.response?.data?.error?.message || 'Erro ao criar lançamento manual.';
-            setFeedback({ tipo: 'erro', msg: erroMensagem });
+            const msg = err.response?.data?.message || err.response?.data?.error?.message || 'Erro ao processar lançamento manual.';
+            setFeedback({ tipo: 'erro', msg });
         } finally {
             setLoading(false);
         }
@@ -136,7 +146,7 @@ export default function ConciliacaoBancaria() {
             {feedback && (
                 <div className={`p-4 rounded-xl flex items-center justify-between text-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
                     <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /><span className="font-medium">{feedback.msg}</span></div>
-                    <button onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
                 </div>
             )}
 
@@ -193,7 +203,7 @@ export default function ConciliacaoBancaria() {
                                                             <p className="text-xs font-bold text-slate-200">Encontrado: {sug.pessoa?.nome_razao_social || 'Sem Pessoa'}</p>
                                                             <p className="text-[10px] text-slate-500">Doc: {sug.documento_numero}</p>
                                                         </div>
-                                                        <button onClick={() => handleConciliarAuto(t, sug.id)} disabled={conciliandoId === t.id_transacao_banco} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-lg cursor-pointer">
+                                                        <button type="button" onClick={() => handleConciliarAuto(t, sug.id)} disabled={conciliandoId === t.id_transacao_banco} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-lg cursor-pointer">
                                                             {conciliandoId === t.id_transacao_banco ? '...' : 'Auto-Conciliar'}
                                                         </button>
                                                     </div>
@@ -202,7 +212,7 @@ export default function ConciliacaoBancaria() {
                                                 <div className="text-xs text-slate-500 text-center italic border border-dashed border-slate-700 p-2 rounded-xl">Nenhum título exato no ERP.</div>
                                             )}
 
-                                            <button onClick={() => abrirModalAvulso(t)} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-bold rounded-xl transition border border-slate-700 cursor-pointer">
+                                            <button type="button" onClick={() => abrirModalAvulso(t)} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-bold rounded-xl transition border border-slate-700 cursor-pointer">
                                                 <Plus className="h-3 w-3" /> Criar Lançamento Avulso (DRE)
                                             </button>
                                         </div>
@@ -220,7 +230,7 @@ export default function ConciliacaoBancaria() {
                     <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4">
                         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                             <h3 className="text-sm font-bold text-white flex items-center gap-2">Lançamento Avulso</h3>
-                            <button onClick={() => setModalAvulso(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
+                            <button type="button" onClick={() => setModalAvulso(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
                         </div>
 
                         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
@@ -243,8 +253,11 @@ export default function ConciliacaoBancaria() {
                                     {centrosCustos.map(c => <option key={c.id} value={c.id} disabled={c.is_sintetico}>{c.nome}</option>)}
                                 </select>
                             </div>
-                            <div className="pt-3 border-t border-slate-800 flex justify-end">
-                                <button type="submit" disabled={loading} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl cursor-pointer">
+                            <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                                <button type="button" onClick={() => setModalAvulso(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl cursor-pointer">
+                                    Cancelar
+                                </button>
+                                <button type="submit" disabled={loading} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl cursor-pointer">
                                     {loading ? 'Salvando...' : 'Confirmar e Conciliar'}
                                 </button>
                             </div>
