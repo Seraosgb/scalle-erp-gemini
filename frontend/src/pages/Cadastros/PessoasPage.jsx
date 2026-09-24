@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import {
   Users, Plus, Search, CheckCircle2, AlertTriangle,
-  X, Building2, User as UserIcon, Tag, SearchCode
+  X, Building2, User as UserIcon, Tag, SearchCode, UploadCloud
 } from 'lucide-react';
 
 export default function PessoasPage() {
@@ -11,6 +11,11 @@ export default function PessoasPage() {
   const [search, setSearch] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('TODOS');
   const [feedback, setFeedback] = useState(null);
+
+  // Estados da Importação CSV
+  const [modalImportacao, setModalImportacao] = useState(false);
+  const [arquivoCsv, setArquivoCsv] = useState(null);
+  const [importando, setImportando] = useState(false);
 
   // Modais
   const [modalNovo, setModalNovo] = useState(false);
@@ -70,6 +75,29 @@ export default function PessoasPage() {
     }
   };
 
+  const handleImportarCsv = async (e) => {
+    e.preventDefault();
+    if (!arquivoCsv) return;
+
+    setImportando(true);
+    const formData = new FormData();
+    formData.append('arquivo_csv', arquivoCsv);
+
+    try {
+      const res = await api.post('/importacao/pessoas', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message });
+      setModalImportacao(false);
+      setArquivoCsv(null);
+      carregarPessoas();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao importar arquivo.' });
+    } finally {
+      setImportando(false);
+    }
+  };
+
   const handleEditar = (pessoa) => {
     setForm({
       id: pessoa.id,
@@ -104,15 +132,23 @@ export default function PessoasPage() {
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">Base central unificada para RH, Clientes e Fornecedores</p>
         </div>
-        <button
-          onClick={() => {
-            setForm({ id: null, tipo_pessoa: 'PF', nome_razao_social: '', nome_fantasia_apelido: '', cpf_cnpj: '', email_principal: '', telefone_principal: '', is_cliente: false, is_fornecedor: false, is_tecnico: false, is_transportadora: false });
-            setModalNovo(true);
-          }}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-500/30"
-        >
-          <Plus className="h-4 w-4" /> Novo Cadastro
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setModalImportacao(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
+          >
+            <UploadCloud className="h-4 w-4" /> Importar CSV
+          </button>
+          <button
+            onClick={() => {
+              setForm({ id: null, tipo_pessoa: 'PF', nome_razao_social: '', nome_fantasia_apelido: '', cpf_cnpj: '', email_principal: '', telefone_principal: '', is_cliente: false, is_fornecedor: false, is_tecnico: false, is_transportadora: false });
+              setModalNovo(true);
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-500/30 cursor-pointer"
+          >
+            <Plus className="h-4 w-4" /> Novo Cadastro
+          </button>
+        </div>
       </div>
 
       {feedback && (
@@ -121,7 +157,7 @@ export default function PessoasPage() {
             {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
             <span className="font-medium">{feedback.msg}</span>
           </div>
-          <button onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
+          <button onClick={() => setFeedback(null)} className="cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -129,9 +165,9 @@ export default function PessoasPage() {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
         <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-950/50">
           <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-800">
-            <button onClick={() => setFiltroTipo('TODOS')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${filtroTipo === 'TODOS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Todos</button>
-            <button onClick={() => setFiltroTipo('PF')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${filtroTipo === 'PF' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Pessoa Física (PF)</button>
-            <button onClick={() => setFiltroTipo('PJ')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${filtroTipo === 'PJ' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Pessoa Jurídica (PJ)</button>
+            <button onClick={() => setFiltroTipo('TODOS')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${filtroTipo === 'TODOS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Todos</button>
+            <button onClick={() => setFiltroTipo('PF')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${filtroTipo === 'PF' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Pessoa Física (PF)</button>
+            <button onClick={() => setFiltroTipo('PJ')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${filtroTipo === 'PJ' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Pessoa Jurídica (PJ)</button>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -204,7 +240,7 @@ export default function PessoasPage() {
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Users className="h-5 w-5 text-indigo-400" /> {form.id ? 'Editar Cadastro' : 'Nova Pessoa Fís./Jur.'}
               </h2>
-              <button onClick={() => setModalNovo(false)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+              <button onClick={() => setModalNovo(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
             </div>
 
             <form onSubmit={handleSalvar} className="p-6 space-y-5 text-sm">
@@ -260,15 +296,15 @@ export default function PessoasPage() {
                 <label className="block text-xs font-bold text-slate-400 mb-3 flex items-center gap-1.5"><Tag className="h-4 w-4" /> Classificações no ERP (Tags)</label>
                 <div className="flex flex-wrap gap-4">
                   <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                    <input type="checkbox" checked={form.is_cliente} onChange={(e) => setForm({...form, is_cliente: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600" />
+                    <input type="checkbox" checked={form.is_cliente} onChange={(e) => setForm({...form, is_cliente: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600 cursor-pointer" />
                     Cliente
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                    <input type="checkbox" checked={form.is_fornecedor} onChange={(e) => setForm({...form, is_fornecedor: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600" />
+                    <input type="checkbox" checked={form.is_fornecedor} onChange={(e) => setForm({...form, is_fornecedor: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600 cursor-pointer" />
                     Fornecedor
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                    <input type="checkbox" checked={form.is_tecnico} onChange={(e) => setForm({...form, is_tecnico: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600" />
+                    <input type="checkbox" checked={form.is_tecnico} onChange={(e) => setForm({...form, is_tecnico: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600 cursor-pointer" />
                     Técnico de Campo
                   </label>
                 </div>
@@ -278,8 +314,46 @@ export default function PessoasPage() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovo(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition">Cancelar</button>
-                <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold transition shadow-lg shadow-indigo-600/30">Gravar no Diretório</button>
+                <button type="button" onClick={() => setModalNovo(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold transition shadow-lg shadow-indigo-600/30 cursor-pointer">Gravar no Diretório</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE IMPORTAÇÃO CSV */}
+      {modalImportacao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <UploadCloud className="h-5 w-5 text-emerald-400" /> Importação em Lote
+              </h2>
+              <button onClick={() => setModalImportacao(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={handleImportarCsv} className="p-6 space-y-4 text-xs text-slate-300">
+              <p>Envie uma planilha CSV (separada por ponto e vírgula) com as seguintes colunas na ordem exata:</p>
+              <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg font-mono text-[10px] text-indigo-300 overflow-x-auto whitespace-nowrap">
+                NOME ; CPF_CNPJ ; EMAIL ; TELEFONE ; TIPO_PERFIL
+              </div>
+              <p className="text-[10px] text-slate-500 italic">Dica: TIPO_PERFIL pode ser CLIENTE, FORNECEDOR ou AMBOS. A primeira linha (cabeçalho) será ignorada.</p>
+
+              <div className="pt-2">
+                <input
+                  type="file"
+                  accept=".csv"
+                  required
+                  onChange={(e) => setArquivoCsv(e.target.files[0])}
+                  className="w-full text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-white cursor-pointer border border-slate-800 rounded-lg bg-slate-950"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalImportacao(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={importando} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold rounded-xl transition shadow-lg cursor-pointer">
+                  {importando ? 'Processando...' : 'Iniciar Importação'}
+                </button>
               </div>
             </form>
           </div>

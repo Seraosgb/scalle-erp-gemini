@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\GedController;
 use App\Http\Controllers\Api\PmoConfigController;
 use App\Http\Controllers\Api\ControladoriaController;
 use App\Http\Controllers\Api\ConciliacaoController;
+use App\Http\Controllers\Api\ImportacaoController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -53,6 +54,10 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
+// Importador de Dados (Onboarding)
+Route::prefix('importacao')->group(function () {
+Route::post('/pessoas', [ImportacaoController::class, 'importarPessoas']);
+});
 // Webhooks de Captação de Leads (Landing Pages / RD Station)
 Route::post('/crm/webhook/lead/{token}', [CrmInboundController::class, 'receberLead']);
 Route::post('/crm/webhook/{token}', [CrmController::class, 'webhookCapturaLead']);
