@@ -1,0 +1,6 @@
+NOME;CPF_CNPJ;EMAIL;TELEFONE;TIPO_PERFIL
+Empresa Alpha Engenharia LTDA;12345678000199;contato@alpha.com.br;21999990001;CLIENTE
+João Silva Santos;11122233344;joao@email.com;21988880002;AMBOS
+Distribuidora Beta S/A;98765432000188;vendas@beta.com.br;11977770003;FORNECEDOR
+Maria Fernanda Oliveira;55566677788;maria.f@email.com;21966660004;CLIENTE
+Tech Solutions Manutenção ME;44455566000177;suporte@tech.com.br;11955550005;FORNECEDOR

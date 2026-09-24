@@ -54,10 +54,6 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
-// Importador de Dados (Onboarding)
-Route::prefix('importacao')->group(function () {
-Route::post('/pessoas', [ImportacaoController::class, 'importarPessoas']);
-});
 // Webhooks de Captação de Leads (Landing Pages / RD Station)
 Route::post('/crm/webhook/lead/{token}', [CrmInboundController::class, 'receberLead']);
 Route::post('/crm/webhook/{token}', [CrmController::class, 'webhookCapturaLead']);
@@ -132,6 +128,11 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::put('/pessoas/{id}', [PessoaController::class, 'update']);
     Route::delete('/pessoas/{id}', [PessoaController::class, 'destroy']);
     Route::get('/pessoas/consultar-cnpj/{cnpj}', [PessoaController::class, 'consultarCnpj']);
+
+    // Importador de Dados (Onboarding)
+    Route::prefix('importacao')->group(function () {
+    Route::post('/pessoas', [ImportacaoController::class, 'importarPessoas']);
+    });
 
     // Catálogo de Itens & Produtos
     Route::get('/itens', [ItemController::class, 'index']);
