@@ -255,6 +255,11 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/documentos', [FiscalController::class, 'index']);
         Route::get('/regras', [FiscalController::class, 'regras']);
         Route::post('/emitir', [FiscalController::class, 'emitir']);
+
+        // Novas rotas de eventos fiscais
+        Route::post('/{id}/cancelar', [FiscalController::class, 'cancelar']);
+        Route::post('/{id}/carta-correcao', [FiscalController::class, 'cartaCorrecao']);
+
         Route::get('/certificado', [CertificadoFiscalController::class, 'show']);
         Route::post('/certificado/upload', [CertificadoFiscalController::class, 'upload']);
     });
