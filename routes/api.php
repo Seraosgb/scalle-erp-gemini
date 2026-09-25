@@ -46,6 +46,7 @@ use App\Http\Controllers\Api\PmoConfigController;
 use App\Http\Controllers\Api\ControladoriaController;
 use App\Http\Controllers\Api\ConciliacaoController;
 use App\Http\Controllers\Api\ImportacaoController;
+use App\Http\Controllers\Api\IotTelemetryController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
@@ -60,6 +61,9 @@ Route::post('/crm/webhook/{token}', [CrmController::class, 'webhookCapturaLead']
 
 // Webhooks de Gateways (Asaas, etc)
 Route::post('/billing/webhook/asaas', [BillingWebhookController::class, 'handleAsaas']);
+
+// Rota de Ingestão de Dados IoT (ESP32 / Arduino / CLP)
+Route::post('/iot/telemetry', [IotTelemetryController::class, 'receive']);
 
 // Rotas Públicas do Portal do Cliente (Token Temporário)
 Route::prefix('portal')->group(function () {
