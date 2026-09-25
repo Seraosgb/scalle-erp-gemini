@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { 
-  ShoppingCart, Plus, RefreshCw, CheckCircle2, 
-  AlertTriangle, X, Trash2, UserPlus, Building2, 
-  FileCode, Upload, Layers
+import { useHardwareStore } from '../../store/useHardwareStore';
+import { EscPosEncoder } from '../../utils/EscPosEncoder';
+import {
+  ShoppingCart, Plus, RefreshCw, CheckCircle2,
+  AlertTriangle, X, Trash2, UserPlus, Building2,
+  FileCode, Upload, Layers, Scale, Printer, Barcode
 } from 'lucide-react';
 
 export default function ComprasPage() {
@@ -14,7 +16,13 @@ export default function ComprasPage() {
   const [depositos, setDepositos] = useState([]);
   const [itensCatalogo, setItensCatalogo] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
+  // Hardware Global Store
+  const {
+    pesoBalanca, balancaConectada, conectarBalanca, desconectarBalanca,
+    impressoraConectada, conectarImpressora, imprimirCupom
+  } = useHardwareStore();
+
   // Modais
   const [modalNovaCompra, setModalNovaCompra] = useState(false);
   const [modalNovoFornecedor, setModalNovoFornecedor] = useState(false);
@@ -69,11 +77,11 @@ export default function ComprasPage() {
       const todasPessoas = resPessoas.data?.data || resPessoas.data || [];
       const forns = Array.isArray(todasPessoas) ? todasPessoas.filter(p => p.is_fornecedor) : [];
       setFornecedores(forns.length > 0 ? forns : (Array.isArray(todasPessoas) ? todasPessoas : []));
-      
+
       const deps = resDeps.data?.data || resDeps.data || [];
       const listaDeps = Array.isArray(deps) ? deps : [];
       setDepositos(listaDeps);
-      
+
       const itensRaw = resItens.data?.data || resItens.data || [];
       setItensCatalogo(Array.isArray(itensRaw) ? itensRaw : (itensRaw.data || []));
 
@@ -109,14 +117,14 @@ export default function ComprasPage() {
   const handleItemChange = (index, field, value) => {
     const novosItens = [...formCompra.itens];
     novosItens[index][field] = value;
-    
+
     if (field === 'item_id') {
       const itemAchado = itensCatalogo.find(i => i.id === value);
       if (itemAchado) {
         novosItens[index].valor_unitario = parseFloat(itemAchado.preco_custo || 0);
       }
     }
-    
+
     setFormCompra({ ...formCompra, itens: novosItens });
   };
 
@@ -124,8 +132,34 @@ export default function ComprasPage() {
     e.preventDefault();
     try {
       const res = await api.post('/compras', formCompra);
+
+      // Impressão Térmica de Etiquetas WMS Pós-Recebimento
+      if (impressoraConectada) {
+        const comandos = [EscPosEncoder.init(), EscPosEncoder.align(1)];
+
+        formCompra.itens.forEach(item => {
+          const produto = itensCatalogo.find(i => i.id === item.item_id);
+          if (produto) {
+            comandos.push(EscPosEncoder.bold(true));
+            comandos.push(EscPosEncoder.text(`SCALLE WMS - RECEBIMENTO\n`));
+            comandos.push(EscPosEncoder.bold(false));
+            comandos.push(EscPosEncoder.text(`${produto.nome.substring(0, 24)}\n`));
+            comandos.push(EscPosEncoder.text(`QTD RECEBIDA: ${item.quantidade} | DT: ${new Date().toLocaleDateString('pt-BR')}\n`));
+
+            // Desenha o Código de Barras Nativo
+            const skuValido = produto.codigo_sku && produto.codigo_sku.length > 2 ? produto.codigo_sku : "000000";
+            comandos.push(EscPosEncoder.barcode128(skuValido));
+            comandos.push(EscPosEncoder.text("\n\n")); // Pulo entre etiquetas
+          }
+        });
+
+        comandos.push(EscPosEncoder.text("\n\n\n"));
+        comandos.push(EscPosEncoder.cut());
+        await imprimirCupom(EscPosEncoder.build(comandos));
+      }
+
       setModalNovaCompra(false);
-      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Compra efetuada, estoque creditado e Contas a Pagar lançado!' });
+      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Mercadoria recebida, estoque creditado e etiquetas emitidas!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao registrar compra.' });
@@ -189,19 +223,35 @@ export default function ComprasPage() {
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5 max-w-7xl mx-auto text-slate-200">
-      {/* Header */}
+      {/* Header com Badges de Hardware */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
             <ShoppingCart className="h-6 w-6 sm:h-7 sm:w-7 text-indigo-500 shrink-0" />
-            Compras & Suprimentos
+            Compras & Recebimento (WMS)
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Entradas de notas de fornecedores com integração ao WMS e Financeiro
+            Conferência de entradas, pesagem de recebimento e etiquetagem de gôndola.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button 
+          {/* VISORES DE HARDWARE TIER 1 */}
+          <div className="flex gap-2 mr-2">
+            <button
+              onClick={balancaConectada ? desconectarBalanca : conectarBalanca}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${balancaConectada ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Scale className="h-3.5 w-3.5" /> {balancaConectada ? `Conferência: ${pesoBalanca} KG` : 'Ligar Balança'}
+            </button>
+            <button
+              onClick={conectarImpressora}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${impressoraConectada ? 'bg-indigo-950/40 border-indigo-800 text-indigo-400 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Barcode className="h-3.5 w-3.5" /> {impressoraConectada ? 'Etiquetadora ON' : 'Ligar Etiquetadora'}
+            </button>
+          </div>
+
+          <button
             type="button"
             onClick={() => navigate('/app/compras/cotacoes')}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 text-xs font-bold cursor-pointer transition shadow-sm"
@@ -209,7 +259,7 @@ export default function ComprasPage() {
             <Layers className="h-4 w-4" />
             Mapa de Cotações
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setModalImportarXml(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-emerald-400 text-xs font-bold cursor-pointer transition shadow-sm"
@@ -217,7 +267,7 @@ export default function ComprasPage() {
             <FileCode className="h-4 w-4" />
             Importar XML NF-e
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setModalNovoFornecedor(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 text-xs font-bold cursor-pointer transition shadow-sm"
@@ -225,13 +275,13 @@ export default function ComprasPage() {
             <UserPlus className="h-4 w-4 text-indigo-400" />
             Novo Fornecedor
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setModalNovaCompra(true)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
           >
             <Plus className="h-4 w-4" />
-            Novo Pedido de Entrada
+            Entrada de Mercadoria
           </button>
         </div>
       </div>
@@ -299,8 +349,8 @@ export default function ComprasPage() {
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        compra.status === 'RECEBIDO' 
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' 
+                        compra.status === 'RECEBIDO'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                           : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
                       }`}>
                         {compra.status}
@@ -330,17 +380,17 @@ export default function ComprasPage() {
             <form onSubmit={handleImportarXml} className="p-4 sm:p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Arquivo XML da NF-e *</label>
-                <input 
-                  type="file" 
-                  accept=".xml" 
-                  required 
+                <input
+                  type="file"
+                  accept=".xml"
+                  required
                   onChange={(e) => setFormXml({ ...formXml, xml_file: e.target.files[0] })}
                   className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white cursor-pointer"
                 />
               </div>
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Depósito de Entrada *</label>
-                <select 
+                <select
                   required
                   value={formXml.deposito_id}
                   onChange={(e) => setFormXml({ ...formXml, deposito_id: e.target.value })}
@@ -352,7 +402,7 @@ export default function ComprasPage() {
                 </select>
               </div>
               <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalImportarXml(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
+                <button type="button" onClick={() => setModalImportarXml(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
                 <button type="submit" disabled={importandoXml} className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold cursor-pointer">
                   {importandoXml ? 'Processando XML...' : 'Importar & Dar Entrada'}
                 </button>
@@ -378,9 +428,9 @@ export default function ComprasPage() {
             <form onSubmit={handleSalvarFornecedor} className="p-4 sm:p-6 space-y-3.5 text-xs">
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Razão Social / Nome *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   placeholder="Ex: Distribuidora de Peças Ltda"
                   value={formFornecedor.nome_razao_social}
                   onChange={(e) => setFormFornecedor({ ...formFornecedor, nome_razao_social: e.target.value })}
@@ -389,9 +439,9 @@ export default function ComprasPage() {
               </div>
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">CNPJ / CPF *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   placeholder="00.000.000/0001-00"
                   value={formFornecedor.cpf_cnpj}
                   onChange={(e) => setFormFornecedor({ ...formFornecedor, cpf_cnpj: e.target.value })}
@@ -401,8 +451,8 @@ export default function ComprasPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">E-mail</label>
-                  <input 
-                    type="email" 
+                  <input
+                    type="email"
                     value={formFornecedor.email_principal}
                     onChange={(e) => setFormFornecedor({ ...formFornecedor, email_principal: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
@@ -410,8 +460,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Telefone</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={formFornecedor.telefone_principal}
                     onChange={(e) => setFormFornecedor({ ...formFornecedor, telefone_principal: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
@@ -419,41 +469,42 @@ export default function ComprasPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovoFornecedor(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">Salvar Fornecedor</button>
+                <button type="button" onClick={() => setModalNovoFornecedor(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer shadow-md">Salvar Fornecedor</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal Nova Compra */}
+      {/* Modal Nova Compra e Etiquetagem */}
       {modalNovaCompra && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5 text-indigo-400" />
-                Lançar Compra / Entrada de Mercadoria
+                Nova Entrada e Etiquetagem (WMS)
               </h2>
               <button type="button" onClick={() => setModalNovaCompra(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
+
             <form onSubmit={handleSalvarCompra} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div className="sm:col-span-2">
                   <div className="flex items-center justify-between mb-1">
                     <label className="font-semibold text-slate-400">Fornecedor *</label>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={() => setModalNovoFornecedor(true)}
                       className="text-[11px] text-indigo-400 hover:underline cursor-pointer"
                     >
                       + Cadastrar Novo
                     </button>
                   </div>
-                  <select 
+                  <select
                     required
                     value={formCompra.fornecedor_id}
                     onChange={(e) => setFormCompra({ ...formCompra, fornecedor_id: e.target.value })}
@@ -467,7 +518,7 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Depósito de Entrada *</label>
-                  <select 
+                  <select
                     required
                     value={formCompra.deposito_destino_id}
                     onChange={(e) => setFormCompra({ ...formCompra, deposito_destino_id: e.target.value })}
@@ -480,8 +531,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Número da Nota Fiscal</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Ex: 1234"
                     value={formCompra.numero_nota}
                     onChange={(e) => setFormCompra({ ...formCompra, numero_nota: e.target.value })}
@@ -490,8 +541,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Data de Emissão</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={formCompra.data_emissao}
                     onChange={(e) => setFormCompra({ ...formCompra, data_emissao: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
@@ -499,8 +550,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Vencimento do Pagamento *</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     required
                     value={formCompra.data_vencimento}
                     onChange={(e) => setFormCompra({ ...formCompra, data_vencimento: e.target.value })}
@@ -509,27 +560,29 @@ export default function ComprasPage() {
                 </div>
               </div>
 
-              {/* Itens */}
+              {/* Itens e Captura da Balança */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">Itens e Produtos da Compra</span>
-                  <button 
-                    type="button" 
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Itens Recebidos na Doca</span>
+                  <button
+                    type="button"
                     onClick={handleAddItem}
                     className="px-2.5 py-1 text-xs rounded-lg bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 font-bold cursor-pointer"
                   >
                     + Adicionar Item
                   </button>
                 </div>
+
                 {formCompra.itens.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl grid grid-cols-1 sm:grid-cols-6 gap-2.5 items-end">
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Item do Catálogo *</label>
-                      <select 
+                  <div key={idx} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+
+                    <div className="sm:col-span-4">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Item do Catálogo *</label>
+                      <select
                         required
                         value={item.item_id}
                         onChange={(e) => handleItemChange(idx, 'item_id', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
                       >
                         <option value="">Selecione o produto...</option>
                         {itensCatalogo.map(it => (
@@ -537,67 +590,87 @@ export default function ComprasPage() {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Qtd *</label>
-                      <input 
-                        type="number" 
-                        step="0.0001" 
-                        required 
-                        value={item.quantidade}
-                        onChange={(e) => handleItemChange(idx, 'quantidade', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
-                      />
+
+                    {/* INJEÇÃO DE HARDWARE AQUI: Botão de captura de peso da doca */}
+                    <div className="sm:col-span-3">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1 flex justify-between">
+                        <span>Qtd. NF *</span>
+                        {balancaConectada && <span className="text-emerald-400 flex items-center gap-1"><Scale className="w-3 h-3"/> Auditoria Ativa</span>}
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.0001"
+                          required
+                          value={item.quantidade}
+                          onChange={(e) => handleItemChange(idx, 'quantidade', e.target.value)}
+                          className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
+                        />
+                        {balancaConectada && (
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(idx, 'quantidade', parseFloat(pesoBalanca))}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1.5 rounded-lg text-[10px] font-bold shadow-md cursor-pointer transition whitespace-nowrap"
+                            title="Substituir pela leitura da balança física"
+                          >
+                            Puxar {pesoBalanca}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Valor Unit. (R$) *</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        required 
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Vl. Unit (R$) *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
                         value={item.valor_unitario}
                         onChange={(e) => handleItemChange(idx, 'valor_unitario', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Lote</label>
-                      <input 
-                        type="text" 
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Lote</label>
+                      <input
+                        type="text"
                         value={item.lote}
                         onChange={(e) => handleItemChange(idx, 'lote', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white uppercase"
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white uppercase"
                       />
                     </div>
-                    <div className="flex items-center gap-1">
-                      <div className="flex-1">
-                        <span className="text-[10px] text-slate-500 block">Total:</span>
-                        <strong className="text-xs text-emerald-400 font-mono">
-                          R$ {(parseFloat(item.quantidade || 0) * parseFloat(item.valor_unitario || 0)).toFixed(2)}
-                        </strong>
-                      </div>
-                      <button 
-                        type="button" 
+
+                    <div className="sm:col-span-1 flex items-center justify-center">
+                      <button
+                        type="button"
                         onClick={() => handleRemoveItem(idx)}
-                        className="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                        className="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer bg-slate-900 rounded"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
+
                   </div>
                 ))}
               </div>
 
               {/* Totalizador */}
-              <div className="flex justify-between items-center p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
-                <span className="text-xs font-semibold text-slate-400">Total a Lançar no Contas a Pagar:</span>
+              <div className="flex justify-between items-center p-3.5 bg-slate-950 border border-slate-800 rounded-xl mt-4">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-2">
+                  Total Financeiro da Nota:
+                  {impressoraConectada && <span className="bg-indigo-900/50 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded text-[9px] uppercase font-bold flex items-center gap-1"><Printer className="w-3 h-3"/> Etiquetas serão impressas ao salvar</span>}
+                </span>
                 <span className="text-lg font-bold font-mono text-emerald-400">
                   R$ {calcularTotalForm().toFixed(2)}
                 </span>
               </div>
 
               <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800 shrink-0">
-                <button type="button" onClick={() => setModalNovaCompra(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer shadow-md">Confirmar Entrada & Financeiro</button>
+                <button type="button" onClick={() => setModalNovaCompra(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer shadow-md flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4"/> Efetivar Recebimento
+                </button>
               </div>
             </form>
           </div>
