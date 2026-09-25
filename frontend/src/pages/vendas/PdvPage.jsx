@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShoppingCart, Scale, Printer, CreditCard, X, Search,
-  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode
+  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode, CheckCircle2
 } from 'lucide-react';
 import { useHardwareStore } from '../../store/useHardwareStore';
 import { EscPosEncoder } from '../../utils/EscPosEncoder';
