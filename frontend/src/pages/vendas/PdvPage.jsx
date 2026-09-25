@@ -25,6 +25,7 @@ export default function PdvPage() {
   // Modais
   const [modalPagamento, setModalPagamento] = useState(false);
   const [modalDesconto, setModalDesconto] = useState(false);
+  const [modalSucesso, setModalSucesso] = useState(false); // NOVO MODAL
 
   // Estado Financeiro
   const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
@@ -32,7 +33,11 @@ export default function PdvPage() {
   const [descontoReal, setDescontoReal] = useState(0);
   const [valorDescontoTemp, setValorDescontoTemp] = useState('');
 
-  // Cálculos de Totais
+  // Valores Congelados para a Tela de Sucesso
+  const [trocoFinal, setTrocoFinal] = useState(0);
+  const [totalFinal, setTotalFinal] = useState(0);
+
+  // Cálculos de Totais Dinâmicos
   const subtotal = useMemo(() => carrinho.reduce((acc, item) => acc + item.total, 0), [carrinho]);
   const totalGeral = useMemo(() => Math.max(0, subtotal - descontoReal), [subtotal, descontoReal]);
   const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido) || 0)), [totalGeral, valorRecebido]);
@@ -41,13 +46,13 @@ export default function PdvPage() {
   // Foco Perpétuo Inteligente
   useEffect(() => {
     const focusTimer = setInterval(() => {
-      const isAnyModalOpen = modalPagamento || modalDesconto;
+      const isAnyModalOpen = modalPagamento || modalDesconto || modalSucesso;
       if (!isAnyModalOpen && barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
         barcodeInputRef.current.focus();
       }
     }, 1500);
     return () => clearInterval(focusTimer);
-  }, [modalPagamento, modalDesconto]);
+  }, [modalPagamento, modalDesconto, modalSucesso]);
 
   // Foco Automático nos Modais
   useEffect(() => {
@@ -65,6 +70,13 @@ export default function PdvPage() {
   // Atalhos de Teclado Globais
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Se a tela de sucesso estiver aberta, qualquer ENTER fecha ela para o próximo cliente
+      if (modalSucesso && (e.key === 'Enter' || e.key === 'Escape')) {
+        e.preventDefault();
+        setModalSucesso(false);
+        return;
+      }
+
       // F3 = Receber Pagamento
       if (e.key === 'F3') {
         e.preventDefault();
@@ -85,15 +97,17 @@ export default function PdvPage() {
       }
       // ESC = Fechar Modais
       if (e.key === 'Escape') {
-        setModalPagamento(false);
-        setModalDesconto(false);
-        setValorRecebido('');
-        setValorDescontoTemp('');
+        if (modalPagamento || modalDesconto) {
+          setModalPagamento(false);
+          setModalDesconto(false);
+          setValorRecebido('');
+          setValorDescontoTemp('');
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [carrinho, modalPagamento, modalDesconto]);
+  }, [carrinho, modalPagamento, modalDesconto, modalSucesso]);
 
   const processarCodigoBarras = async (e) => {
     e.preventDefault();
@@ -152,9 +166,13 @@ export default function PdvPage() {
       return;
     }
 
+    // Armazena os valores finais para mostrar na tela de Sucesso/Troco
+    setTrocoFinal(troco);
+    setTotalFinal(totalGeral);
+
     // TODO: Integração real API -> await api.post('/vendas/pdv', payload);
 
-    if (config.impressaoAutomatica && impressoraConectada) {
+    if (impressoraConectada && config.impressaoAutomatica) {
       const comandos = [
         EscPosEncoder.init(),
         EscPosEncoder.align(1),
@@ -195,11 +213,12 @@ export default function PdvPage() {
       await imprimirCupom(EscPosEncoder.build(comandos));
     }
 
-    // Reset PDV
+    // Reset PDV e Mostra o Troco
     setCarrinho([]);
     setDescontoReal(0);
     setValorRecebido('');
     setModalPagamento(false);
+    setModalSucesso(true); // Tranca a tela no modal de troco
   };
 
   return (
@@ -398,10 +417,10 @@ export default function PdvPage() {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setModalDesconto(false)} className="flex-1 py-3 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 font-bold rounded-xl text-sm transition">
+                <button type="button" onClick={() => setModalDesconto(false)} className="flex-1 py-3 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 font-bold rounded-xl text-sm transition cursor-pointer">
                   [ESC] Cancelar
                 </button>
-                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30">
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 cursor-pointer">
                   Confirmar
                 </button>
               </div>
@@ -505,6 +524,41 @@ export default function PdvPage() {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE SUCESSO E TROCO FINAL */}
+      {modalSucesso && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-8 shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in duration-300">
+            <div className="p-4 bg-emerald-950/50 text-emerald-400 rounded-full mb-6 ring-4 ring-emerald-900/30">
+              <CheckCircle2 className="h-12 w-12" />
+            </div>
+
+            <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Venda Finalizada!</h2>
+
+            {/* Aviso de impressora desligada */}
+            {(!impressoraConectada || !config.impressaoAutomatica) && (
+               <p className="text-xs text-amber-500 font-medium mb-6 bg-amber-950/30 px-3 py-1 rounded-full border border-amber-900/50">
+                 (Sem impressão de cupom físico)
+               </p>
+            )}
+
+            <div className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-5 mb-6 shadow-inner">
+              <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
+              <p className="text-2xl font-bold text-slate-200 font-mono mb-4">R$ {totalFinal.toFixed(2)}</p>
+
+              <p className="text-sm font-bold text-emerald-500 uppercase tracking-widest mb-1">Troco a Devolver</p>
+              <p className="text-5xl font-black text-emerald-400 font-mono tracking-tighter">R$ {trocoFinal.toFixed(2)}</p>
+            </div>
+
+            <button
+              onClick={() => setModalSucesso(false)}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 cursor-pointer"
+            >
+              PRÓXIMO CLIENTE [ENTER]
+            </button>
           </div>
         </div>
       )}
