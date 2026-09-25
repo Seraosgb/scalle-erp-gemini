@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useHardwareStore } from '../../store/useHardwareStore';
-import { EscPosEncoder } from '../../utils/EscPosEncoder';
+import { ZplEncoder } from '../../utils/ZplEncoder';
 import {
   ShoppingCart, Plus, RefreshCw, CheckCircle2,
   AlertTriangle, X, Trash2, UserPlus, Building2,
@@ -131,35 +131,26 @@ export default function ComprasPage() {
   const handleSalvarCompra = async (e) => {
     e.preventDefault();
     try {
-      const res = await api.post('/compras', formCompra);
+      await api.post('/compras', formCompra);
 
-      // Impressão Térmica de Etiquetas WMS Pós-Recebimento
+      // Impressão ZPL para a Etiquetadora Zebra
       if (impressoraConectada) {
-        const comandos = [EscPosEncoder.init(), EscPosEncoder.align(1)];
-
-        formCompra.itens.forEach(item => {
+        for (const item of formCompra.itens) {
           const produto = itensCatalogo.find(i => i.id === item.item_id);
           if (produto) {
-            comandos.push(EscPosEncoder.bold(true));
-            comandos.push(EscPosEncoder.text(`SCALLE WMS - RECEBIMENTO\n`));
-            comandos.push(EscPosEncoder.bold(false));
-            comandos.push(EscPosEncoder.text(`${produto.nome.substring(0, 24)}\n`));
-            comandos.push(EscPosEncoder.text(`QTD RECEBIDA: ${item.quantidade} | DT: ${new Date().toLocaleDateString('pt-BR')}\n`));
-
-            // Desenha o Código de Barras Nativo
             const skuValido = produto.codigo_sku && produto.codigo_sku.length > 2 ? produto.codigo_sku : "000000";
-            comandos.push(EscPosEncoder.barcode128(skuValido));
-            comandos.push(EscPosEncoder.text("\n\n")); // Pulo entre etiquetas
-          }
-        });
+            const dataAtual = new Date().toLocaleDateString('pt-BR');
+            const zplBytes = ZplEncoder.buildLabel(produto.nome, item.quantidade, dataAtual, skuValido);
+            await imprimirCupom(zplBytes);
 
-        comandos.push(EscPosEncoder.text("\n\n\n"));
-        comandos.push(EscPosEncoder.cut());
-        await imprimirCupom(EscPosEncoder.build(comandos));
+            // Pausa de 100ms para evitar sobrecarga no buffer serial da impressora
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
       }
 
       setModalNovaCompra(false);
-      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Mercadoria recebida, estoque creditado e etiquetas emitidas!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Mercadoria recebida, estoque creditado e etiquetas emitidas!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao registrar compra.' });
@@ -223,7 +214,6 @@ export default function ComprasPage() {
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5 max-w-7xl mx-auto text-slate-200">
-      {/* Header com Badges de Hardware */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
@@ -235,7 +225,6 @@ export default function ComprasPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* VISORES DE HARDWARE TIER 1 */}
           <div className="flex gap-2 mr-2">
             <button
               onClick={balancaConectada ? desconectarBalanca : conectarBalanca}
@@ -247,7 +236,7 @@ export default function ComprasPage() {
               onClick={conectarImpressora}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${impressoraConectada ? 'bg-indigo-950/40 border-indigo-800 text-indigo-400 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
             >
-              <Barcode className="h-3.5 w-3.5" /> {impressoraConectada ? 'Etiquetadora ON' : 'Ligar Etiquetadora'}
+              <Barcode className="h-3.5 w-3.5" /> {impressoraConectada ? 'Etiquetadora ZPL ON' : 'Ligar Etiquetadora ZPL'}
             </button>
           </div>
 
@@ -286,7 +275,6 @@ export default function ComprasPage() {
         </div>
       </div>
 
-      {/* Feedback Toast */}
       {feedback && (
         <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
           feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
@@ -301,7 +289,6 @@ export default function ComprasPage() {
         </div>
       )}
 
-      {/* Tabela de Compras */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[700px]">
@@ -364,7 +351,6 @@ export default function ComprasPage() {
         </div>
       </div>
 
-      {/* Modal Importar XML NF-e */}
       {modalImportarXml && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
@@ -412,7 +398,6 @@ export default function ComprasPage() {
         </div>
       )}
 
-      {/* Modal Novo Fornecedor */}
       {modalNovoFornecedor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
@@ -477,7 +462,6 @@ export default function ComprasPage() {
         </div>
       )}
 
-      {/* Modal Nova Compra e Etiquetagem */}
       {modalNovaCompra && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
@@ -560,7 +544,6 @@ export default function ComprasPage() {
                 </div>
               </div>
 
-              {/* Itens e Captura da Balança */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <span className="text-xs font-bold text-white uppercase tracking-wider">Itens Recebidos na Doca</span>
@@ -591,7 +574,6 @@ export default function ComprasPage() {
                       </select>
                     </div>
 
-                    {/* INJEÇÃO DE HARDWARE AQUI: Botão de captura de peso da doca */}
                     <div className="sm:col-span-3">
                       <label className="block text-[10px] font-semibold text-slate-400 mb-1 flex justify-between">
                         <span>Qtd. NF *</span>
@@ -655,7 +637,6 @@ export default function ComprasPage() {
                 ))}
               </div>
 
-              {/* Totalizador */}
               <div className="flex justify-between items-center p-3.5 bg-slate-950 border border-slate-800 rounded-xl mt-4">
                 <span className="text-xs font-semibold text-slate-400 flex items-center gap-2">
                   Total Financeiro da Nota:
