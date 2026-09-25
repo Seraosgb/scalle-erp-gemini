@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import {
   Users, Plus, Search, CheckCircle2, AlertTriangle,
-  X, Building2, User as UserIcon, Tag, SearchCode, UploadCloud
+  X, Building2, User as UserIcon, Tag, SearchCode, UploadCloud, Printer
 } from 'lucide-react';
+import { useBalanca } from '../../hooks/useBalanca';
+import { usePrinter } from '../../hooks/usePrinter';
+import { EscPosEncoder } from '../../utils/EscPosEncoder';
 
 export default function PessoasPage() {
   const [pessoas, setPessoas] = useState([]);
@@ -16,6 +19,29 @@ export default function PessoasPage() {
   const [modalImportacao, setModalImportacao] = useState(false);
   const [arquivoCsv, setArquivoCsv] = useState(null);
   const [importando, setImportando] = useState(false);
+
+  // Integrações de Hardware (Laboratório)
+  const { peso, conectado } = useBalanca();
+  const { printReceipt, isPrinting } = usePrinter();
+
+  const handleImprimirTeste = async () => {
+    const pacoteDeBytes = EscPosEncoder.build([
+      EscPosEncoder.init(),
+      EscPosEncoder.align(1), // Centro
+      EscPosEncoder.text("SCALLE ERP - TESTE DE IMPRESSAO"),
+      EscPosEncoder.text("--------------------------------"),
+      EscPosEncoder.align(0), // Esquerda
+      EscPosEncoder.text("1x Bateria CR2032        R$ 5,00"),
+      EscPosEncoder.text("1x Placa ESP32          R$ 45,00"),
+      EscPosEncoder.text("--------------------------------"),
+      EscPosEncoder.align(2), // Direita
+      EscPosEncoder.text("TOTAL: R$ 50,00"),
+      EscPosEncoder.text("\n\n\n"), // Avanço de papel
+      EscPosEncoder.cut(),
+      EscPosEncoder.openDrawer()
+    ]);
+    await printReceipt(pacoteDeBytes);
+  };
 
   // Modais
   const [modalNovo, setModalNovo] = useState(false);
@@ -132,7 +158,29 @@ export default function PessoasPage() {
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">Base central unificada para RH, Clientes e Fornecedores</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+
+          {/* VISOR DA BALANÇA EM TEMPO REAL */}
+          <div className="flex items-center gap-3 px-4 py-1.5 bg-slate-950 border border-slate-700 rounded-xl shadow-inner mr-2">
+            <div className="flex flex-col">
+              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                {conectado ? '🟢 Balança Local' : '🔴 Balança Offline'}
+              </span>
+              <span className="font-mono text-xl font-bold text-emerald-400 tabular-nums text-right w-full block">
+                {peso} <span className="text-[10px] text-slate-500">KG</span>
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleImprimirTeste}
+            disabled={isPrinting}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold rounded-xl text-sm transition shadow-sm cursor-pointer disabled:opacity-50"
+          >
+            <Printer className="h-4 w-4" />
+            {isPrinting ? 'Enviando...' : 'Testar USB'}
+          </button>
+
           <button
             onClick={() => setModalImportacao(true)}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
