@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShoppingCart, Scale, Printer, CreditCard, X, Search,
-  Trash2, Keyboard, Banknote, MonitorCheck, PlusCircle, AlertCircle
+  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode
 } from 'lucide-react';
 import { useHardwareStore } from '../../store/useHardwareStore';
 import { EscPosEncoder } from '../../utils/EscPosEncoder';
@@ -116,7 +116,7 @@ export default function PdvPage() {
 
     // TODO: Integração real API -> await api.post('/vendas/pdv', payload);
 
-    if (impressoraConectada) {
+    if (config.impressaoAutomatica && impressoraConectada) {
       const comandos = [
         EscPosEncoder.init(),
         EscPosEncoder.align(1),
@@ -180,10 +180,10 @@ export default function PdvPage() {
           {/* Status Hardware Badges */}
           <div className="flex gap-2">
             <button
-              onClick={conectado ? desconectarBalanca : conectarBalanca}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${conectado ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+              onClick={balancaConectada ? desconectarBalanca : conectarBalanca}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${balancaConectada ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
             >
-              <Scale className="h-3.5 w-3.5" /> {conectado ? 'Balança ON' : 'Balança OFF'}
+              <Scale className="h-3.5 w-3.5" /> {balancaConectada ? 'Balança ON' : 'Balança OFF'}
             </button>
             <button
               onClick={conectarImpressora}
@@ -266,7 +266,7 @@ export default function PdvPage() {
           <div className="space-y-1">
             <div className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
               <span>Peso Balança</span>
-              <span className={conectado ? 'text-emerald-500' : 'text-rose-500'}>{conectado ? 'ON' : 'OFF'}</span>
+              <span className={balancaConectada ? 'text-emerald-500' : 'text-rose-500'}>{balancaConectada ? 'ON' : 'OFF'}</span>
             </div>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-right shadow-inner">
               <span className="font-mono text-5xl font-black text-indigo-400 tracking-tighter">{pesoBalanca}</span>
@@ -311,7 +311,7 @@ export default function PdvPage() {
             <span className="text-[10px] text-slate-300 uppercase font-semibold">Buscar Item</span>
           </div>
           <button
-            onClick={() => { if(window.confirm("Cancelar venda?")) setCarrinho([]); }}
+            onClick={() => { if(window.confirm("Cancelar venda?")) { setCarrinho([]); setDescontoReal(0); } }}
             className="bg-rose-950/30 border border-rose-900/50 p-3 rounded-lg text-center cursor-pointer hover:bg-rose-900/50 transition text-rose-400"
           >
             <span className="block text-xs font-bold mb-0.5">[F4]</span>
@@ -329,7 +329,7 @@ export default function PdvPage() {
             <div className="w-1/2 p-8 border-r border-slate-800 bg-slate-900">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-white">Método de Pagamento</h2>
-                <button onClick={() => setModalPagamento(false)} className="p-2 text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5"/></button>
+                <button onClick={() => { setModalPagamento(false); setValorRecebido(''); }} className="p-2 text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5"/></button>
               </div>
 
               <div className="grid grid-cols-2 gap-3 mb-6">
