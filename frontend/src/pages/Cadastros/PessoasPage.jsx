@@ -21,7 +21,7 @@ export default function PessoasPage() {
   const [importando, setImportando] = useState(false);
 
   // Integrações de Hardware (Laboratório)
-  const { peso, conectado } = useBalanca();
+  const { peso, conectado, erro, conectarBalanca, desconectarBalanca } = useBalanca();
   const { printReceipt, isPrinting } = usePrinter();
 
   const handleImprimirTeste = async () => {
@@ -160,16 +160,27 @@ export default function PessoasPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
 
-          {/* VISOR DA BALANÇA EM TEMPO REAL */}
-          <div className="flex items-center gap-3 px-4 py-1.5 bg-slate-950 border border-slate-700 rounded-xl shadow-inner mr-2">
-            <div className="flex flex-col">
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                {conectado ? '🟢 Balança Local' : '🔴 Balança Offline'}
-              </span>
-              <span className="font-mono text-xl font-bold text-emerald-400 tabular-nums text-right w-full block">
-                {peso} <span className="text-[10px] text-slate-500">KG</span>
-              </span>
-            </div>
+          {/* VISOR DA BALANÇA NATIVA (WEB SERIAL) */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl shadow-inner mr-2">
+            {!conectado ? (
+                <button
+                  onClick={conectarBalanca}
+                  className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer border border-slate-600 flex items-center gap-1.5"
+                >
+                  ⚖️ Ligar Balança
+                </button>
+            ) : (
+                <div className="flex items-center gap-3 cursor-pointer" onClick={desconectarBalanca} title="Clique para desconectar">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider">
+                      🟢 Balança USB Ativa
+                    </span>
+                    <span className="font-mono text-xl font-bold text-emerald-400 tabular-nums text-right w-full block">
+                      {peso} <span className="text-[10px] text-slate-500">KG</span>
+                    </span>
+                  </div>
+                </div>
+            )}
           </div>
 
           <button
@@ -198,6 +209,13 @@ export default function PessoasPage() {
           </button>
         </div>
       </div>
+
+      {erro && (
+        <div className="p-3 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-xl mb-4 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>Erro na Balança: {erro}</span>
+        </div>
+      )}
 
       {feedback && (
         <div className={`p-4 rounded-xl flex items-center justify-between text-sm mb-6 ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
