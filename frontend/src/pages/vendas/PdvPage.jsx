@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShoppingCart, Scale, Printer, CreditCard, X, Search,
-  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode, CheckCircle2, Tag
+  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode, CheckCircle2, Tag, Loader2
 } from 'lucide-react';
 import { useHardwareStore } from '../../store/useHardwareStore';
 import { EscPosEncoder } from '../../utils/EscPosEncoder';
@@ -18,14 +18,18 @@ export default function PdvPage() {
     impressoraConectada, conectarImpressora, imprimirCupom, config
   } = useHardwareStore();
 
-  // Estado do PDV
+  // Estado do PDV e Integração DB
+  const [depositos, setDepositos] = useState([]);
+  const [depositoSelecionado, setDepositoSelecionado] = useState('');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [carrinho, setCarrinho] = useState([]);
+  const [buscandoItem, setBuscandoItem] = useState(false);
+  const [processandoVenda, setProcessandoVenda] = useState(false);
 
   // Modais
   const [modalPagamento, setModalPagamento] = useState(false);
   const [modalDesconto, setModalDesconto] = useState(false);
-  const [modalSucesso, setModalSucesso] = useState(false); // NOVO MODAL
+  const [modalSucesso, setModalSucesso] = useState(false);
 
   // Estado Financeiro
   const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
@@ -37,24 +41,39 @@ export default function PdvPage() {
   const [trocoFinal, setTrocoFinal] = useState(0);
   const [totalFinal, setTotalFinal] = useState(0);
 
-  // Cálculos de Totais Dinâmicos
+  // Cálculos de Totais
   const subtotal = useMemo(() => carrinho.reduce((acc, item) => acc + item.total, 0), [carrinho]);
   const totalGeral = useMemo(() => Math.max(0, subtotal - descontoReal), [subtotal, descontoReal]);
   const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido) || 0)), [totalGeral, valorRecebido]);
   const troco = useMemo(() => Math.max(0, (parseFloat(valorRecebido) || 0) - totalGeral), [totalGeral, valorRecebido]);
 
-  // Foco Perpétuo Inteligente
+  // Busca do Depósito Padrão ao abrir o PDV
+  useEffect(() => {
+    const carregarDepositos = async () => {
+      try {
+        const res = await api.get('/wms/depositos');
+        const deps = res.data?.data || [];
+        setDepositos(deps);
+        const depPadrao = deps.find(d => d.is_padrao) || deps[0];
+        if (depPadrao) setDepositoSelecionado(depPadrao.id);
+      } catch (err) {
+        console.error("Erro ao carregar depósitos:", err);
+      }
+    };
+    carregarDepositos();
+  }, []);
+
+  // Foco Perpétuo
   useEffect(() => {
     const focusTimer = setInterval(() => {
       const isAnyModalOpen = modalPagamento || modalDesconto || modalSucesso;
-      if (!isAnyModalOpen && barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
+      if (!isAnyModalOpen && !buscandoItem && !processandoVenda && barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
         barcodeInputRef.current.focus();
       }
     }, 1500);
     return () => clearInterval(focusTimer);
-  }, [modalPagamento, modalDesconto, modalSucesso]);
+  }, [modalPagamento, modalDesconto, modalSucesso, buscandoItem, processandoVenda]);
 
-  // Foco Automático nos Modais
   useEffect(() => {
     if (modalPagamento && paymentInputRef.current) {
       setTimeout(() => paymentInputRef.current.focus(), 100);
@@ -70,24 +89,19 @@ export default function PdvPage() {
   // Atalhos de Teclado Globais
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Se a tela de sucesso estiver aberta, qualquer ENTER fecha ela para o próximo cliente
       if (modalSucesso && (e.key === 'Enter' || e.key === 'Escape')) {
         e.preventDefault();
         setModalSucesso(false);
         return;
       }
-
-      // F3 = Receber Pagamento
       if (e.key === 'F3') {
         e.preventDefault();
         if (carrinho.length > 0 && !modalDesconto) setModalPagamento(true);
       }
-      // F8 = Aplicar Desconto
       if (e.key === 'F8') {
         e.preventDefault();
         if (carrinho.length > 0 && !modalPagamento) setModalDesconto(true);
       }
-      // F4 = Cancelar Venda
       if (e.key === 'F4') {
         e.preventDefault();
         if (!modalPagamento && !modalDesconto && window.confirm("Cancelar venda atual?")) {
@@ -95,7 +109,6 @@ export default function PdvPage() {
           setDescontoReal(0);
         }
       }
-      // ESC = Fechar Modais
       if (e.key === 'Escape') {
         if (modalPagamento || modalDesconto) {
           setModalPagamento(false);
@@ -111,38 +124,59 @@ export default function PdvPage() {
 
   const processarCodigoBarras = async (e) => {
     e.preventDefault();
-    if (!codigoBarras.trim()) return;
+    const codigo = codigoBarras.trim();
+    if (!codigo) return;
 
-    // TODO: Integração real API -> const { data } = await api.get(`/itens/sku/${codigoBarras}`);
-    const isPesavel = codigoBarras === '2020'; // Simulando código de Picanha
-    const mockProduto = {
-      id: crypto.randomUUID(),
-      nome: isPesavel ? 'Picanha Bovina Resfriada' : `Item Cod. ${codigoBarras}`,
-      preco_venda: isPesavel ? 89.90 : 15.50,
-      unidade: isPesavel ? 'KG' : 'UN',
-      codigo_sku: codigoBarras
-    };
+    setBuscandoItem(true);
+    try {
+      // BATE NA API REAL PARA BUSCAR O ITEM PELO CÓDIGO
+      const res = await api.get('/itens', { params: { search: codigo } });
+      const itensEncontrados = res.data?.data?.data || res.data?.data || [];
 
-    const quantidadeFinal = isPesavel && balancaConectada ? parseFloat(pesoBalanca) : 1.000;
+      // Garante correspondência exata do SKU ou Código de Barras EAN
+      const produtoReal = itensEncontrados.find(i =>
+        i.codigo_sku === codigo || i.codigo_barras_ean === codigo
+      );
 
-    if (quantidadeFinal <= 0) {
-      alert("Atenção: Coloque o produto na balança antes de bipar o código.");
+      if (!produtoReal) {
+        alert("Produto não encontrado no catálogo do ERP!");
+        setCodigoBarras('');
+        setBuscandoItem(false);
+        return;
+      }
+
+      // REGRA DE NEGÓCIO DA BALANÇA
+      const isPesavel = produtoReal.unidade_medida === 'KG';
+      const quantidadeFinal = isPesavel && balancaConectada ? parseFloat(pesoBalanca) : 1.000;
+
+      if (quantidadeFinal <= 0) {
+        alert("Atenção: O produto é vendido a KG. Coloque o item na balança antes de bipar o código.");
+        setCodigoBarras('');
+        setBuscandoItem(false);
+        return;
+      }
+
+      // Adiciona o Produto Real no Topo do Carrinho
+      setCarrinho(prev => [{
+        id: produtoReal.id,
+        nome: produtoReal.nome,
+        codigo_sku: produtoReal.codigo_sku,
+        unidade: produtoReal.unidade_medida,
+        preco_venda: parseFloat(produtoReal.preco_venda),
+        quantidade: quantidadeFinal,
+        total: parseFloat(produtoReal.preco_venda) * quantidadeFinal
+      }, ...prev]);
+
       setCodigoBarras('');
-      return;
+    } catch (err) {
+      alert("Erro ao comunicar com o servidor: " + err.message);
+    } finally {
+      setBuscandoItem(false);
     }
-
-    setCarrinho(prev => [{
-      ...mockProduto,
-      quantidade: quantidadeFinal,
-      total: mockProduto.preco_venda * quantidadeFinal
-    }, ...prev]);
-
-    setCodigoBarras('');
   };
 
   const removerItem = (index) => {
     setCarrinho(prev => prev.filter((_, i) => i !== index));
-    // Se esvaziar o carrinho, zera o desconto
     if (carrinho.length === 1) setDescontoReal(0);
   };
 
@@ -166,59 +200,99 @@ export default function PdvPage() {
       return;
     }
 
-    // Armazena os valores finais para mostrar na tela de Sucesso/Troco
-    setTrocoFinal(troco);
-    setTotalFinal(totalGeral);
-
-    // TODO: Integração real API -> await api.post('/vendas/pdv', payload);
-
-    if (impressoraConectada && config.impressaoAutomatica) {
-      const comandos = [
-        EscPosEncoder.init(),
-        EscPosEncoder.align(1),
-        EscPosEncoder.bold(true),
-        EscPosEncoder.text("SCALLE ERP - CUPOM NAO FISCAL\n"),
-        EscPosEncoder.bold(false),
-        EscPosEncoder.text("--------------------------------\n"),
-        EscPosEncoder.align(0),
-      ];
-
-      carrinho.forEach(item => {
-        comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}`));
-        comandos.push(EscPosEncoder.text(`${item.quantidade.toFixed(3)} ${item.unidade} x R$ ${item.preco_venda.toFixed(2)} = R$ ${item.total.toFixed(2)}\n`));
-      });
-
-      comandos.push(EscPosEncoder.text("--------------------------------\n"));
-      if (descontoReal > 0) {
-        comandos.push(EscPosEncoder.text(`SUBTOTAL: R$ ${subtotal.toFixed(2)}\n`));
-        comandos.push(EscPosEncoder.text(`DESCONTO: R$ ${descontoReal.toFixed(2)}\n`));
-      }
-
-      comandos.push(EscPosEncoder.align(2));
-      comandos.push(EscPosEncoder.bold(true));
-      comandos.push(EscPosEncoder.text(`TOTAL: R$ ${totalGeral.toFixed(2)}\n`));
-      comandos.push(EscPosEncoder.bold(false));
-      comandos.push(EscPosEncoder.text(`PAGO EM: ${formaPagamento}\n`));
-      if (formaPagamento === 'DINHEIRO') {
-         comandos.push(EscPosEncoder.text(`VALOR RECEBIDO: R$ ${parseFloat(valorRecebido).toFixed(2)}\n`));
-         comandos.push(EscPosEncoder.text(`TROCO: R$ ${troco.toFixed(2)}\n`));
-      }
-
-      comandos.push(EscPosEncoder.align(1));
-      comandos.push(EscPosEncoder.text("\nObrigado pela preferencia!\n"));
-      comandos.push(EscPosEncoder.text("\n\n\n"));
-      comandos.push(EscPosEncoder.cut());
-      comandos.push(EscPosEncoder.openDrawer());
-
-      await imprimirCupom(EscPosEncoder.build(comandos));
+    if (!depositoSelecionado) {
+      alert("Atenção: O sistema não encontrou um Depósito de Saída configurado. Contacte o Suporte.");
+      return;
     }
 
-    // Reset PDV e Mostra o Troco
-    setCarrinho([]);
-    setDescontoReal(0);
-    setValorRecebido('');
-    setModalPagamento(false);
-    setModalSucesso(true); // Tranca a tela no modal de troco
+    setProcessandoVenda(true);
+
+    try {
+      const valorRecebidoFinal = formaPagamento === 'DINHEIRO' ? parseFloat(valorRecebido) : totalGeral;
+
+      // PAYLOAD REAL PARA A API DE VENDAS DA HOSTOO
+      const payload = {
+        deposito_id: depositoSelecionado,
+        cliente_id: null, // Deixando null, o backend usa o Consumidor Final Padrão
+        desconto_geral: descontoReal,
+        itens: carrinho.map(item => ({
+          item_id: item.id,
+          quantidade: item.quantidade,
+          preco_unitario: item.preco_venda,
+          desconto_unitario: 0
+        })),
+        pagamentos: [{
+          forma_pagamento: formaPagamento,
+          valor_pago: valorRecebidoFinal,
+          valor_troco: formaPagamento === 'DINHEIRO' ? troco : 0
+        }],
+        emitir_cupom_fiscal: false
+      };
+
+      // REGISTRA A VENDA E DÁ BAIXA NO ESTOQUE
+      const { data } = await api.post('/vendas/faturar', payload);
+
+      const numPedido = data?.data?.pedido?.numero_pedido || 'N/D';
+
+      setTrocoFinal(troco);
+      setTotalFinal(totalGeral);
+
+      // IMPRESSÃO FÍSICA ESC/POS
+      if (impressoraConectada && config.impressaoAutomatica) {
+        const comandos = [
+          EscPosEncoder.init(),
+          EscPosEncoder.align(1),
+          EscPosEncoder.bold(true),
+          EscPosEncoder.text("SCALLE ERP - CUPOM NAO FISCAL\n"),
+          EscPosEncoder.bold(false),
+          EscPosEncoder.text(`PEDIDO #${numPedido}\n`),
+          EscPosEncoder.text("--------------------------------\n"),
+          EscPosEncoder.align(0),
+        ];
+
+        carrinho.forEach(item => {
+          comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}`));
+          comandos.push(EscPosEncoder.text(`${item.quantidade.toFixed(3)} ${item.unidade} x R$ ${item.preco_venda.toFixed(2)} = R$ ${item.total.toFixed(2)}\n`));
+        });
+
+        comandos.push(EscPosEncoder.text("--------------------------------\n"));
+        if (descontoReal > 0) {
+          comandos.push(EscPosEncoder.text(`SUBTOTAL: R$ ${subtotal.toFixed(2)}\n`));
+          comandos.push(EscPosEncoder.text(`DESCONTO: R$ ${descontoReal.toFixed(2)}\n`));
+        }
+
+        comandos.push(EscPosEncoder.align(2));
+        comandos.push(EscPosEncoder.bold(true));
+        comandos.push(EscPosEncoder.text(`TOTAL: R$ ${totalGeral.toFixed(2)}\n`));
+        comandos.push(EscPosEncoder.bold(false));
+        comandos.push(EscPosEncoder.text(`PAGO EM: ${formaPagamento}\n`));
+        if (formaPagamento === 'DINHEIRO') {
+           comandos.push(EscPosEncoder.text(`VALOR RECEBIDO: R$ ${valorRecebidoFinal.toFixed(2)}\n`));
+           comandos.push(EscPosEncoder.text(`TROCO: R$ ${troco.toFixed(2)}\n`));
+        }
+
+        comandos.push(EscPosEncoder.align(1));
+        comandos.push(EscPosEncoder.text("\nObrigado pela preferencia!\n"));
+        comandos.push(EscPosEncoder.text("\n\n\n"));
+        comandos.push(EscPosEncoder.cut());
+        comandos.push(EscPosEncoder.openDrawer());
+
+        await imprimirCupom(EscPosEncoder.build(comandos));
+      }
+
+      // Finaliza processo
+      setCarrinho([]);
+      setDescontoReal(0);
+      setValorRecebido('');
+      setModalPagamento(false);
+      setModalSucesso(true);
+
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message;
+      alert("Erro crítico ao faturar: " + msg);
+    } finally {
+      setProcessandoVenda(false);
+    }
   };
 
   return (
@@ -234,7 +308,6 @@ export default function PdvPage() {
             <p className="text-xs text-slate-400 mt-1 font-mono uppercase">Caixa Livre • Op: Admin • Terminal 01</p>
           </div>
 
-          {/* Status Hardware Badges */}
           <div className="flex gap-2">
             <button
               onClick={balancaConectada ? desconectarBalanca : conectarBalanca}
@@ -255,15 +328,16 @@ export default function PdvPage() {
         <form onSubmit={processarCodigoBarras} className="mb-4">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Search className="h-6 w-6 text-indigo-500" />
+              {buscandoItem ? <Loader2 className="h-6 w-6 text-indigo-500 animate-spin" /> : <Search className="h-6 w-6 text-indigo-500" />}
             </div>
             <input
               ref={barcodeInputRef}
               type="text"
               value={codigoBarras}
               onChange={(e) => setCodigoBarras(e.target.value)}
+              disabled={buscandoItem || processandoVenda}
               placeholder="Código de Barras ou SKU [ENTER]"
-              className="w-full pl-14 pr-4 py-4 bg-slate-900 border border-slate-700 rounded-xl text-xl font-mono text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
+              className="w-full pl-14 pr-4 py-4 bg-slate-900 border border-slate-700 rounded-xl text-xl font-mono text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner disabled:opacity-50"
             />
           </div>
         </form>
@@ -319,7 +393,6 @@ export default function PdvPage() {
       <div className="w-[400px] bg-slate-900 flex flex-col justify-between shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.3)] z-10 relative">
         <div className="p-6 space-y-6">
 
-          {/* Visor da Balança (Huge) */}
           <div className="space-y-1">
             <div className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
               <span>Peso Balança</span>
@@ -333,7 +406,6 @@ export default function PdvPage() {
 
           <hr className="border-slate-800" />
 
-          {/* Resumo Financeiro */}
           <div className="space-y-3">
             <div className="flex justify-between items-center text-slate-400 font-mono">
               <span className="text-sm">Subtotal</span>
@@ -357,7 +429,7 @@ export default function PdvPage() {
         {/* Atalhos de Teclado Footer */}
         <div className="p-6 bg-slate-950 border-t border-slate-800 grid grid-cols-3 gap-3">
           <button
-            disabled={carrinho.length === 0}
+            disabled={carrinho.length === 0 || processandoVenda}
             onClick={() => setModalPagamento(true)}
             className="col-span-3 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-lg rounded-xl flex items-center justify-center gap-2 cursor-pointer transition shadow-lg shadow-indigo-600/20"
           >
@@ -370,7 +442,7 @@ export default function PdvPage() {
           </div>
 
           <button
-            disabled={carrinho.length === 0}
+            disabled={carrinho.length === 0 || processandoVenda}
             onClick={() => setModalDesconto(true)}
             className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:bg-slate-800 transition disabled:opacity-50"
           >
@@ -379,7 +451,7 @@ export default function PdvPage() {
           </button>
 
           <button
-            disabled={carrinho.length === 0}
+            disabled={carrinho.length === 0 || processandoVenda}
             onClick={() => { if(window.confirm("Cancelar venda?")) { setCarrinho([]); setDescontoReal(0); } }}
             className="bg-rose-950/30 border border-rose-900/50 p-2 rounded-lg text-center cursor-pointer hover:bg-rose-900/50 transition text-rose-400 disabled:opacity-50"
           >
@@ -438,7 +510,7 @@ export default function PdvPage() {
             <div className="w-1/2 p-8 border-r border-slate-800 bg-slate-900">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-white">Método de Pagamento</h2>
-                <button onClick={() => { setModalPagamento(false); setValorRecebido(''); }} className="p-2 text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5"/></button>
+                <button disabled={processandoVenda} onClick={() => { setModalPagamento(false); setValorRecebido(''); }} className="p-2 text-slate-400 hover:text-white cursor-pointer disabled:opacity-50"><X className="h-5 w-5"/></button>
               </div>
 
               <div className="grid grid-cols-2 gap-3 mb-6">
@@ -450,8 +522,9 @@ export default function PdvPage() {
                 ].map(metodo => (
                   <button
                     key={metodo.id}
+                    disabled={processandoVenda}
                     onClick={() => { setFormaPagamento(metodo.id); if(metodo.id !== 'DINHEIRO') setValorRecebido(totalGeral.toFixed(2)); }}
-                    className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition cursor-pointer ${formaPagamento === metodo.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'}`}
+                    className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition cursor-pointer disabled:opacity-50 ${formaPagamento === metodo.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'}`}
                   >
                     <metodo.icon className="h-6 w-6" />
                     <span className="text-xs font-bold uppercase">{metodo.label}</span>
@@ -467,14 +540,15 @@ export default function PdvPage() {
                     type="number"
                     step="0.01"
                     min="0"
+                    disabled={processandoVenda}
                     value={valorRecebido}
                     onChange={(e) => setValorRecebido(e.target.value)}
-                    className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-4 text-2xl font-mono text-white focus:outline-none focus:border-indigo-400"
+                    className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-4 text-2xl font-mono text-white focus:outline-none focus:border-indigo-400 disabled:opacity-50"
                     placeholder="0.00"
                   />
                   <div className="grid grid-cols-4 gap-2 pt-2">
                     {[10, 20, 50, 100].map(val => (
-                      <button key={val} onClick={() => setValorRecebido(val.toFixed(2))} className="bg-slate-800 text-slate-300 py-2 rounded-lg font-mono font-bold text-sm hover:bg-slate-700 cursor-pointer border border-slate-700">
+                      <button disabled={processandoVenda} key={val} onClick={() => setValorRecebido(val.toFixed(2))} className="bg-slate-800 text-slate-300 py-2 rounded-lg font-mono font-bold text-sm hover:bg-slate-700 cursor-pointer border border-slate-700 disabled:opacity-50">
                         {val},00
                       </button>
                     ))}
@@ -516,10 +590,11 @@ export default function PdvPage() {
 
                 <button
                   onClick={finalizarVenda}
-                  disabled={valorFaltante > 0 && formaPagamento === 'DINHEIRO'}
+                  disabled={(valorFaltante > 0 && formaPagamento === 'DINHEIRO') || processandoVenda}
                   className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-xl py-5 rounded-xl shadow-lg shadow-emerald-600/20 cursor-pointer transition flex items-center justify-center gap-2"
                 >
-                  <CheckCircle2 className="h-6 w-6" /> CONFIRMAR PAGAMENTO [ENTER]
+                  {processandoVenda ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}
+                  {processandoVenda ? 'FATURANDO NA HOSTOO...' : 'CONFIRMAR PAGAMENTO [ENTER]'}
                 </button>
               </div>
             </div>
@@ -538,7 +613,6 @@ export default function PdvPage() {
 
             <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Venda Finalizada!</h2>
 
-            {/* Aviso de impressora desligada */}
             {(!impressoraConectada || !config.impressaoAutomatica) && (
                <p className="text-xs text-amber-500 font-medium mb-6 bg-amber-950/30 px-3 py-1 rounded-full border border-amber-900/50">
                  (Sem impressão de cupom físico)
