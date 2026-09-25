@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShoppingCart, Scale, Printer, CreditCard, X, Search,
-  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode, CheckCircle2
+  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode, CheckCircle2, Tag
 } from 'lucide-react';
 import { useHardwareStore } from '../../store/useHardwareStore';
 import { EscPosEncoder } from '../../utils/EscPosEncoder';
@@ -10,6 +10,7 @@ import { api } from '../../services/api';
 export default function PdvPage() {
   const barcodeInputRef = useRef(null);
   const paymentInputRef = useRef(null);
+  const discountInputRef = useRef(null);
 
   // Hardware Global Store
   const {
@@ -20,12 +21,16 @@ export default function PdvPage() {
   // Estado do PDV
   const [codigoBarras, setCodigoBarras] = useState('');
   const [carrinho, setCarrinho] = useState([]);
-  const [modalPagamento, setModalPagamento] = useState(false);
 
-  // Estado do Pagamento
+  // Modais
+  const [modalPagamento, setModalPagamento] = useState(false);
+  const [modalDesconto, setModalDesconto] = useState(false);
+
+  // Estado Financeiro
   const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
   const [valorRecebido, setValorRecebido] = useState('');
   const [descontoReal, setDescontoReal] = useState(0);
+  const [valorDescontoTemp, setValorDescontoTemp] = useState('');
 
   // Cálculos de Totais
   const subtotal = useMemo(() => carrinho.reduce((acc, item) => acc + item.total, 0), [carrinho]);
@@ -33,45 +38,62 @@ export default function PdvPage() {
   const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido) || 0)), [totalGeral, valorRecebido]);
   const troco = useMemo(() => Math.max(0, (parseFloat(valorRecebido) || 0) - totalGeral), [totalGeral, valorRecebido]);
 
-  // Foco Perpétuo
+  // Foco Perpétuo Inteligente
   useEffect(() => {
     const focusTimer = setInterval(() => {
-      if (!modalPagamento && barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
+      const isAnyModalOpen = modalPagamento || modalDesconto;
+      if (!isAnyModalOpen && barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
         barcodeInputRef.current.focus();
       }
     }, 1500);
     return () => clearInterval(focusTimer);
-  }, [modalPagamento]);
+  }, [modalPagamento, modalDesconto]);
 
+  // Foco Automático nos Modais
   useEffect(() => {
     if (modalPagamento && paymentInputRef.current) {
       setTimeout(() => paymentInputRef.current.focus(), 100);
     }
   }, [modalPagamento, formaPagamento]);
 
+  useEffect(() => {
+    if (modalDesconto && discountInputRef.current) {
+      setTimeout(() => discountInputRef.current.focus(), 100);
+    }
+  }, [modalDesconto]);
+
   // Atalhos de Teclado Globais
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // F3 = Receber Pagamento
       if (e.key === 'F3') {
         e.preventDefault();
-        if (carrinho.length > 0) setModalPagamento(true);
+        if (carrinho.length > 0 && !modalDesconto) setModalPagamento(true);
       }
+      // F8 = Aplicar Desconto
+      if (e.key === 'F8') {
+        e.preventDefault();
+        if (carrinho.length > 0 && !modalPagamento) setModalDesconto(true);
+      }
+      // F4 = Cancelar Venda
       if (e.key === 'F4') {
         e.preventDefault();
-        if (window.confirm("Cancelar venda atual?")) {
+        if (!modalPagamento && !modalDesconto && window.confirm("Cancelar venda atual?")) {
           setCarrinho([]);
           setDescontoReal(0);
-          setModalPagamento(false);
         }
       }
+      // ESC = Fechar Modais
       if (e.key === 'Escape') {
         setModalPagamento(false);
+        setModalDesconto(false);
         setValorRecebido('');
+        setValorDescontoTemp('');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [carrinho]);
+  }, [carrinho, modalPagamento, modalDesconto]);
 
   const processarCodigoBarras = async (e) => {
     e.preventDefault();
@@ -99,13 +121,29 @@ export default function PdvPage() {
       ...mockProduto,
       quantidade: quantidadeFinal,
       total: mockProduto.preco_venda * quantidadeFinal
-    }, ...prev]); // Adiciona no topo da lista (Tier 1 behavior)
+    }, ...prev]);
 
     setCodigoBarras('');
   };
 
   const removerItem = (index) => {
     setCarrinho(prev => prev.filter((_, i) => i !== index));
+    // Se esvaziar o carrinho, zera o desconto
+    if (carrinho.length === 1) setDescontoReal(0);
+  };
+
+  const aplicarDesconto = (e) => {
+    e.preventDefault();
+    const descFormated = parseFloat(valorDescontoTemp) || 0;
+
+    if (descFormated > subtotal) {
+      alert("O desconto não pode ser maior que o valor da venda!");
+      return;
+    }
+
+    setDescontoReal(descFormated);
+    setModalDesconto(false);
+    setValorDescontoTemp('');
   };
 
   const finalizarVenda = async () => {
@@ -298,27 +336,79 @@ export default function PdvPage() {
         </div>
 
         {/* Atalhos de Teclado Footer */}
-        <div className="p-6 bg-slate-950 border-t border-slate-800 grid grid-cols-2 gap-3">
+        <div className="p-6 bg-slate-950 border-t border-slate-800 grid grid-cols-3 gap-3">
           <button
             disabled={carrinho.length === 0}
             onClick={() => setModalPagamento(true)}
-            className="col-span-2 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-lg rounded-xl flex items-center justify-center gap-2 cursor-pointer transition shadow-lg shadow-indigo-600/20"
+            className="col-span-3 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-lg rounded-xl flex items-center justify-center gap-2 cursor-pointer transition shadow-lg shadow-indigo-600/20"
           >
             <Banknote className="h-6 w-6" /> [F3] RECEBER
           </button>
-          <div className="bg-slate-900 border border-slate-800 p-3 rounded-lg text-center cursor-pointer hover:bg-slate-800 transition">
+
+          <div className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:bg-slate-800 transition">
             <span className="block text-xs font-bold text-slate-400 mb-0.5">[F2]</span>
-            <span className="text-[10px] text-slate-300 uppercase font-semibold">Buscar Item</span>
+            <span className="text-[10px] text-slate-300 uppercase font-semibold">Buscar</span>
           </div>
+
           <button
+            disabled={carrinho.length === 0}
+            onClick={() => setModalDesconto(true)}
+            className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:bg-slate-800 transition disabled:opacity-50"
+          >
+            <span className="block text-xs font-bold text-indigo-400 mb-0.5">[F8]</span>
+            <span className="text-[10px] text-slate-300 uppercase font-semibold">Desconto</span>
+          </button>
+
+          <button
+            disabled={carrinho.length === 0}
             onClick={() => { if(window.confirm("Cancelar venda?")) { setCarrinho([]); setDescontoReal(0); } }}
-            className="bg-rose-950/30 border border-rose-900/50 p-3 rounded-lg text-center cursor-pointer hover:bg-rose-900/50 transition text-rose-400"
+            className="bg-rose-950/30 border border-rose-900/50 p-2 rounded-lg text-center cursor-pointer hover:bg-rose-900/50 transition text-rose-400 disabled:opacity-50"
           >
             <span className="block text-xs font-bold mb-0.5">[F4]</span>
-            <span className="text-[10px] uppercase font-semibold">Cancelar Venda</span>
+            <span className="text-[10px] uppercase font-semibold">Cancelar</span>
           </button>
         </div>
       </div>
+
+      {/* MODAL DE DESCONTO */}
+      {modalDesconto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center">
+            <div className="p-3 bg-indigo-950/50 text-indigo-400 rounded-full mb-4">
+              <Tag className="h-8 w-8" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-1">Aplicar Desconto</h2>
+            <p className="text-xs text-slate-400 mb-6">Subtotal atual: R$ {subtotal.toFixed(2)}</p>
+
+            <form onSubmit={aplicarDesconto} className="w-full space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Valor (R$)</label>
+                <input
+                  ref={discountInputRef}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={subtotal}
+                  required
+                  value={valorDescontoTemp}
+                  onChange={(e) => setValorDescontoTemp(e.target.value)}
+                  className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-3 text-xl font-mono text-white focus:outline-none focus:border-indigo-400 text-center"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalDesconto(false)} className="flex-1 py-3 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 font-bold rounded-xl text-sm transition">
+                  [ESC] Cancelar
+                </button>
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30">
+                  Confirmar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE PAGAMENTO TIER 1 */}
       {modalPagamento && (
