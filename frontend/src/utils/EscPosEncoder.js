@@ -1,34 +1,48 @@
 export class EscPosEncoder {
-    // 1. Acorda e reseta a impressora
-    static init() { return new Uint8Array([0x1B, 0x40]); }
 
-    // 2. Transforma texto em bytes (adicionando quebra de linha e removendo acentos para impressoras antigas)
-    static text(str) {
-        const cleanStr = str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        return new TextEncoder().encode(cleanStr + '\n');
+    // Inicializa a impressora (Limpa o buffer)
+    static init() {
+        return new Uint8Array([0x1B, 0x40]);
     }
 
-    // 3. Centraliza o texto (0 = Esquerda, 1 = Centro, 2 = Direita)
-    static align(position) { return new Uint8Array([0x1B, 0x61, position]); }
+    // Alinhamento: 0 = Esquerda, 1 = Centro, 2 = Direita
+    static align(mode) {
+        return new Uint8Array([0x1B, 0x61, mode]);
+    }
 
-    // 4. Negrito On/Off
-    static bold(on) { return new Uint8Array([0x1B, 0x45, on ? 1 : 0]); }
+    // Negrito: true = Ligado, false = Desligado
+    static bold(on) {
+        return new Uint8Array([0x1B, 0x45, on ? 1 : 0]);
+    }
 
-    // 5. Abre a gaveta de dinheiro ligada à impressora (Pulso RJ11)
-    static openDrawer() { return new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]); }
+    // Converte a String de texto para Bytes (Removendo acentos para evitar falhas em impressoras antigas)
+    static text(str) {
+        const stringLimpa = str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const encoder = new TextEncoder();
+        return encoder.encode(stringLimpa);
+    }
 
-    // 6. Corta o papel (Guilhotina)
-    static cut() { return new Uint8Array([0x1D, 0x56, 0x41, 0x10]); }
+    // Guilhotina: Corta o papel (Partial Cut)
+    static cut() {
+        return new Uint8Array([0x1D, 0x56, 0x41, 0x10]);
+    }
 
-    // Utilitário para fundir todos os comandos num único pacote de bytes contínuo
+    // Abre a gaveta de dinheiro
+    static openDrawer() {
+        return new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
+    }
+
+    // Junta todos os arrays de bytes num único pacote binário para enviar à porta COM/USB
     static build(commands) {
-        const totalLength = commands.reduce((acc, val) => acc + val.length, 0);
+        const totalLength = commands.reduce((acc, cmd) => acc + cmd.length, 0);
         const result = new Uint8Array(totalLength);
         let offset = 0;
-        commands.forEach(buffer => {
-            result.set(buffer, offset);
-            offset += buffer.length;
-        });
+
+        for (const cmd of commands) {
+            result.set(cmd, offset);
+            offset += cmd.length;
+        }
+
         return result;
     }
 }
