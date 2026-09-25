@@ -254,8 +254,8 @@ export default function PdvPage() {
         ];
 
         carrinho.forEach(item => {
-          comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}`));
-          comandos.push(EscPosEncoder.text(`${formatarPeso(item.quantidade.toFixed(3))} ${item.unidade} x R$ ${formatarMoeda(item.preco_venda)} = R$ ${formatarMoeda(item.total)}\n`));
+            comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}\n`));
+            comandos.push(EscPosEncoder.text(`${formatarPeso(item.quantidade.toFixed(3))} ${item.unidade} x R$ ${formatarMoeda(item.preco_venda)} = R$ ${formatarMoeda(item.total)}\n`));
         });
 
         comandos.push(EscPosEncoder.text("--------------------------------\n"));
