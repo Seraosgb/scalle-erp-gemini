@@ -7,6 +7,16 @@ import { useHardwareStore } from '../../store/useHardwareStore';
 import { EscPosEncoder } from '../../utils/EscPosEncoder';
 import { api } from '../../services/api';
 
+// Função auxiliar para formatação de moeda BRL
+const formatarMoeda = (valor) => {
+  return Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+// Função auxiliar para formatação de peso
+const formatarPeso = (valor) => {
+  return String(valor).replace('.', ',');
+};
+
 export default function PdvPage() {
   const barcodeInputRef = useRef(null);
   const paymentInputRef = useRef(null);
@@ -44,8 +54,8 @@ export default function PdvPage() {
   // Cálculos de Totais
   const subtotal = useMemo(() => carrinho.reduce((acc, item) => acc + item.total, 0), [carrinho]);
   const totalGeral = useMemo(() => Math.max(0, subtotal - descontoReal), [subtotal, descontoReal]);
-  const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido) || 0)), [totalGeral, valorRecebido]);
-  const troco = useMemo(() => Math.max(0, (parseFloat(valorRecebido) || 0) - totalGeral), [totalGeral, valorRecebido]);
+  const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido.replace(',', '.')) || 0)), [totalGeral, valorRecebido]);
+  const troco = useMemo(() => Math.max(0, (parseFloat(valorRecebido.replace(',', '.')) || 0) - totalGeral), [totalGeral, valorRecebido]);
 
   // Busca do Depósito Padrão ao abrir o PDV
   useEffect(() => {
@@ -129,11 +139,9 @@ export default function PdvPage() {
 
     setBuscandoItem(true);
     try {
-      // BATE NA API REAL PARA BUSCAR O ITEM PELO CÓDIGO
       const res = await api.get('/itens', { params: { search: codigo } });
       const itensEncontrados = res.data?.data?.data || res.data?.data || [];
 
-      // Garante correspondência exata do SKU ou Código de Barras EAN
       const produtoReal = itensEncontrados.find(i =>
         i.codigo_sku === codigo || i.codigo_barras_ean === codigo
       );
@@ -145,7 +153,6 @@ export default function PdvPage() {
         return;
       }
 
-      // REGRA DE NEGÓCIO DA BALANÇA
       const isPesavel = produtoReal.unidade_medida === 'KG';
       const quantidadeFinal = isPesavel && balancaConectada ? parseFloat(pesoBalanca) : 1.000;
 
@@ -156,7 +163,6 @@ export default function PdvPage() {
         return;
       }
 
-      // Adiciona o Produto Real no Topo do Carrinho
       setCarrinho(prev => [{
         id: produtoReal.id,
         nome: produtoReal.nome,
@@ -182,7 +188,7 @@ export default function PdvPage() {
 
   const aplicarDesconto = (e) => {
     e.preventDefault();
-    const descFormated = parseFloat(valorDescontoTemp) || 0;
+    const descFormated = parseFloat(valorDescontoTemp.replace(',', '.')) || 0;
 
     if (descFormated > subtotal) {
       alert("O desconto não pode ser maior que o valor da venda!");
@@ -208,12 +214,12 @@ export default function PdvPage() {
     setProcessandoVenda(true);
 
     try {
-      const valorRecebidoFinal = formaPagamento === 'DINHEIRO' ? parseFloat(valorRecebido) : totalGeral;
+      const valorDinheiro = parseFloat(valorRecebido.replace(',', '.')) || 0;
+      const valorRecebidoFinal = formaPagamento === 'DINHEIRO' ? valorDinheiro : totalGeral;
 
-      // PAYLOAD REAL PARA A API DE VENDAS DA HOSTOO
       const payload = {
         deposito_id: depositoSelecionado,
-        cliente_id: null, // Deixando null, o backend usa o Consumidor Final Padrão
+        cliente_id: null,
         desconto_geral: descontoReal,
         itens: carrinho.map(item => ({
           item_id: item.id,
@@ -229,15 +235,12 @@ export default function PdvPage() {
         emitir_cupom_fiscal: false
       };
 
-      // REGISTRA A VENDA E DÁ BAIXA NO ESTOQUE
       const { data } = await api.post('/vendas/faturar', payload);
-
       const numPedido = data?.data?.pedido?.numero_pedido || 'N/D';
 
       setTrocoFinal(troco);
       setTotalFinal(totalGeral);
 
-      // IMPRESSÃO FÍSICA ESC/POS
       if (impressoraConectada && config.impressaoAutomatica) {
         const comandos = [
           EscPosEncoder.init(),
@@ -252,23 +255,23 @@ export default function PdvPage() {
 
         carrinho.forEach(item => {
           comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}`));
-          comandos.push(EscPosEncoder.text(`${item.quantidade.toFixed(3)} ${item.unidade} x R$ ${item.preco_venda.toFixed(2)} = R$ ${item.total.toFixed(2)}\n`));
+          comandos.push(EscPosEncoder.text(`${formatarPeso(item.quantidade.toFixed(3))} ${item.unidade} x R$ ${formatarMoeda(item.preco_venda)} = R$ ${formatarMoeda(item.total)}\n`));
         });
 
         comandos.push(EscPosEncoder.text("--------------------------------\n"));
         if (descontoReal > 0) {
-          comandos.push(EscPosEncoder.text(`SUBTOTAL: R$ ${subtotal.toFixed(2)}\n`));
-          comandos.push(EscPosEncoder.text(`DESCONTO: R$ ${descontoReal.toFixed(2)}\n`));
+          comandos.push(EscPosEncoder.text(`SUBTOTAL: R$ ${formatarMoeda(subtotal)}\n`));
+          comandos.push(EscPosEncoder.text(`DESCONTO: R$ ${formatarMoeda(descontoReal)}\n`));
         }
 
         comandos.push(EscPosEncoder.align(2));
         comandos.push(EscPosEncoder.bold(true));
-        comandos.push(EscPosEncoder.text(`TOTAL: R$ ${totalGeral.toFixed(2)}\n`));
+        comandos.push(EscPosEncoder.text(`TOTAL: R$ ${formatarMoeda(totalGeral)}\n`));
         comandos.push(EscPosEncoder.bold(false));
         comandos.push(EscPosEncoder.text(`PAGO EM: ${formaPagamento}\n`));
         if (formaPagamento === 'DINHEIRO') {
-           comandos.push(EscPosEncoder.text(`VALOR RECEBIDO: R$ ${valorRecebidoFinal.toFixed(2)}\n`));
-           comandos.push(EscPosEncoder.text(`TROCO: R$ ${troco.toFixed(2)}\n`));
+           comandos.push(EscPosEncoder.text(`VALOR RECEBIDO: R$ ${formatarMoeda(valorRecebidoFinal)}\n`));
+           comandos.push(EscPosEncoder.text(`TROCO: R$ ${formatarMoeda(troco)}\n`));
         }
 
         comandos.push(EscPosEncoder.align(1));
@@ -280,7 +283,6 @@ export default function PdvPage() {
         await imprimirCupom(EscPosEncoder.build(comandos));
       }
 
-      // Finaliza processo
       setCarrinho([]);
       setDescontoReal(0);
       setValorRecebido('');
@@ -324,7 +326,6 @@ export default function PdvPage() {
           </div>
         </div>
 
-        {/* Input Leitor de Barras */}
         <form onSubmit={processarCodigoBarras} className="mb-4">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -342,7 +343,6 @@ export default function PdvPage() {
           </div>
         </form>
 
-        {/* Cupom Table */}
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm">
           <div className="overflow-y-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -372,9 +372,9 @@ export default function PdvPage() {
                     <tr key={idx} className="hover:bg-slate-800/50 transition">
                       <td className="py-3 px-4 text-center text-slate-500">{carrinho.length - idx}</td>
                       <td className="py-3 px-4 font-bold text-white font-sans truncate max-w-[200px]">{item.nome}</td>
-                      <td className="py-3 px-4 text-right text-indigo-400">{item.quantidade.toFixed(3)} {item.unidade}</td>
-                      <td className="py-3 px-4 text-right">{item.preco_venda.toFixed(2)}</td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-400">{item.total.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-right text-indigo-400">{formatarPeso(item.quantidade.toFixed(3))} {item.unidade}</td>
+                      <td className="py-3 px-4 text-right">{formatarMoeda(item.preco_venda)}</td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-400">{formatarMoeda(item.total)}</td>
                       <td className="py-3 px-4 text-center">
                         <button onClick={() => removerItem(idx)} className="text-slate-500 hover:text-rose-400 transition cursor-pointer">
                           <Trash2 className="h-4 w-4" />
@@ -399,7 +399,7 @@ export default function PdvPage() {
               <span className={balancaConectada ? 'text-emerald-500' : 'text-rose-500'}>{balancaConectada ? 'ON' : 'OFF'}</span>
             </div>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-right shadow-inner">
-              <span className="font-mono text-5xl font-black text-indigo-400 tracking-tighter">{pesoBalanca}</span>
+              <span className="font-mono text-5xl font-black text-indigo-400 tracking-tighter">{formatarPeso(pesoBalanca)}</span>
               <span className="text-slate-500 ml-2 font-bold">KG</span>
             </div>
           </div>
@@ -409,24 +409,23 @@ export default function PdvPage() {
           <div className="space-y-3">
             <div className="flex justify-between items-center text-slate-400 font-mono">
               <span className="text-sm">Subtotal</span>
-              <span className="text-lg">R$ {subtotal.toFixed(2)}</span>
+              <span className="text-lg">R$ {formatarMoeda(subtotal)}</span>
             </div>
             <div className="flex justify-between items-center text-rose-400 font-mono">
               <span className="text-sm">Desconto</span>
-              <span className="text-lg">- R$ {descontoReal.toFixed(2)}</span>
+              <span className="text-lg">- R$ {formatarMoeda(descontoReal)}</span>
             </div>
             <div className="pt-3">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-1">Total a Pagar</span>
               <div className="bg-emerald-950/20 border border-emerald-900/50 p-4 rounded-xl text-right">
                 <span className="font-mono text-6xl font-black text-emerald-400 tracking-tighter">
-                  {totalGeral.toFixed(2)}
+                  {formatarMoeda(totalGeral)}
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Atalhos de Teclado Footer */}
         <div className="p-6 bg-slate-950 border-t border-slate-800 grid grid-cols-3 gap-3">
           <button
             disabled={carrinho.length === 0 || processandoVenda}
@@ -469,22 +468,19 @@ export default function PdvPage() {
               <Tag className="h-8 w-8" />
             </div>
             <h2 className="text-xl font-bold text-white mb-1">Aplicar Desconto</h2>
-            <p className="text-xs text-slate-400 mb-6">Subtotal atual: R$ {subtotal.toFixed(2)}</p>
+            <p className="text-xs text-slate-400 mb-6">Subtotal atual: R$ {formatarMoeda(subtotal)}</p>
 
             <form onSubmit={aplicarDesconto} className="w-full space-y-4">
               <div>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Valor (R$)</label>
                 <input
                   ref={discountInputRef}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max={subtotal}
+                  type="text"
                   required
                   value={valorDescontoTemp}
-                  onChange={(e) => setValorDescontoTemp(e.target.value)}
+                  onChange={(e) => setValorDescontoTemp(e.target.value.replace(/[^0-9,]/g, ''))}
                   className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-3 text-xl font-mono text-white focus:outline-none focus:border-indigo-400 text-center"
-                  placeholder="0.00"
+                  placeholder="0,00"
                 />
               </div>
 
@@ -506,7 +502,6 @@ export default function PdvPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl shadow-2xl flex overflow-hidden min-h-[500px]">
 
-            {/* Lado Esquerdo Modal: Formas de Pagamento */}
             <div className="w-1/2 p-8 border-r border-slate-800 bg-slate-900">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-white">Método de Pagamento</h2>
@@ -523,7 +518,7 @@ export default function PdvPage() {
                   <button
                     key={metodo.id}
                     disabled={processandoVenda}
-                    onClick={() => { setFormaPagamento(metodo.id); if(metodo.id !== 'DINHEIRO') setValorRecebido(totalGeral.toFixed(2)); }}
+                    onClick={() => { setFormaPagamento(metodo.id); if(metodo.id !== 'DINHEIRO') setValorRecebido(formatarPeso(totalGeral.toFixed(2))); }}
                     className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition cursor-pointer disabled:opacity-50 ${formaPagamento === metodo.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'}`}
                   >
                     <metodo.icon className="h-6 w-6" />
@@ -537,18 +532,16 @@ export default function PdvPage() {
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Valor Recebido (R$)</label>
                   <input
                     ref={paymentInputRef}
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
                     disabled={processandoVenda}
                     value={valorRecebido}
-                    onChange={(e) => setValorRecebido(e.target.value)}
+                    onChange={(e) => setValorRecebido(e.target.value.replace(/[^0-9,]/g, ''))}
                     className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-4 text-2xl font-mono text-white focus:outline-none focus:border-indigo-400 disabled:opacity-50"
-                    placeholder="0.00"
+                    placeholder="0,00"
                   />
                   <div className="grid grid-cols-4 gap-2 pt-2">
                     {[10, 20, 50, 100].map(val => (
-                      <button disabled={processandoVenda} key={val} onClick={() => setValorRecebido(val.toFixed(2))} className="bg-slate-800 text-slate-300 py-2 rounded-lg font-mono font-bold text-sm hover:bg-slate-700 cursor-pointer border border-slate-700 disabled:opacity-50">
+                      <button disabled={processandoVenda} key={val} onClick={() => setValorRecebido(formatarPeso(val.toFixed(2)))} className="bg-slate-800 text-slate-300 py-2 rounded-lg font-mono font-bold text-sm hover:bg-slate-700 cursor-pointer border border-slate-700 disabled:opacity-50">
                         {val},00
                       </button>
                     ))}
@@ -557,25 +550,24 @@ export default function PdvPage() {
               )}
             </div>
 
-            {/* Lado Direito Modal: Resumo Fechamento */}
             <div className="w-1/2 p-8 bg-slate-950 flex flex-col justify-between relative">
               <div className="space-y-6">
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-2">Resumo da Operação</h3>
 
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400">Total a Pagar</span>
-                  <span className="text-2xl font-black text-white font-mono">R$ {totalGeral.toFixed(2)}</span>
+                  <span className="text-2xl font-black text-white font-mono">R$ {formatarMoeda(totalGeral)}</span>
                 </div>
 
                 {formaPagamento === 'DINHEIRO' && (
                   <>
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">Faltante</span>
-                      <span className="text-lg font-bold text-rose-400 font-mono">R$ {valorFaltante.toFixed(2)}</span>
+                      <span className="text-lg font-bold text-rose-400 font-mono">R$ {formatarMoeda(valorFaltante)}</span>
                     </div>
                     <div className="p-4 bg-emerald-950/20 border border-emerald-900/50 rounded-xl flex justify-between items-center">
                       <span className="text-emerald-500 font-bold uppercase tracking-wider">Troco</span>
-                      <span className="text-4xl font-black text-emerald-400 font-mono">R$ {troco.toFixed(2)}</span>
+                      <span className="text-4xl font-black text-emerald-400 font-mono">R$ {formatarMoeda(troco)}</span>
                     </div>
                   </>
                 )}
@@ -594,7 +586,7 @@ export default function PdvPage() {
                   className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-xl py-5 rounded-xl shadow-lg shadow-emerald-600/20 cursor-pointer transition flex items-center justify-center gap-2"
                 >
                   {processandoVenda ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}
-                  {processandoVenda ? 'FATURANDO NA HOSTOO...' : 'CONFIRMAR PAGAMENTO [ENTER]'}
+                  {processandoVenda ? 'A FATURAR NA HOSTOO...' : 'CONFIRMAR PAGAMENTO [ENTER]'}
                 </button>
               </div>
             </div>
@@ -615,16 +607,16 @@ export default function PdvPage() {
 
             {(!impressoraConectada || !config.impressaoAutomatica) && (
                <p className="text-xs text-amber-500 font-medium mb-6 bg-amber-950/30 px-3 py-1 rounded-full border border-amber-900/50">
-                 (Sem impressão de cupom físico)
+                 (Sem impressão de talão físico)
                </p>
             )}
 
             <div className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-5 mb-6 shadow-inner">
               <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
-              <p className="text-2xl font-bold text-slate-200 font-mono mb-4">R$ {totalFinal.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-slate-200 font-mono mb-4">R$ {formatarMoeda(totalFinal)}</p>
 
               <p className="text-sm font-bold text-emerald-500 uppercase tracking-widest mb-1">Troco a Devolver</p>
-              <p className="text-5xl font-black text-emerald-400 font-mono tracking-tighter">R$ {trocoFinal.toFixed(2)}</p>
+              <p className="text-5xl font-black text-emerald-400 font-mono tracking-tighter">R$ {formatarMoeda(trocoFinal)}</p>
             </div>
 
             <button
