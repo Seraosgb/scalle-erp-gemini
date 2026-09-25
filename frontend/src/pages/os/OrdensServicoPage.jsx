@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
+import { useHardwareStore } from '../../store/useHardwareStore';
+import { EscPosEncoder } from '../../utils/EscPosEncoder';
 import {
   Wrench, Plus, Search, CheckCircle2, AlertTriangle,
   X, Camera, PenTool, Printer, Clock, User, Building2, Upload,
@@ -63,6 +65,9 @@ export default function OrdensServicoPage() {
   const [metricasCmms, setMetricasCmms] = useState({ mttr_horas: 0, mtbf_dias: 0, sla_conformidade_percent: 100, total_concluidas: 0, total_corretivas: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  // Hardware Store (Impressora Térmica)
+  const { impressoraConectada, conectarImpressora, imprimirCupom } = useHardwareStore();
 
   // Modais
   const [modalNovaOs, setModalNovaOs] = useState(false);
@@ -282,9 +287,23 @@ export default function OrdensServicoPage() {
     e.preventDefault();
     try {
       const res = await api.post('/os', formOs);
+
+      const novaOs = res.data.data.os;
+
       setModalNovaOs(false);
+      setFormOs({
+        cliente_id: '', ativo_id: '', tecnico_responsavel_id: '', deposito_saida_id: formOs.deposito_saida_id,
+        equipamento_descricao: '', equipamento_marca_modelo: '', equipamento_numero_serie: '',
+        defeito_reclamado: '', prioridade: 'NORMAL', tipo_manutencao: 'CORRETIVA',
+      });
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
       carregarDadosIniciais();
+
+      // Dispara a impressão térmica de entrada automaticamente (se ligada)
+      if (impressoraConectada) {
+        imprimirTicketEntrada(novaOs);
+      }
+
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao abrir OS.' });
     }
@@ -420,14 +439,11 @@ export default function OrdensServicoPage() {
     }
   };
 
-  // -----------------------------------------------------
-  // NOVA FUNÇÃO: Dispara a rota de PDF e inicia o Download
-  // -----------------------------------------------------
   const handleBaixarPdf = async () => {
     try {
       setFeedback({ tipo: 'sucesso', msg: 'Gerando PDF Oficial, aguarde...' });
       const response = await api.get(`/os/${osSelecionada.id}/pdf`, {
-        responseType: 'blob' // Importante para arquivos binários
+        responseType: 'blob'
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -441,6 +457,68 @@ export default function OrdensServicoPage() {
       setFeedback({ tipo: 'sucesso', msg: 'PDF baixado com sucesso!' });
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao gerar o PDF. Verifique o console.' });
+    }
+  };
+
+  // --- NOVA FUNÇÃO: Recibo Térmico ---
+  const imprimirTicketEntrada = async (osInfo) => {
+    if (!impressoraConectada) {
+      alert('A impressora térmica não está conectada!');
+      return;
+    }
+
+    try {
+      const dataAbertura = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR').substring(0,5);
+      const clienteNome = osInfo.cliente?.nome_razao_social || 'Cliente não identificado';
+      const clienteDoc = osInfo.cliente?.cpf_cnpj || 'Nao informado';
+      const equipamento = osInfo.equipamento_descricao || 'Equipamento genérico';
+      const marcaModelo = osInfo.equipamento_marca_modelo || 'N/A';
+      const serie = osInfo.equipamento_numero_serie || 'N/A';
+
+      const comandos = [
+        EscPosEncoder.init(),
+        EscPosEncoder.align(1),
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("SCALLE ERP - ORDEM DE SERVICO\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`OS #${osInfo.numero_os} - Entrada: ${dataAbertura}\n`),
+        EscPosEncoder.text("--------------------------------\n"),
+        EscPosEncoder.align(0),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("DADOS DO CLIENTE:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${clienteNome.substring(0, 32)}\n`),
+        EscPosEncoder.text(`Doc: ${clienteDoc}\n\n`),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("EQUIPAMENTO:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${equipamento.substring(0, 32)}\n`),
+        EscPosEncoder.text(`Marca/Mod: ${marcaModelo.substring(0, 21)}\n`),
+        EscPosEncoder.text(`Série: ${serie.substring(0, 24)}\n\n`),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("DEFEITO RECLAMADO:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${(osInfo.defeito_reclamado || '').substring(0, 96)}\n\n`),
+
+        EscPosEncoder.text("--------------------------------\n"),
+        EscPosEncoder.align(1),
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("TERMO DE RESPONSABILIDADE\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.align(0),
+        EscPosEncoder.text("Declaro ter deixado o equipamento acima descrito para avaliacao tecnica. Aprovacoes de orcamento e acompanhamento serao realizados via Portal do Cliente.\n\n\n\n"),
+        EscPosEncoder.align(1),
+        EscPosEncoder.text("________________________________\n"),
+        EscPosEncoder.text("Assinatura do Cliente\n\n\n\n"),
+        EscPosEncoder.cut()
+      ];
+
+      await imprimirCupom(EscPosEncoder.build(comandos));
+    } catch (e) {
+      console.error("Erro ao imprimir ticket da OS", e);
     }
   };
 
@@ -473,6 +551,15 @@ export default function OrdensServicoPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+
+          <button
+            type="button"
+            onClick={conectarImpressora}
+            className={`flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition cursor-pointer ${impressoraConectada ? 'bg-indigo-950/40 border-indigo-800 text-indigo-400 shadow-inner' : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border-slate-800'}`}
+          >
+            <Printer className="h-3.5 w-3.5" /> {impressoraConectada ? 'Impressora ON' : 'Ligar Impressora'}
+          </button>
+
           <button
             type="button"
             onClick={() => setModalNovoAtivo(true)}
@@ -1373,29 +1460,43 @@ export default function OrdensServicoPage() {
 
             {/* Rodapé */}
             <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-950/50 flex flex-col sm:flex-row justify-between items-center gap-2 shrink-0">
-              {osSelecionada.status !== 'CONCLUIDA' ? (
+
+              <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2">
                 <button
                   type="button"
-                  disabled={!emExecucaoOuPosterior}
-                  onClick={() => {
-                    setLaudoTecnico(osSelecionada.diagnostico_tecnico || '');
-                    setNomeResponsavel(osSelecionada.cliente?.nome_razao_social || '');
-                    setModalConcluir(true);
-                  }}
-                  className="w-full sm:w-auto justify-center px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
+                  onClick={() => imprimirTicketEntrada(osSelecionada)}
+                  className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-400 font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md border border-slate-700"
                 >
-                  <PenTool className="h-4 w-4" /> Concluir OS & Coletar Assinatura
+                  <Printer className="h-4 w-4" /> Via Térmica
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleBaixarPdf}
-                  className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md"
-                >
-                  <Printer className="h-4 w-4" /> Baixar PDF Oficial (A4)
-                </button>
-              )}
-              <button type="button" onClick={() => setModalDetalhes(false)} className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium text-xs cursor-pointer">Fechar</button>
+
+                {osSelecionada.status !== 'CONCLUIDA' ? (
+                  <button
+                    type="button"
+                    disabled={!emExecucaoOuPosterior}
+                    onClick={() => {
+                      setLaudoTecnico(osSelecionada.diagnostico_tecnico || '');
+                      setNomeResponsavel(osSelecionada.cliente?.nome_razao_social || '');
+                      setModalConcluir(true);
+                    }}
+                    className="w-full sm:w-auto justify-center px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
+                  >
+                    <PenTool className="h-4 w-4" /> Concluir OS & Coletar Assinatura
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleBaixarPdf}
+                    className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md"
+                  >
+                    <FileText className="h-4 w-4" /> Baixar PDF Oficial (A4)
+                  </button>
+                )}
+              </div>
+
+              <button type="button" onClick={() => setModalDetalhes(false)} className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs cursor-pointer">
+                Fechar
+              </button>
             </div>
           </div>
         </div>
