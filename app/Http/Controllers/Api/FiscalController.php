@@ -164,7 +164,6 @@ class FiscalController extends Controller
             $empresaId = $user->empresa_padrao_id
                       ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
 
-            // Busca UF da Empresa ou assume RJ por padrão
             $empresa = \App\Models\Empresa::find($empresaId);
             $uf = $empresa->endereco_uf ?? 'RJ';
 
@@ -172,11 +171,11 @@ class FiscalController extends Controller
 
             return response()->json([
                 'data' => [
-                    'message' => 'Comunicação com a SEFAZ testada com sucesso.',
+                    'message' => 'Comunicação com a SEFAZ testada.',
                     'sefaz' => $resultado
                 ]
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'error' => [
                     'code' => 'SEFAZ_COMMUNICATION_ERROR',

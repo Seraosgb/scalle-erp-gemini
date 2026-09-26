@@ -9,7 +9,7 @@ interface FiscalDriverInterface
     /**
      * Configura o driver dinamicamente com o certificado do Tenant atual.
      */
-    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2): self;
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = ''): self;
 
     public function emitir(array $dadosEmissao): DocumentoFiscal;
     public function cancelar(string $chaveAcesso, string $justificativa): bool;

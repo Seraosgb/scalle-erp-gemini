@@ -12,9 +12,6 @@ use Exception;
 
 class MotorFiscalService
 {
-    /**
-     * Testa a comunicação com a SEFAZ usando o certificado real do Tenant logado.
-     */
     public static function pingSefaz(string $tenantId, string $empresaId, string $uf = 'RJ'): array
     {
         $certificadoDb = CertificadoA1::withoutGlobalScopes()
@@ -24,23 +21,25 @@ class MotorFiscalService
             ->first();
 
         if (!$certificadoDb) {
-            throw new Exception("Nenhum Certificado A1 ativo encontrado para esta empresa.");
+            throw new Exception("Nenhum Certificado A1 ativo encontrado.");
         }
 
-        // Descriptografia simétrica AES-256
-        $pfxBinario = Crypt::decrypt($certificadoDb->arquivo_binario_criptografado);
-        $senha = Crypt::decrypt($certificadoDb->senha_criptografada);
+        try {
+            $pfxBinario = Crypt::decrypt($certificadoDb->arquivo_binario_criptografado);
+            $senha = Crypt::decrypt($certificadoDb->senha_criptografada);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            throw new Exception("Falha ao descriptografar a chave privada do certificado.");
+        }
 
-        // Forçamos tpAmb = 2 (Homologação) conforme seu pedido
-        $tpAmb = 2;
+        $tpAmb = $certificadoDb->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
+        $cnpj = $certificadoDb->cnpj_certificado;
 
         $driver = new NfePhpDriver();
-        $driver->configurar($pfxBinario, $senha, $uf, $tpAmb);
+        $driver->configurar($pfxBinario, $senha, $uf, $tpAmb, $cnpj);
 
         return $driver->verificarStatusSefaz($uf, $tpAmb);
     }
 
-    // Mantém as assinaturas das funções originais exigidas pelo FiscalController
     public static function prepararDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens): DocumentoFiscal
     {
         throw new Exception("Stub de emissão - A implementar.");
