@@ -64,13 +64,12 @@ class NfePhpDriver implements FiscalDriverInterface
 
     public function emitir(array $dadosEmissao): DocumentoFiscal
     {
+        $nfe = new Make();
         try {
-            $nfe = new Make();
-
-            // 0. Inicialização OBRIGATÓRIA da tag raiz no PHP 8+
+            // 0. Inicialização
             $stdInfNFe = new \stdClass();
             $stdInfNFe->versao = '4.00';
-            $stdInfNFe->Id = ''; // O NFePHP calcula automaticamente na hora de assinar
+            $stdInfNFe->Id = '';
             $stdInfNFe->pk_nItem = null;
             $nfe->taginfNFe($stdInfNFe);
 
@@ -98,11 +97,12 @@ class NfePhpDriver implements FiscalDriverInterface
 
             // 2. Emitente (<emit>)
             $stdEmit = new \stdClass();
-            $stdEmit->xNome = $dadosEmissao['emitente']['razao_social'];
-            $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'];
+            $stdEmit->xNome = $dadosEmissao['emitente']['razao_social'] ?? 'EMPRESA TESTE';
+            $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'] ?? 'FANTASIA TESTE';
             $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
             $stdEmit->CRT = 1; // Simples Nacional
-            $stdEmit->CNPJ = preg_replace('/[^0-9]/', '', $dadosEmissao['emitente']['cnpj'] ?? $this->config['cnpj']);
+            // FORÇA O CNPJ DO CERTIFICADO para evitar erro de assinatura e schema
+            $stdEmit->CNPJ = $this->config['cnpj'];
             $nfe->tagemit($stdEmit);
 
             $stdEnderEmit = new \stdClass();
@@ -120,11 +120,17 @@ class NfePhpDriver implements FiscalDriverInterface
             // 3. Destinatário (<dest>)
             $stdDest = new \stdClass();
             $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'Consumidor Final';
-            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '00000000000');
-            if (strlen($docDestino) === 14) $stdDest->CNPJ = $docDestino;
-            else if (strlen($docDestino) === 11 && $docDestino !== '00000000000') $stdDest->CPF = $docDestino;
-
             $stdDest->indIEDest = 9; // Não Contribuinte
+
+            // Padroniza documento para 11 ou 14 dígitos (exigência XML SEFAZ)
+            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
+            if (empty($docDestino)) {
+                $stdDest->CPF = '00000000000'; // Preenchimento obrigatório mínimo
+            } elseif (strlen($docDestino) > 11) {
+                $stdDest->CNPJ = str_pad($docDestino, 14, '0', STR_PAD_LEFT);
+            } else {
+                $stdDest->CPF = str_pad($docDestino, 11, '0', STR_PAD_LEFT);
+            }
             $nfe->tagdest($stdDest);
 
             $stdEnderDest = new \stdClass();
@@ -151,7 +157,7 @@ class NfePhpDriver implements FiscalDriverInterface
                 $stdProd->cProd = 'PRD' . str_pad($nItem, 3, '0', STR_PAD_LEFT);
                 $stdProd->cEAN = 'SEM GTIN';
                 $stdProd->xProd = 'PRODUTO DE TESTE ' . $nItem;
-                $stdProd->NCM = '94039090'; // NCM genérico
+                $stdProd->NCM = '94039090';
                 $stdProd->CFOP = '5102'; // Venda
                 $stdProd->uCom = 'UN';
                 $stdProd->qCom = 1.0000;
@@ -168,23 +174,22 @@ class NfePhpDriver implements FiscalDriverInterface
                 $stdImposto->item = $nItem;
                 $nfe->tagimposto($stdImposto);
 
-                // ICMS Simples Nacional
                 $stdIcms = new \stdClass();
                 $stdIcms->item = $nItem;
                 $stdIcms->orig = 0;
-                $stdIcms->CSOSN = '102'; // Tributada sem permissão de crédito
+                $stdIcms->CSOSN = '102'; // Simples Nacional
                 $nfe->tagICMSSN($stdIcms);
 
-                // PIS e COFINS (Zerados para SN)
+                // Correção das tags PIS/COFINS (Isenção/Não tributado)
                 $stdPis = new \stdClass();
                 $stdPis->item = $nItem;
                 $stdPis->CST = '07';
-                $nfe->tagPIS($stdPis);
+                $nfe->tagPISNT($stdPis);
 
                 $stdCofins = new \stdClass();
                 $stdCofins->item = $nItem;
                 $stdCofins->CST = '07';
-                $nfe->tagCOFINS($stdCofins);
+                $nfe->tagCOFINSNT($stdCofins);
             }
 
             // 5. Totalizadores (<total>)
@@ -215,32 +220,41 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdTransp->modFrete = 9; // Sem frete
             $nfe->tagtransp($stdTransp);
 
+            // Correção vital: No layout 4.00, existe o grupo <pag> e os detalhes <detPag>
             $stdPag = new \stdClass();
-            $stdPag->tPag = '01'; // Dinheiro
-            $stdPag->vPag = $totais;
+            $stdPag->vTroco = 0.00;
             $nfe->tagpag($stdPag);
 
-            // FINAL: Gera XML, Assina e Cria no Banco
-            $xmlString = $nfe->getXML();
-            $xmlAssinado = $this->tools->signNFe($xmlString);
+            $stdDetPag = new \stdClass();
+            $stdDetPag->tPag = '01'; // Dinheiro
+            $stdDetPag->vPag = $totais;
+            $nfe->tagdetPag($stdDetPag);
 
-            return DocumentoFiscal::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $dadosEmissao['tenant_id'],
-                'empresa_id' => $dadosEmissao['empresa_id'],
-                'destinatario_id' => $dadosEmissao['destinatario']['id'],
-                'modelo_documento' => $dadosEmissao['modelo'],
-                'numero_documento' => $dadosEmissao['numero'],
-                'serie' => '1',
-                'chave_acesso' => $nfe->getChave(),
-                'status' => 'PROCESSANDO',
-                'xml_conteudo' => $xmlAssinado,
-                'data_emissao' => now(),
-                'valor_total' => $totais,
-            ]);
+            if ($nfe->monta()) {
+                $xmlString = $nfe->getXML();
+                $xmlAssinado = $this->tools->signNFe($xmlString);
 
+                return DocumentoFiscal::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $dadosEmissao['tenant_id'],
+                    'empresa_id' => $dadosEmissao['empresa_id'],
+                    'destinatario_id' => $dadosEmissao['destinatario']['id'],
+                    'modelo_documento' => $dadosEmissao['modelo'],
+                    'numero_documento' => $dadosEmissao['numero'],
+                    'serie' => '1',
+                    'chave_acesso' => $nfe->getChave(),
+                    'status' => 'PROCESSANDO',
+                    'xml_conteudo' => $xmlAssinado,
+                    'data_emissao' => now(),
+                    'valor_total' => $totais,
+                ]);
+            } else {
+                throw new Exception("Falha de validação do schema XML");
+            }
         } catch (Exception $e) {
-            throw new Exception("Erro ao montar XML (NFePHP Make): " . $e->getMessage());
+            // Extrai os erros detalhados da validação XSD da SEFAZ
+            $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
+            throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
         }
     }
 
