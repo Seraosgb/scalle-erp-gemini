@@ -5576,10 +5576,12 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\pages\compras\ComprasPage.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { 
-  ShoppingCart, Plus, RefreshCw, CheckCircle2, 
-  AlertTriangle, X, Trash2, UserPlus, Building2, 
-  FileCode, Upload, Layers
+import { useHardwareStore } from '../../store/useHardwareStore';
+import { ZplEncoder } from '../../utils/ZplEncoder';
+import {
+  ShoppingCart, Plus, RefreshCw, CheckCircle2,
+  AlertTriangle, X, Trash2, UserPlus, Building2,
+  FileCode, Upload, Layers, Scale, Printer, Barcode
 } from 'lucide-react';
 
 export default function ComprasPage() {
@@ -5589,7 +5591,13 @@ export default function ComprasPage() {
   const [depositos, setDepositos] = useState([]);
   const [itensCatalogo, setItensCatalogo] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
+  // Hardware Global Store
+  const {
+    pesoBalanca, balancaConectada, conectarBalanca, desconectarBalanca,
+    impressoraConectada, conectarImpressora, imprimirCupom
+  } = useHardwareStore();
+
   // Modais
   const [modalNovaCompra, setModalNovaCompra] = useState(false);
   const [modalNovoFornecedor, setModalNovoFornecedor] = useState(false);
@@ -5644,11 +5652,11 @@ export default function ComprasPage() {
       const todasPessoas = resPessoas.data?.data || resPessoas.data || [];
       const forns = Array.isArray(todasPessoas) ? todasPessoas.filter(p => p.is_fornecedor) : [];
       setFornecedores(forns.length > 0 ? forns : (Array.isArray(todasPessoas) ? todasPessoas : []));
-      
+
       const deps = resDeps.data?.data || resDeps.data || [];
       const listaDeps = Array.isArray(deps) ? deps : [];
       setDepositos(listaDeps);
-      
+
       const itensRaw = resItens.data?.data || resItens.data || [];
       setItensCatalogo(Array.isArray(itensRaw) ? itensRaw : (itensRaw.data || []));
 
@@ -5684,23 +5692,40 @@ export default function ComprasPage() {
   const handleItemChange = (index, field, value) => {
     const novosItens = [...formCompra.itens];
     novosItens[index][field] = value;
-    
+
     if (field === 'item_id') {
       const itemAchado = itensCatalogo.find(i => i.id === value);
       if (itemAchado) {
         novosItens[index].valor_unitario = parseFloat(itemAchado.preco_custo || 0);
       }
     }
-    
+
     setFormCompra({ ...formCompra, itens: novosItens });
   };
 
   const handleSalvarCompra = async (e) => {
     e.preventDefault();
     try {
-      const res = await api.post('/compras', formCompra);
+      await api.post('/compras', formCompra);
+
+      // Impressão ZPL para a Etiquetadora Zebra
+      if (impressoraConectada) {
+        for (const item of formCompra.itens) {
+          const produto = itensCatalogo.find(i => i.id === item.item_id);
+          if (produto) {
+            const skuValido = produto.codigo_sku && produto.codigo_sku.length > 2 ? produto.codigo_sku : "000000";
+            const dataAtual = new Date().toLocaleDateString('pt-BR');
+            const zplBytes = ZplEncoder.buildLabel(produto.nome, item.quantidade, dataAtual, skuValido);
+            await imprimirCupom(zplBytes);
+
+            // Pausa de 100ms para evitar sobrecarga no buffer serial da impressora
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+      }
+
       setModalNovaCompra(false);
-      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Compra efetuada, estoque creditado e Contas a Pagar lançado!' });
+      setFeedback({ tipo: 'sucesso', msg: 'Mercadoria recebida, estoque creditado e etiquetas emitidas!' });
       carregarDados();
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao registrar compra.' });
@@ -5764,19 +5789,33 @@ export default function ComprasPage() {
 
   return (
     <div className="p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5 max-w-7xl mx-auto text-slate-200">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
             <ShoppingCart className="h-6 w-6 sm:h-7 sm:w-7 text-indigo-500 shrink-0" />
-            Compras & Suprimentos
+            Compras & Recebimento (WMS)
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Entradas de notas de fornecedores com integração ao WMS e Financeiro
+            Conferência de entradas, pesagem de recebimento e etiquetagem de gôndola.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button 
+          <div className="flex gap-2 mr-2">
+            <button
+              onClick={balancaConectada ? desconectarBalanca : conectarBalanca}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${balancaConectada ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Scale className="h-3.5 w-3.5" /> {balancaConectada ? `Conferência: ${pesoBalanca} KG` : 'Ligar Balança'}
+            </button>
+            <button
+              onClick={conectarImpressora}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${impressoraConectada ? 'bg-indigo-950/40 border-indigo-800 text-indigo-400 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Barcode className="h-3.5 w-3.5" /> {impressoraConectada ? 'Etiquetadora ZPL ON' : 'Ligar Etiquetadora ZPL'}
+            </button>
+          </div>
+
+          <button
             type="button"
             onClick={() => navigate('/app/compras/cotacoes')}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 text-xs font-bold cursor-pointer transition shadow-sm"
@@ -5784,7 +5823,7 @@ export default function ComprasPage() {
             <Layers className="h-4 w-4" />
             Mapa de Cotações
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setModalImportarXml(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-emerald-400 text-xs font-bold cursor-pointer transition shadow-sm"
@@ -5792,7 +5831,7 @@ export default function ComprasPage() {
             <FileCode className="h-4 w-4" />
             Importar XML NF-e
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setModalNovoFornecedor(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 text-xs font-bold cursor-pointer transition shadow-sm"
@@ -5800,18 +5839,17 @@ export default function ComprasPage() {
             <UserPlus className="h-4 w-4 text-indigo-400" />
             Novo Fornecedor
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setModalNovaCompra(true)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
           >
             <Plus className="h-4 w-4" />
-            Novo Pedido de Entrada
+            Entrada de Mercadoria
           </button>
         </div>
       </div>
 
-      {/* Feedback Toast */}
       {feedback && (
         <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
           feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
@@ -5826,7 +5864,6 @@ export default function ComprasPage() {
         </div>
       )}
 
-      {/* Tabela de Compras */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[700px]">
@@ -5874,8 +5911,8 @@ export default function ComprasPage() {
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        compra.status === 'RECEBIDO' 
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' 
+                        compra.status === 'RECEBIDO'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                           : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
                       }`}>
                         {compra.status}
@@ -5889,7 +5926,6 @@ export default function ComprasPage() {
         </div>
       </div>
 
-      {/* Modal Importar XML NF-e */}
       {modalImportarXml && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
@@ -5905,17 +5941,17 @@ export default function ComprasPage() {
             <form onSubmit={handleImportarXml} className="p-4 sm:p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Arquivo XML da NF-e *</label>
-                <input 
-                  type="file" 
-                  accept=".xml" 
-                  required 
+                <input
+                  type="file"
+                  accept=".xml"
+                  required
                   onChange={(e) => setFormXml({ ...formXml, xml_file: e.target.files[0] })}
                   className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white cursor-pointer"
                 />
               </div>
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Depósito de Entrada *</label>
-                <select 
+                <select
                   required
                   value={formXml.deposito_id}
                   onChange={(e) => setFormXml({ ...formXml, deposito_id: e.target.value })}
@@ -5927,7 +5963,7 @@ export default function ComprasPage() {
                 </select>
               </div>
               <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalImportarXml(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
+                <button type="button" onClick={() => setModalImportarXml(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
                 <button type="submit" disabled={importandoXml} className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold cursor-pointer">
                   {importandoXml ? 'Processando XML...' : 'Importar & Dar Entrada'}
                 </button>
@@ -5937,7 +5973,6 @@ export default function ComprasPage() {
         </div>
       )}
 
-      {/* Modal Novo Fornecedor */}
       {modalNovoFornecedor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
@@ -5953,9 +5988,9 @@ export default function ComprasPage() {
             <form onSubmit={handleSalvarFornecedor} className="p-4 sm:p-6 space-y-3.5 text-xs">
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">Razão Social / Nome *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   placeholder="Ex: Distribuidora de Peças Ltda"
                   value={formFornecedor.nome_razao_social}
                   onChange={(e) => setFormFornecedor({ ...formFornecedor, nome_razao_social: e.target.value })}
@@ -5964,9 +5999,9 @@ export default function ComprasPage() {
               </div>
               <div>
                 <label className="block font-semibold text-slate-400 mb-1">CNPJ / CPF *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   placeholder="00.000.000/0001-00"
                   value={formFornecedor.cpf_cnpj}
                   onChange={(e) => setFormFornecedor({ ...formFornecedor, cpf_cnpj: e.target.value })}
@@ -5976,8 +6011,8 @@ export default function ComprasPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">E-mail</label>
-                  <input 
-                    type="email" 
+                  <input
+                    type="email"
                     value={formFornecedor.email_principal}
                     onChange={(e) => setFormFornecedor({ ...formFornecedor, email_principal: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
@@ -5985,8 +6020,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Telefone</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={formFornecedor.telefone_principal}
                     onChange={(e) => setFormFornecedor({ ...formFornecedor, telefone_principal: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
@@ -5994,41 +6029,41 @@ export default function ComprasPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => setModalNovoFornecedor(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">Salvar Fornecedor</button>
+                <button type="button" onClick={() => setModalNovoFornecedor(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer shadow-md">Salvar Fornecedor</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal Nova Compra */}
       {modalNovaCompra && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5 text-indigo-400" />
-                Lançar Compra / Entrada de Mercadoria
+                Nova Entrada e Etiquetagem (WMS)
               </h2>
               <button type="button" onClick={() => setModalNovaCompra(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
+
             <form onSubmit={handleSalvarCompra} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div className="sm:col-span-2">
                   <div className="flex items-center justify-between mb-1">
                     <label className="font-semibold text-slate-400">Fornecedor *</label>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={() => setModalNovoFornecedor(true)}
                       className="text-[11px] text-indigo-400 hover:underline cursor-pointer"
                     >
                       + Cadastrar Novo
                     </button>
                   </div>
-                  <select 
+                  <select
                     required
                     value={formCompra.fornecedor_id}
                     onChange={(e) => setFormCompra({ ...formCompra, fornecedor_id: e.target.value })}
@@ -6042,7 +6077,7 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Depósito de Entrada *</label>
-                  <select 
+                  <select
                     required
                     value={formCompra.deposito_destino_id}
                     onChange={(e) => setFormCompra({ ...formCompra, deposito_destino_id: e.target.value })}
@@ -6055,8 +6090,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Número da Nota Fiscal</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Ex: 1234"
                     value={formCompra.numero_nota}
                     onChange={(e) => setFormCompra({ ...formCompra, numero_nota: e.target.value })}
@@ -6065,8 +6100,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Data de Emissão</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={formCompra.data_emissao}
                     onChange={(e) => setFormCompra({ ...formCompra, data_emissao: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
@@ -6074,8 +6109,8 @@ export default function ComprasPage() {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-400 mb-1">Vencimento do Pagamento *</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     required
                     value={formCompra.data_vencimento}
                     onChange={(e) => setFormCompra({ ...formCompra, data_vencimento: e.target.value })}
@@ -6084,27 +6119,28 @@ export default function ComprasPage() {
                 </div>
               </div>
 
-              {/* Itens */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">Itens e Produtos da Compra</span>
-                  <button 
-                    type="button" 
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Itens Recebidos na Doca</span>
+                  <button
+                    type="button"
                     onClick={handleAddItem}
                     className="px-2.5 py-1 text-xs rounded-lg bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 font-bold cursor-pointer"
                   >
                     + Adicionar Item
                   </button>
                 </div>
+
                 {formCompra.itens.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl grid grid-cols-1 sm:grid-cols-6 gap-2.5 items-end">
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Item do Catálogo *</label>
-                      <select 
+                  <div key={idx} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+
+                    <div className="sm:col-span-4">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Item do Catálogo *</label>
+                      <select
                         required
                         value={item.item_id}
                         onChange={(e) => handleItemChange(idx, 'item_id', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
                       >
                         <option value="">Selecione o produto...</option>
                         {itensCatalogo.map(it => (
@@ -6112,67 +6148,85 @@ export default function ComprasPage() {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Qtd *</label>
-                      <input 
-                        type="number" 
-                        step="0.0001" 
-                        required 
-                        value={item.quantidade}
-                        onChange={(e) => handleItemChange(idx, 'quantidade', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
-                      />
+
+                    <div className="sm:col-span-3">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1 flex justify-between">
+                        <span>Qtd. NF *</span>
+                        {balancaConectada && <span className="text-emerald-400 flex items-center gap-1"><Scale className="w-3 h-3"/> Auditoria Ativa</span>}
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.0001"
+                          required
+                          value={item.quantidade}
+                          onChange={(e) => handleItemChange(idx, 'quantidade', e.target.value)}
+                          className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
+                        />
+                        {balancaConectada && (
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(idx, 'quantidade', parseFloat(pesoBalanca))}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1.5 rounded-lg text-[10px] font-bold shadow-md cursor-pointer transition whitespace-nowrap"
+                            title="Substituir pela leitura da balança física"
+                          >
+                            Puxar {pesoBalanca}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Valor Unit. (R$) *</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        required 
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Vl. Unit (R$) *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
                         value={item.valor_unitario}
                         onChange={(e) => handleItemChange(idx, 'valor_unitario', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Lote</label>
-                      <input 
-                        type="text" 
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Lote</label>
+                      <input
+                        type="text"
                         value={item.lote}
                         onChange={(e) => handleItemChange(idx, 'lote', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white uppercase"
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white uppercase"
                       />
                     </div>
-                    <div className="flex items-center gap-1">
-                      <div className="flex-1">
-                        <span className="text-[10px] text-slate-500 block">Total:</span>
-                        <strong className="text-xs text-emerald-400 font-mono">
-                          R$ {(parseFloat(item.quantidade || 0) * parseFloat(item.valor_unitario || 0)).toFixed(2)}
-                        </strong>
-                      </div>
-                      <button 
-                        type="button" 
+
+                    <div className="sm:col-span-1 flex items-center justify-center">
+                      <button
+                        type="button"
                         onClick={() => handleRemoveItem(idx)}
-                        className="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                        className="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer bg-slate-900 rounded"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
+
                   </div>
                 ))}
               </div>
 
-              {/* Totalizador */}
-              <div className="flex justify-between items-center p-3.5 bg-slate-950 border border-slate-800 rounded-xl">
-                <span className="text-xs font-semibold text-slate-400">Total a Lançar no Contas a Pagar:</span>
+              <div className="flex justify-between items-center p-3.5 bg-slate-950 border border-slate-800 rounded-xl mt-4">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-2">
+                  Total Financeiro da Nota:
+                  {impressoraConectada && <span className="bg-indigo-900/50 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded text-[9px] uppercase font-bold flex items-center gap-1"><Printer className="w-3 h-3"/> Etiquetas serão impressas ao salvar</span>}
+                </span>
                 <span className="text-lg font-bold font-mono text-emerald-400">
                   R$ {calcularTotalForm().toFixed(2)}
                 </span>
               </div>
 
               <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800 shrink-0">
-                <button type="button" onClick={() => setModalNovaCompra(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
-                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer shadow-md">Confirmar Entrada & Financeiro</button>
+                <button type="button" onClick={() => setModalNovaCompra(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer shadow-md flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4"/> Efetivar Recebimento
+                </button>
               </div>
             </form>
           </div>
@@ -6181,6 +6235,7 @@ export default function ComprasPage() {
     </div>
   );
 }
+
 
 
 ========================================
@@ -12678,6 +12733,8 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\pages\os\OrdensServicoPage.j
 
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
+import { useHardwareStore } from '../../store/useHardwareStore';
+import { EscPosEncoder } from '../../utils/EscPosEncoder';
 import {
   Wrench, Plus, Search, CheckCircle2, AlertTriangle,
   X, Camera, PenTool, Printer, Clock, User, Building2, Upload,
@@ -12741,6 +12798,9 @@ export default function OrdensServicoPage() {
   const [metricasCmms, setMetricasCmms] = useState({ mttr_horas: 0, mtbf_dias: 0, sla_conformidade_percent: 100, total_concluidas: 0, total_corretivas: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  // Hardware Store (Impressora Térmica)
+  const { impressoraConectada, conectarImpressora, imprimirCupom } = useHardwareStore();
 
   // Modais
   const [modalNovaOs, setModalNovaOs] = useState(false);
@@ -12960,9 +13020,23 @@ export default function OrdensServicoPage() {
     e.preventDefault();
     try {
       const res = await api.post('/os', formOs);
+
+      const novaOs = res.data.data.os;
+
       setModalNovaOs(false);
+      setFormOs({
+        cliente_id: '', ativo_id: '', tecnico_responsavel_id: '', deposito_saida_id: formOs.deposito_saida_id,
+        equipamento_descricao: '', equipamento_marca_modelo: '', equipamento_numero_serie: '',
+        defeito_reclamado: '', prioridade: 'NORMAL', tipo_manutencao: 'CORRETIVA',
+      });
       setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
       carregarDadosIniciais();
+
+      // Dispara a impressão térmica de entrada automaticamente (se ligada)
+      if (impressoraConectada) {
+        imprimirTicketEntrada(novaOs);
+      }
+
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao abrir OS.' });
     }
@@ -13098,14 +13172,11 @@ export default function OrdensServicoPage() {
     }
   };
 
-  // -----------------------------------------------------
-  // NOVA FUNÇÃO: Dispara a rota de PDF e inicia o Download
-  // -----------------------------------------------------
   const handleBaixarPdf = async () => {
     try {
       setFeedback({ tipo: 'sucesso', msg: 'Gerando PDF Oficial, aguarde...' });
       const response = await api.get(`/os/${osSelecionada.id}/pdf`, {
-        responseType: 'blob' // Importante para arquivos binários
+        responseType: 'blob'
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -13119,6 +13190,68 @@ export default function OrdensServicoPage() {
       setFeedback({ tipo: 'sucesso', msg: 'PDF baixado com sucesso!' });
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: 'Erro ao gerar o PDF. Verifique o console.' });
+    }
+  };
+
+  // --- NOVA FUNÇÃO: Recibo Térmico ---
+  const imprimirTicketEntrada = async (osInfo) => {
+    if (!impressoraConectada) {
+      alert('A impressora térmica não está conectada!');
+      return;
+    }
+
+    try {
+      const dataAbertura = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR').substring(0,5);
+      const clienteNome = osInfo.cliente?.nome_razao_social || 'Cliente não identificado';
+      const clienteDoc = osInfo.cliente?.cpf_cnpj || 'Nao informado';
+      const equipamento = osInfo.equipamento_descricao || 'Equipamento genérico';
+      const marcaModelo = osInfo.equipamento_marca_modelo || 'N/A';
+      const serie = osInfo.equipamento_numero_serie || 'N/A';
+
+      const comandos = [
+        EscPosEncoder.init(),
+        EscPosEncoder.align(1),
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("SCALLE ERP - ORDEM DE SERVICO\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`OS #${osInfo.numero_os} - Entrada: ${dataAbertura}\n`),
+        EscPosEncoder.text("--------------------------------\n"),
+        EscPosEncoder.align(0),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("DADOS DO CLIENTE:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${clienteNome.substring(0, 32)}\n`),
+        EscPosEncoder.text(`Doc: ${clienteDoc}\n\n`),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("EQUIPAMENTO:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${equipamento.substring(0, 32)}\n`),
+        EscPosEncoder.text(`Marca/Mod: ${marcaModelo.substring(0, 21)}\n`),
+        EscPosEncoder.text(`Série: ${serie.substring(0, 24)}\n\n`),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("DEFEITO RECLAMADO:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${(osInfo.defeito_reclamado || '').substring(0, 96)}\n\n`),
+
+        EscPosEncoder.text("--------------------------------\n"),
+        EscPosEncoder.align(1),
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("TERMO DE RESPONSABILIDADE\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.align(0),
+        EscPosEncoder.text("Declaro ter deixado o equipamento acima descrito para avaliacao tecnica. Aprovacoes de orcamento e acompanhamento serao realizados via Portal do Cliente.\n\n\n\n"),
+        EscPosEncoder.align(1),
+        EscPosEncoder.text("________________________________\n"),
+        EscPosEncoder.text("Assinatura do Cliente\n\n\n\n"),
+        EscPosEncoder.cut()
+      ];
+
+      await imprimirCupom(EscPosEncoder.build(comandos));
+    } catch (e) {
+      console.error("Erro ao imprimir ticket da OS", e);
     }
   };
 
@@ -13151,6 +13284,15 @@ export default function OrdensServicoPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+
+          <button
+            type="button"
+            onClick={conectarImpressora}
+            className={`flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition cursor-pointer ${impressoraConectada ? 'bg-indigo-950/40 border-indigo-800 text-indigo-400 shadow-inner' : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border-slate-800'}`}
+          >
+            <Printer className="h-3.5 w-3.5" /> {impressoraConectada ? 'Impressora ON' : 'Ligar Impressora'}
+          </button>
+
           <button
             type="button"
             onClick={() => setModalNovoAtivo(true)}
@@ -14051,29 +14193,43 @@ export default function OrdensServicoPage() {
 
             {/* Rodapé */}
             <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-950/50 flex flex-col sm:flex-row justify-between items-center gap-2 shrink-0">
-              {osSelecionada.status !== 'CONCLUIDA' ? (
+
+              <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2">
                 <button
                   type="button"
-                  disabled={!emExecucaoOuPosterior}
-                  onClick={() => {
-                    setLaudoTecnico(osSelecionada.diagnostico_tecnico || '');
-                    setNomeResponsavel(osSelecionada.cliente?.nome_razao_social || '');
-                    setModalConcluir(true);
-                  }}
-                  className="w-full sm:w-auto justify-center px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
+                  onClick={() => imprimirTicketEntrada(osSelecionada)}
+                  className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-400 font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md border border-slate-700"
                 >
-                  <PenTool className="h-4 w-4" /> Concluir OS & Coletar Assinatura
+                  <Printer className="h-4 w-4" /> Via Térmica
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleBaixarPdf}
-                  className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md"
-                >
-                  <Printer className="h-4 w-4" /> Baixar PDF Oficial (A4)
-                </button>
-              )}
-              <button type="button" onClick={() => setModalDetalhes(false)} className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium text-xs cursor-pointer">Fechar</button>
+
+                {osSelecionada.status !== 'CONCLUIDA' ? (
+                  <button
+                    type="button"
+                    disabled={!emExecucaoOuPosterior}
+                    onClick={() => {
+                      setLaudoTecnico(osSelecionada.diagnostico_tecnico || '');
+                      setNomeResponsavel(osSelecionada.cliente?.nome_razao_social || '');
+                      setModalConcluir(true);
+                    }}
+                    className="w-full sm:w-auto justify-center px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/30"
+                  >
+                    <PenTool className="h-4 w-4" /> Concluir OS & Coletar Assinatura
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleBaixarPdf}
+                    className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer flex items-center gap-1.5 shadow-md"
+                  >
+                    <FileText className="h-4 w-4" /> Baixar PDF Oficial (A4)
+                  </button>
+                )}
+              </div>
+
+              <button type="button" onClick={() => setModalDetalhes(false)} className="w-full sm:w-auto justify-center px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs cursor-pointer">
+                Fechar
+              </button>
             </div>
           </div>
         </div>
@@ -14921,23 +15077,31 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\pages\pcp\TerminalFabricaPag
 
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
-import { 
-  Factory, Search, CheckCircle2, Play, AlertOctagon, 
-  BarChart2, Clock, Check, RefreshCw, Layers, ShieldCheck
+import {
+  Factory, Search, CheckCircle2, Play, AlertOctagon,
+  BarChart2, Clock, Check, RefreshCw, Layers, ShieldCheck,
+  Activity, Settings, AlertTriangle, PauseCircle, PlayCircle, Cpu, Wifi, Save, X
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function TerminalFabricaPage() {
+  // Estado do Backend (OPs e Genealogia)
   const [ops, setOps] = useState([]);
   const [opSelecionada, setOpSelecionada] = useState(null);
-  const [busca, setBusca] = useState('');
-  const [qtdProduzida, setQtdProduzida] = useState('');
-  const [qtdRefugo, setQtdRefugo] = useState('0');
-  const [horasMod, setHorasMod] = useState('1.0');
-  const [horasCif, setHorasCif] = useState('1.0');
   const [genealogia, setGenealogia] = useState([]);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
+
+  // Variáveis de Apontamento (Controladas Manualmente ou pelo IoT)
+  const [produzidas, setProduzidas] = useState(0);
+  const [refugos, setRefugos] = useState(0);
+  const [horasMod, setHorasMod] = useState('1.0');
+  const [horasCif, setHorasCif] = useState('1.0');
+
+  // Estado da Telemetria IoT (ESP32 Simulator)
+  const [statusMaquina, setStatusMaquina] = useState('PARADA'); // RODANDO, PARADA
+  const [simuladorEsp32, setSimuladorEsp32] = useState(false);
+  const [ultimoPulso, setUltimoPulso] = useState(new Date());
 
   const inputBuscaRef = useRef(null);
 
@@ -14946,25 +15110,85 @@ export default function TerminalFabricaPage() {
     inputBuscaRef.current?.focus();
   }, []);
 
+  // Lógica de Telemetria IoT Real via WebSocket
+  useEffect(() => {
+    let ws;
+
+    // Só abre a conexão de rede se o operador ligou o sensor, a máquina está rodando e há OP selecionada
+    if (simuladorEsp32 && statusMaquina === 'RODANDO' && opSelecionada) {
+
+      // Em produção, utilize uma variável de ambiente (ex: import.meta.env.VITE_IOT_WS_URL)
+      ws = new WebSocket('ws://localhost:8080');
+
+      ws.onopen = () => {
+        console.log('[Terminal] Conectado ao Broker IoT da fábrica.');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+
+          // Diretriz de Arquitetura: Filtro Multi-Pipeline por Tenant
+          // (Substitua 'scalle_tenant_alpha' pela variável de estado do usuário logado no ERP)
+          if (payload.tenant === 'scalle_tenant_alpha') {
+
+            // Cada pacote recebido indica um ciclo da máquina.
+            setProduzidas(prev => prev + 1);
+            setUltimoPulso(new Date());
+
+            // Regra de Negócio: Se a telemetria relatar temperatura da máquina acima de 40°C,
+            // assume-se que a peça sofreu avaria térmica (Refugo).
+            if (payload.dados && parseFloat(payload.dados.temperatura_celsius) > 40.0) {
+                setRefugos(prev => prev + 1);
+            }
+          }
+        } catch (err) {
+          console.error('[Terminal] Erro de parse no pacote IoT:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[Terminal] Falha na conexão WebSocket:', error);
+        setFeedback({ tipo: 'erro', msg: 'Falha de comunicação com os sensores IoT.' });
+      };
+    }
+
+    // Cleanup: Encerra a conexão WebSocket automaticamente se o componente for desmontado
+    // ou se o status da máquina mudar para PARADA.
+    return () => {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+    };
+  }, [simuladorEsp32, statusMaquina, opSelecionada]);
+
   const carregarOps = async () => {
     try {
-      const res = await api.get('/pcp/ordens', { params: { status: 'EM_PRODUCAO' } });
+      const res = await api.get('/pcp/ordens-producao');
       const raw = res.data?.data || res.data || [];
       const lista = Array.isArray(raw) ? raw : (raw.data || []);
-      setOps(lista);
-      if (lista.length > 0 && !opSelecionada) {
-        selecionarOp(lista[0]);
+
+      const ativas = lista.filter(op => op.status !== 'CONCLUIDA' && op.status !== 'CANCELADA');
+
+      setOps(ativas);
+      if (ativas.length > 0 && !opSelecionada) {
+        selecionarOp(ativas[0]);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao carregar OPs:", e);
     }
   };
 
   const selecionarOp = async (op) => {
+    // Reseta o terminal ao trocar de OP
+    setStatusMaquina('PARADA');
+    setSimuladorEsp32(false);
+    setProduzidas(0);
+    setRefugos(0);
     setOpSelecionada(op);
-    setQtdProduzida(Math.max(1, parseFloat(op.quantidade_planejada) - parseFloat(op.quantidade_produzida)).toString());
+
     try {
-      const res = await api.get(`/pcp/ordens/${op.id}/genealogia`);
+      const res = await api.get(`/pcp/ordens-producao/${op.id}/genealogia`);
       setGenealogia(res.data?.data || []);
     } catch (e) {
       setGenealogia([]);
@@ -14972,26 +15196,37 @@ export default function TerminalFabricaPage() {
   };
 
   const handleApontar = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!opSelecionada) return;
+
+    if (produzidas === 0 && refugos === 0) {
+      setFeedback({ tipo: 'erro', msg: 'Nenhuma peça contada para apontamento. Inicie a máquina ou insira manualmente.' });
+      return;
+    }
 
     setLoading(true);
     try {
-      await api.post(`/pcp/ordens/${opSelecionada.id}/apontar`, {
-        quantidade_produzida: parseFloat(qtdProduzida) || 0,
-        quantidade_refugo: parseFloat(qtdRefugo) || 0,
+      const res = await api.post(`/pcp/ordens-producao/${opSelecionada.id}/apontar`, {
+        quantidade_produzida: produzidas,
+        quantidade_refugo: refugos,
         horas_mod: parseFloat(horasMod) || 0,
         custo_hora_mod: 45.00,
         horas_cif: parseFloat(horasCif) || 0,
         custo_hora_cif: 25.00,
-        observacoes: 'Apontamento via Terminal Touch Chão de Fábrica'
+        observacoes: 'Apontamento via Terminal Touch / Telemetria IoT'
       });
 
-      setFeedback({ tipo: 'sucesso', msg: `Apontamento de ${qtdProduzida} UN registrado com sucesso!` });
-      setQtdRefugo('0');
+      setFeedback({ tipo: 'sucesso', msg: `Sincronização ERP: ${produzidas} UN boas e ${refugos} refugos apontados com sucesso!` });
+
+      // Zera o contador do painel após o envio para o ERP
+      setProduzidas(0);
+      setRefugos(0);
+
+      if (res.data?.data?.op) {
+        selecionarOp(res.data.data.op);
+      }
       carregarOps();
-      const resOp = await api.get(`/pcp/ordens/${opSelecionada.id}`);
-      selecionarOp(resOp.data?.data);
+
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao registrar apontamento.' });
     } finally {
@@ -14999,51 +15234,77 @@ export default function TerminalFabricaPage() {
     }
   };
 
+  // Cálculos de Produção Dinâmicos
+  const totalHistorico = opSelecionada ? parseFloat(opSelecionada.quantidade_produzida || 0) : 0;
+  const meta = opSelecionada ? parseFloat(opSelecionada.quantidade_planejada || 0) : 1;
+  const percentualConclusao = Math.min(100, Math.round(((totalHistorico + produzidas) / meta) * 100));
+  const pecasBoasPercentual = produzidas > 0 ? ((produzidas - refugos) / produzidas) * 100 : 100;
+
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto text-slate-200">
-      {/* Header Chão de Fábrica */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
+    <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-950 text-slate-200 overflow-hidden font-sans p-4 sm:p-6 gap-6">
+
+      {/* HEADER TIER 1 - CHÃO DE FÁBRICA */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-lg shrink-0 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-            <Factory className="h-6 w-6 text-indigo-400" />
-            Terminal de Chão de Fábrica (PCP Touch)
-          </h1>
-          <p className="text-xs text-slate-400">Apontamento em tempo real, controle de OEE e rastreabilidade de lote</p>
+          <div className="flex items-center gap-3">
+            <Factory className="h-7 w-7 md:h-8 md:w-8 text-indigo-500" />
+            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight uppercase">Terminal Máquina 01</h1>
+          </div>
+          <p className="text-slate-400 mt-1 font-mono text-xs md:text-sm">Célula de Montagem A • Operador(a) Logado(a)</p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <Link
             to="/app/pcp"
-            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+            className="flex-1 md:flex-none justify-center px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-inner"
           >
-            <Layers className="h-4 w-4 text-indigo-400" /> Painel de OPs
+            <Layers className="h-4 w-4 text-indigo-400" /> Voltar ao PCP
           </Link>
+
           <button
             type="button"
             onClick={carregarOps}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs"
+            className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold transition cursor-pointer shadow-inner"
+            title="Atualizar OPs"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
+
+          <div className="flex flex-col items-end w-full md:w-auto mt-2 md:mt-0">
+            <button
+              onClick={() => setSimuladorEsp32(!simuladorEsp32)}
+              className={`w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-xs transition cursor-pointer shadow-inner ${
+                simuladorEsp32 ? 'bg-emerald-950/50 border-emerald-800 text-emerald-400' : 'bg-slate-950 border-slate-700 text-slate-500 hover:text-white'
+              }`}
+            >
+              {simuladorEsp32 ? <Wifi className="h-4 w-4 animate-pulse" /> : <Cpu className="h-4 w-4" />}
+              {simuladorEsp32 ? 'RECEBENDO TELEMETRIA IOT' : 'LIGAR SENSOR IOT (ESP32)'}
+            </button>
+          </div>
         </div>
       </div>
 
       {feedback && (
-        <div className={`p-3.5 rounded-xl flex items-center gap-2 text-xs ${
-          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        <div className={`p-4 rounded-xl flex items-center justify-between text-xs sm:text-sm shadow-lg shrink-0 ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/90 border border-emerald-800 text-emerald-300' : 'bg-rose-950/90 border border-rose-800 text-rose-300'
         }`}>
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{feedback.msg}</span>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <AlertTriangle className="h-5 w-5 shrink-0" />}
+            <span className="font-bold">{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Coluna Esquerda: Fila de OPs em Produção */}
-        <div className="lg:col-span-4 space-y-2">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Fila de OPs Ativas</span>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+
+        {/* COLUNA ESQUERDA: Fila de OPs em Produção */}
+        <div className="lg:col-span-3 flex flex-col gap-2 min-h-0">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block shrink-0">Fila de OPs Ativas</span>
+          <div className="space-y-3 overflow-y-auto flex-1 pr-2 scrollbar-thin">
             {ops.length === 0 ? (
               <div className="bg-slate-900 border border-slate-800 p-8 text-center text-slate-500 rounded-2xl text-xs">
-                Nenhuma OP com status EM_PRODUCAO no momento.
+                Nenhuma OP planejada ou em execução.
               </div>
             ) : (
               ops.map((op) => {
@@ -15052,23 +15313,20 @@ export default function TerminalFabricaPage() {
                   <div
                     key={op.id}
                     onClick={() => selecionarOp(op)}
-                    className={`p-3.5 rounded-2xl border cursor-pointer transition flex flex-col justify-between ${
-                      isSelected ? 'bg-indigo-950/60 border-indigo-500 shadow-lg shadow-indigo-950/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                    className={`p-4 rounded-2xl border cursor-pointer transition flex flex-col justify-between ${
+                      isSelected ? 'bg-indigo-950/80 border-indigo-500 shadow-lg shadow-indigo-950/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
                     }`}
                   >
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-start mb-2">
                       <div>
-                        <span className="font-mono font-bold text-white text-sm">OP #{op.numero_op}</span>
-                        <h3 className="text-xs font-semibold text-slate-200 line-clamp-1 mt-0.5">{op.produto?.nome}</h3>
+                        <span className={`font-mono font-bold text-sm ${isSelected ? 'text-white' : 'text-slate-300'}`}>OP #{op.numero_op}</span>
+                        <h3 className={`text-xs font-semibold line-clamp-2 mt-1 ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>{op.produto?.nome}</h3>
                       </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-950 text-indigo-300 border border-slate-800">
-                        OEE: {op.oee_percentual || 100}%
-                      </span>
                     </div>
 
-                    <div className="mt-3 flex justify-between items-center text-[11px] text-slate-400 border-t border-slate-800/80 pt-2 font-mono">
-                      <span>Produzido: <strong className="text-emerald-400">{parseFloat(op.quantidade_produzida).toFixed(0)}</strong> / {parseFloat(op.quantidade_planejada).toFixed(0)}</span>
-                      <span>Lote: {op.lote_produzido || 'A Gerar'}</span>
+                    <div className={`mt-2 flex justify-between items-center text-[10px] font-mono border-t pt-2 ${isSelected ? 'border-indigo-800/50 text-indigo-300' : 'border-slate-800/80 text-slate-500'}`}>
+                      <span>Prod: {parseFloat(op.quantidade_produzida).toFixed(0)} / {parseFloat(op.quantidade_planejada).toFixed(0)}</span>
+                      <span>{op.oee_percentual || 100}% OEE</span>
                     </div>
                   </div>
                 );
@@ -15077,121 +15335,191 @@ export default function TerminalFabricaPage() {
           </div>
         </div>
 
-        {/* Coluna Direita: Painel de Apontamento e Rastreabilidade */}
-        <div className="lg:col-span-8 space-y-4">
-          {opSelecionada ? (
-            <>
-              {/* Card de Informações da OP Ativa */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
-                  <div>
-                    <span className="text-xs text-indigo-400 font-mono font-bold">OP #{opSelecionada.numero_op} • {opSelecionada.produto?.codigo_sku}</span>
-                    <h2 className="text-base font-bold text-white">{opSelecionada.produto?.nome}</h2>
+        {/* COLUNA DIREITA: DASHBOARD DA OP E TELEMETRIA */}
+        {opSelecionada ? (
+          <div className="lg:col-span-9 flex flex-col gap-6 min-h-0 overflow-y-auto scrollbar-thin pr-2">
+
+            {/* CABEÇALHO DA OP E PROGRESSO */}
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-lg shrink-0">
+              <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-5">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2.5 py-1 bg-indigo-950 border border-indigo-800 text-indigo-400 font-bold rounded text-[10px] uppercase tracking-wider">
+                      OP Em Execução
+                    </span>
+                    <span className="text-xl font-black text-white font-mono">#{opSelecionada.numero_op}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <div className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-center">
-                      <span className="text-[9px] text-slate-500 uppercase block font-bold">OEE Apurado</span>
-                      <strong className="text-indigo-400 font-mono text-sm">{opSelecionada.oee_percentual || 100}%</strong>
-                    </div>
-                  </div>
+                  <h2 className="text-lg md:text-xl font-bold text-slate-200 leading-tight">{opSelecionada.produto?.nome}</h2>
+                  <p className="text-xs text-slate-500 font-mono mt-1">SKU: {opSelecionada.produto?.codigo_sku || 'N/A'} | Lote: {opSelecionada.lote_produzido || 'A Gerar'}</p>
                 </div>
 
-                {/* Formulário de Apontamento Chão de Fábrica */}
-                <form onSubmit={handleApontar} className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2">
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Qtd Produzida (Boas) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={qtdProduzida}
-                      onChange={(e) => setQtdProduzida(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-emerald-400 font-mono font-bold text-base text-center"
-                    />
+                <div className="flex items-center gap-4 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-500 uppercase font-bold">Qualidade OEE Atual</p>
+                    <p className="text-xl font-black text-white font-mono">{pecasBoasPercentual.toFixed(1)}%</p>
                   </div>
-
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Refugo / Sucata</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={qtdRefugo}
-                      onChange={(e) => setQtdRefugo(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-rose-400 font-mono font-bold text-base text-center"
-                    />
+                  <div className={`p-3 rounded-full ${pecasBoasPercentual >= 95 ? 'bg-emerald-950 text-emerald-500' : 'bg-amber-950 text-amber-500'}`}>
+                    {pecasBoasPercentual >= 95 ? <CheckCircle2 className="h-6 w-6" /> : <AlertTriangle className="h-6 w-6" />}
                   </div>
-
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Horas MOD (Homem)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={horasMod}
-                      onChange={(e) => setHorasMod(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-base text-center"
-                    />
-                  </div>
-
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Horas CIF (Máquina)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={horasCif}
-                      onChange={(e) => setHorasCif(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-base text-center"
-                    />
-                  </div>
-
-                  <div className="col-span-2 sm:col-span-4 pt-2">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition"
-                    >
-                      <Play className="h-5 w-5 fill-current" />
-                      {loading ? 'Processando Baixas e Apontamento...' : 'Registrar Apontamento de Chão de Fábrica'}
-                    </button>
-                  </div>
-                </form>
+                </div>
               </div>
 
-              {/* Rastreabilidade e Genealogia de Lotes */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <h3 className="text-xs font-bold text-white flex items-center gap-1.5 uppercase">
-                  <ShieldCheck className="h-4 w-4 text-emerald-400" /> Genealogia & Rastreabilidade de Lotes Consumidos
-                </h3>
+              {/* Barra de Progresso Global */}
+              <div className="pt-2">
+                <div className="flex justify-between items-end mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Progresso do Lote</span>
+                  <span className="text-xl font-black text-indigo-400 font-mono">{percentualConclusao}%</span>
+                </div>
+                <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800 shadow-inner">
+                  <div
+                    className="bg-indigo-600 h-full transition-all duration-500 ease-out"
+                    style={{ width: `${percentualConclusao}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-500 mt-1.5 font-mono font-bold">
+                  <span>Já no ERP: {parseFloat(opSelecionada.quantidade_produzida).toFixed(0)} UN</span>
+                  <span>Meta: {meta.toFixed(0)} UN</span>
+                </div>
+              </div>
+            </div>
 
-                <div className="max-h-48 overflow-y-auto space-y-1.5 text-xs font-mono">
-                  {genealogia.length === 0 ? (
-                    <div className="text-slate-500 text-center py-4">Nenhum consumo rastreado até o momento.</div>
+            {/* CONTADORES GIGANTES (TIER 1) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0">
+              {/* Contador de Produzidas */}
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-lg flex flex-col justify-center relative overflow-hidden group">
+                <div className="absolute top-5 left-5">
+                  <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> Leitura Válida
+                  </span>
+                </div>
+                <div className="text-center mt-6">
+                  <input
+                    type="number"
+                    value={produzidas}
+                    onChange={(e) => setProduzidas(Number(e.target.value))}
+                    className="w-full bg-transparent text-[6rem] md:text-[8rem] font-black text-white font-mono leading-none tracking-tighter text-center focus:outline-none focus:ring-0"
+                  />
+                  <span className="text-lg font-bold text-slate-500 uppercase tracking-widest block mt-2">Unidades Boas</span>
+                </div>
+                <div className="absolute bottom-4 w-full text-center left-0">
+                  <span className="text-[10px] font-mono text-slate-600">Último pulso: {ultimoPulso.toLocaleTimeString('pt-BR')}</span>
+                </div>
+              </div>
+
+              {/* Contador de Refugo */}
+              <div className="bg-slate-950 border border-rose-900/30 p-6 rounded-2xl shadow-lg flex flex-col justify-center relative group">
+                <div className="absolute top-5 left-5">
+                  <span className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4" /> Refugo / Sucata
+                  </span>
+                </div>
+                <div className="text-center mt-6">
+                  <input
+                    type="number"
+                    value={refugos}
+                    onChange={(e) => setRefugos(Number(e.target.value))}
+                    className="w-full bg-transparent text-[6rem] md:text-[8rem] font-black text-rose-500 font-mono leading-none tracking-tighter text-center focus:outline-none focus:ring-0"
+                  />
+                  <span className="text-lg font-bold text-rose-900 uppercase tracking-widest block mt-2">Unidades Perdidas</span>
+                </div>
+              </div>
+            </div>
+
+            {/* CONTROLES DE MÁQUINA E APONTAMENTO */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-lg flex flex-col xl:flex-row justify-between items-center gap-4 shrink-0">
+
+              <div className="flex items-center gap-4 w-full xl:w-auto bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div className={`w-3 h-3 rounded-full shrink-0 ${statusMaquina === 'RODANDO' ? 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-rose-500'}`}></div>
+                <span className="text-sm font-black text-white uppercase tracking-widest shrink-0">
+                  {statusMaquina === 'RODANDO' ? 'MÁQUINA EM OPERAÇÃO' : 'MÁQUINA PARADA'}
+                </span>
+
+                <div className="ml-auto flex gap-2">
+                  {statusMaquina === 'RODANDO' ? (
+                    <button
+                      onClick={() => setStatusMaquina('PARADA')}
+                      className="px-4 py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs uppercase rounded-lg flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <PauseCircle className="h-4 w-4" /> Pausar
+                    </button>
                   ) : (
-                    genealogia.map((g) => (
-                      <div key={g.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 flex justify-between items-center">
-                        <div>
-                          <span className="text-white font-bold block">{g.insumo?.nome}</span>
-                          <span className="text-slate-400 text-[10px]">Lote Insumo: {g.lote_insumo || 'S/L'} • Qtd: {parseFloat(g.quantidade_consumida).toFixed(2)} {g.insumo?.unidade_medida}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-500 block">Lote Acabado</span>
-                          <strong className="text-indigo-400 text-xs">{g.lote_acabado_gerado}</strong>
-                        </div>
-                      </div>
-                    ))
+                    <button
+                      onClick={() => setStatusMaquina('RODANDO')}
+                      className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-lg flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <PlayCircle className="h-4 w-4" /> Retomar
+                    </button>
                   )}
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-500 text-xs">
-              Selecione uma Ordem de Produção à esquerda para iniciar os apontamentos.
+
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
+                <div className="flex gap-3 w-full sm:w-auto">
+                  <div className="flex-1 sm:w-28">
+                    <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Horas Homem</label>
+                    <input
+                      type="number" step="0.1" value={horasMod} onChange={e => setHorasMod(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 text-white text-sm font-mono px-3 py-2 rounded-lg text-center focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="flex-1 sm:w-28">
+                    <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Horas Máquina</label>
+                    <input
+                      type="number" step="0.1" value={horasCif} onChange={e => setHorasCif(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 text-white text-sm font-mono px-3 py-2 rounded-lg text-center focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleApontar}
+                  disabled={loading || (produzidas === 0 && refugos === 0)}
+                  className="w-full sm:w-auto px-6 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm uppercase rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 transition mt-2 sm:mt-0"
+                >
+                  <Save className="h-4 w-4" /> Sincronizar ERP
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* RASTREABILIDADE INFERIOR */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shrink-0">
+              <h3 className="text-xs font-bold text-slate-400 flex items-center gap-1.5 uppercase mb-3">
+                <ShieldCheck className="h-4 w-4 text-emerald-400" /> Rastreabilidade e Genealogia (BOM)
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto pr-2 scrollbar-thin">
+                {genealogia.length === 0 ? (
+                  <div className="col-span-full text-slate-500 text-xs py-2">Rastreabilidade visível após o primeiro apontamento sincronizado.</div>
+                ) : (
+                  genealogia.map((g) => (
+                    <div key={g.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-white font-bold block truncate max-w-[150px] sm:max-w-[200px]">{g.insumo?.nome}</span>
+                        <span className="text-slate-500 text-[10px]">Lote Consumido: {g.lote_insumo || 'Sem Lote'}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-emerald-400 font-mono font-bold block">{parseFloat(g.quantidade_consumida).toFixed(2)} {g.insumo?.unidade_medida}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          <div className="lg:col-span-9 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center min-h-[400px]">
+            <div className="text-center text-slate-500">
+              <Factory className="h-16 w-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-bold">Terminal em Standby</p>
+              <p className="text-sm mt-1">Selecione uma ordem de produção na fila à esquerda para iniciar a operação.</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 
 ========================================
@@ -20417,6 +20745,16 @@ import { useHardwareStore } from '../../store/useHardwareStore';
 import { EscPosEncoder } from '../../utils/EscPosEncoder';
 import { api } from '../../services/api';
 
+// Função auxiliar para formatação de moeda BRL
+const formatarMoeda = (valor) => {
+  return Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+// Função auxiliar para formatação de peso
+const formatarPeso = (valor) => {
+  return String(valor).replace('.', ',');
+};
+
 export default function PdvPage() {
   const barcodeInputRef = useRef(null);
   const paymentInputRef = useRef(null);
@@ -20454,8 +20792,8 @@ export default function PdvPage() {
   // Cálculos de Totais
   const subtotal = useMemo(() => carrinho.reduce((acc, item) => acc + item.total, 0), [carrinho]);
   const totalGeral = useMemo(() => Math.max(0, subtotal - descontoReal), [subtotal, descontoReal]);
-  const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido) || 0)), [totalGeral, valorRecebido]);
-  const troco = useMemo(() => Math.max(0, (parseFloat(valorRecebido) || 0) - totalGeral), [totalGeral, valorRecebido]);
+  const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido.replace(',', '.')) || 0)), [totalGeral, valorRecebido]);
+  const troco = useMemo(() => Math.max(0, (parseFloat(valorRecebido.replace(',', '.')) || 0) - totalGeral), [totalGeral, valorRecebido]);
 
   // Busca do Depósito Padrão ao abrir o PDV
   useEffect(() => {
@@ -20539,11 +20877,9 @@ export default function PdvPage() {
 
     setBuscandoItem(true);
     try {
-      // BATE NA API REAL PARA BUSCAR O ITEM PELO CÓDIGO
       const res = await api.get('/itens', { params: { search: codigo } });
       const itensEncontrados = res.data?.data?.data || res.data?.data || [];
 
-      // Garante correspondência exata do SKU ou Código de Barras EAN
       const produtoReal = itensEncontrados.find(i =>
         i.codigo_sku === codigo || i.codigo_barras_ean === codigo
       );
@@ -20555,7 +20891,6 @@ export default function PdvPage() {
         return;
       }
 
-      // REGRA DE NEGÓCIO DA BALANÇA
       const isPesavel = produtoReal.unidade_medida === 'KG';
       const quantidadeFinal = isPesavel && balancaConectada ? parseFloat(pesoBalanca) : 1.000;
 
@@ -20566,7 +20901,6 @@ export default function PdvPage() {
         return;
       }
 
-      // Adiciona o Produto Real no Topo do Carrinho
       setCarrinho(prev => [{
         id: produtoReal.id,
         nome: produtoReal.nome,
@@ -20592,7 +20926,7 @@ export default function PdvPage() {
 
   const aplicarDesconto = (e) => {
     e.preventDefault();
-    const descFormated = parseFloat(valorDescontoTemp) || 0;
+    const descFormated = parseFloat(valorDescontoTemp.replace(',', '.')) || 0;
 
     if (descFormated > subtotal) {
       alert("O desconto não pode ser maior que o valor da venda!");
@@ -20618,12 +20952,12 @@ export default function PdvPage() {
     setProcessandoVenda(true);
 
     try {
-      const valorRecebidoFinal = formaPagamento === 'DINHEIRO' ? parseFloat(valorRecebido) : totalGeral;
+      const valorDinheiro = parseFloat(valorRecebido.replace(',', '.')) || 0;
+      const valorRecebidoFinal = formaPagamento === 'DINHEIRO' ? valorDinheiro : totalGeral;
 
-      // PAYLOAD REAL PARA A API DE VENDAS DA HOSTOO
       const payload = {
         deposito_id: depositoSelecionado,
-        cliente_id: null, // Deixando null, o backend usa o Consumidor Final Padrão
+        cliente_id: null,
         desconto_geral: descontoReal,
         itens: carrinho.map(item => ({
           item_id: item.id,
@@ -20639,15 +20973,12 @@ export default function PdvPage() {
         emitir_cupom_fiscal: false
       };
 
-      // REGISTRA A VENDA E DÁ BAIXA NO ESTOQUE
       const { data } = await api.post('/vendas/faturar', payload);
-
       const numPedido = data?.data?.pedido?.numero_pedido || 'N/D';
 
       setTrocoFinal(troco);
       setTotalFinal(totalGeral);
 
-      // IMPRESSÃO FÍSICA ESC/POS
       if (impressoraConectada && config.impressaoAutomatica) {
         const comandos = [
           EscPosEncoder.init(),
@@ -20661,24 +20992,24 @@ export default function PdvPage() {
         ];
 
         carrinho.forEach(item => {
-          comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}`));
-          comandos.push(EscPosEncoder.text(`${item.quantidade.toFixed(3)} ${item.unidade} x R$ ${item.preco_venda.toFixed(2)} = R$ ${item.total.toFixed(2)}\n`));
+            comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}\n`));
+            comandos.push(EscPosEncoder.text(`${formatarPeso(item.quantidade.toFixed(3))} ${item.unidade} x R$ ${formatarMoeda(item.preco_venda)} = R$ ${formatarMoeda(item.total)}\n`));
         });
 
         comandos.push(EscPosEncoder.text("--------------------------------\n"));
         if (descontoReal > 0) {
-          comandos.push(EscPosEncoder.text(`SUBTOTAL: R$ ${subtotal.toFixed(2)}\n`));
-          comandos.push(EscPosEncoder.text(`DESCONTO: R$ ${descontoReal.toFixed(2)}\n`));
+          comandos.push(EscPosEncoder.text(`SUBTOTAL: R$ ${formatarMoeda(subtotal)}\n`));
+          comandos.push(EscPosEncoder.text(`DESCONTO: R$ ${formatarMoeda(descontoReal)}\n`));
         }
 
         comandos.push(EscPosEncoder.align(2));
         comandos.push(EscPosEncoder.bold(true));
-        comandos.push(EscPosEncoder.text(`TOTAL: R$ ${totalGeral.toFixed(2)}\n`));
+        comandos.push(EscPosEncoder.text(`TOTAL: R$ ${formatarMoeda(totalGeral)}\n`));
         comandos.push(EscPosEncoder.bold(false));
         comandos.push(EscPosEncoder.text(`PAGO EM: ${formaPagamento}\n`));
         if (formaPagamento === 'DINHEIRO') {
-           comandos.push(EscPosEncoder.text(`VALOR RECEBIDO: R$ ${valorRecebidoFinal.toFixed(2)}\n`));
-           comandos.push(EscPosEncoder.text(`TROCO: R$ ${troco.toFixed(2)}\n`));
+           comandos.push(EscPosEncoder.text(`VALOR RECEBIDO: R$ ${formatarMoeda(valorRecebidoFinal)}\n`));
+           comandos.push(EscPosEncoder.text(`TROCO: R$ ${formatarMoeda(troco)}\n`));
         }
 
         comandos.push(EscPosEncoder.align(1));
@@ -20690,7 +21021,6 @@ export default function PdvPage() {
         await imprimirCupom(EscPosEncoder.build(comandos));
       }
 
-      // Finaliza processo
       setCarrinho([]);
       setDescontoReal(0);
       setValorRecebido('');
@@ -20734,7 +21064,6 @@ export default function PdvPage() {
           </div>
         </div>
 
-        {/* Input Leitor de Barras */}
         <form onSubmit={processarCodigoBarras} className="mb-4">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -20752,7 +21081,6 @@ export default function PdvPage() {
           </div>
         </form>
 
-        {/* Cupom Table */}
         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm">
           <div className="overflow-y-auto flex-1">
             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -20782,9 +21110,9 @@ export default function PdvPage() {
                     <tr key={idx} className="hover:bg-slate-800/50 transition">
                       <td className="py-3 px-4 text-center text-slate-500">{carrinho.length - idx}</td>
                       <td className="py-3 px-4 font-bold text-white font-sans truncate max-w-[200px]">{item.nome}</td>
-                      <td className="py-3 px-4 text-right text-indigo-400">{item.quantidade.toFixed(3)} {item.unidade}</td>
-                      <td className="py-3 px-4 text-right">{item.preco_venda.toFixed(2)}</td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-400">{item.total.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-right text-indigo-400">{formatarPeso(item.quantidade.toFixed(3))} {item.unidade}</td>
+                      <td className="py-3 px-4 text-right">{formatarMoeda(item.preco_venda)}</td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-400">{formatarMoeda(item.total)}</td>
                       <td className="py-3 px-4 text-center">
                         <button onClick={() => removerItem(idx)} className="text-slate-500 hover:text-rose-400 transition cursor-pointer">
                           <Trash2 className="h-4 w-4" />
@@ -20809,7 +21137,7 @@ export default function PdvPage() {
               <span className={balancaConectada ? 'text-emerald-500' : 'text-rose-500'}>{balancaConectada ? 'ON' : 'OFF'}</span>
             </div>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-right shadow-inner">
-              <span className="font-mono text-5xl font-black text-indigo-400 tracking-tighter">{pesoBalanca}</span>
+              <span className="font-mono text-5xl font-black text-indigo-400 tracking-tighter">{formatarPeso(pesoBalanca)}</span>
               <span className="text-slate-500 ml-2 font-bold">KG</span>
             </div>
           </div>
@@ -20819,24 +21147,23 @@ export default function PdvPage() {
           <div className="space-y-3">
             <div className="flex justify-between items-center text-slate-400 font-mono">
               <span className="text-sm">Subtotal</span>
-              <span className="text-lg">R$ {subtotal.toFixed(2)}</span>
+              <span className="text-lg">R$ {formatarMoeda(subtotal)}</span>
             </div>
             <div className="flex justify-between items-center text-rose-400 font-mono">
               <span className="text-sm">Desconto</span>
-              <span className="text-lg">- R$ {descontoReal.toFixed(2)}</span>
+              <span className="text-lg">- R$ {formatarMoeda(descontoReal)}</span>
             </div>
             <div className="pt-3">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-1">Total a Pagar</span>
               <div className="bg-emerald-950/20 border border-emerald-900/50 p-4 rounded-xl text-right">
                 <span className="font-mono text-6xl font-black text-emerald-400 tracking-tighter">
-                  {totalGeral.toFixed(2)}
+                  {formatarMoeda(totalGeral)}
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Atalhos de Teclado Footer */}
         <div className="p-6 bg-slate-950 border-t border-slate-800 grid grid-cols-3 gap-3">
           <button
             disabled={carrinho.length === 0 || processandoVenda}
@@ -20879,22 +21206,19 @@ export default function PdvPage() {
               <Tag className="h-8 w-8" />
             </div>
             <h2 className="text-xl font-bold text-white mb-1">Aplicar Desconto</h2>
-            <p className="text-xs text-slate-400 mb-6">Subtotal atual: R$ {subtotal.toFixed(2)}</p>
+            <p className="text-xs text-slate-400 mb-6">Subtotal atual: R$ {formatarMoeda(subtotal)}</p>
 
             <form onSubmit={aplicarDesconto} className="w-full space-y-4">
               <div>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Valor (R$)</label>
                 <input
                   ref={discountInputRef}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max={subtotal}
+                  type="text"
                   required
                   value={valorDescontoTemp}
-                  onChange={(e) => setValorDescontoTemp(e.target.value)}
+                  onChange={(e) => setValorDescontoTemp(e.target.value.replace(/[^0-9,]/g, ''))}
                   className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-3 text-xl font-mono text-white focus:outline-none focus:border-indigo-400 text-center"
-                  placeholder="0.00"
+                  placeholder="0,00"
                 />
               </div>
 
@@ -20916,7 +21240,6 @@ export default function PdvPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl shadow-2xl flex overflow-hidden min-h-[500px]">
 
-            {/* Lado Esquerdo Modal: Formas de Pagamento */}
             <div className="w-1/2 p-8 border-r border-slate-800 bg-slate-900">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-white">Método de Pagamento</h2>
@@ -20933,7 +21256,7 @@ export default function PdvPage() {
                   <button
                     key={metodo.id}
                     disabled={processandoVenda}
-                    onClick={() => { setFormaPagamento(metodo.id); if(metodo.id !== 'DINHEIRO') setValorRecebido(totalGeral.toFixed(2)); }}
+                    onClick={() => { setFormaPagamento(metodo.id); if(metodo.id !== 'DINHEIRO') setValorRecebido(formatarPeso(totalGeral.toFixed(2))); }}
                     className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition cursor-pointer disabled:opacity-50 ${formaPagamento === metodo.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'}`}
                   >
                     <metodo.icon className="h-6 w-6" />
@@ -20947,18 +21270,16 @@ export default function PdvPage() {
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Valor Recebido (R$)</label>
                   <input
                     ref={paymentInputRef}
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
                     disabled={processandoVenda}
                     value={valorRecebido}
-                    onChange={(e) => setValorRecebido(e.target.value)}
+                    onChange={(e) => setValorRecebido(e.target.value.replace(/[^0-9,]/g, ''))}
                     className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-4 text-2xl font-mono text-white focus:outline-none focus:border-indigo-400 disabled:opacity-50"
-                    placeholder="0.00"
+                    placeholder="0,00"
                   />
                   <div className="grid grid-cols-4 gap-2 pt-2">
                     {[10, 20, 50, 100].map(val => (
-                      <button disabled={processandoVenda} key={val} onClick={() => setValorRecebido(val.toFixed(2))} className="bg-slate-800 text-slate-300 py-2 rounded-lg font-mono font-bold text-sm hover:bg-slate-700 cursor-pointer border border-slate-700 disabled:opacity-50">
+                      <button disabled={processandoVenda} key={val} onClick={() => setValorRecebido(formatarPeso(val.toFixed(2)))} className="bg-slate-800 text-slate-300 py-2 rounded-lg font-mono font-bold text-sm hover:bg-slate-700 cursor-pointer border border-slate-700 disabled:opacity-50">
                         {val},00
                       </button>
                     ))}
@@ -20967,25 +21288,24 @@ export default function PdvPage() {
               )}
             </div>
 
-            {/* Lado Direito Modal: Resumo Fechamento */}
             <div className="w-1/2 p-8 bg-slate-950 flex flex-col justify-between relative">
               <div className="space-y-6">
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-2">Resumo da Operação</h3>
 
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400">Total a Pagar</span>
-                  <span className="text-2xl font-black text-white font-mono">R$ {totalGeral.toFixed(2)}</span>
+                  <span className="text-2xl font-black text-white font-mono">R$ {formatarMoeda(totalGeral)}</span>
                 </div>
 
                 {formaPagamento === 'DINHEIRO' && (
                   <>
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">Faltante</span>
-                      <span className="text-lg font-bold text-rose-400 font-mono">R$ {valorFaltante.toFixed(2)}</span>
+                      <span className="text-lg font-bold text-rose-400 font-mono">R$ {formatarMoeda(valorFaltante)}</span>
                     </div>
                     <div className="p-4 bg-emerald-950/20 border border-emerald-900/50 rounded-xl flex justify-between items-center">
                       <span className="text-emerald-500 font-bold uppercase tracking-wider">Troco</span>
-                      <span className="text-4xl font-black text-emerald-400 font-mono">R$ {troco.toFixed(2)}</span>
+                      <span className="text-4xl font-black text-emerald-400 font-mono">R$ {formatarMoeda(troco)}</span>
                     </div>
                   </>
                 )}
@@ -21004,7 +21324,7 @@ export default function PdvPage() {
                   className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-xl py-5 rounded-xl shadow-lg shadow-emerald-600/20 cursor-pointer transition flex items-center justify-center gap-2"
                 >
                   {processandoVenda ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}
-                  {processandoVenda ? 'FATURANDO NA HOSTOO...' : 'CONFIRMAR PAGAMENTO [ENTER]'}
+                  {processandoVenda ? 'A FATURAR NA HOSTOO...' : 'CONFIRMAR PAGAMENTO [ENTER]'}
                 </button>
               </div>
             </div>
@@ -21025,16 +21345,16 @@ export default function PdvPage() {
 
             {(!impressoraConectada || !config.impressaoAutomatica) && (
                <p className="text-xs text-amber-500 font-medium mb-6 bg-amber-950/30 px-3 py-1 rounded-full border border-amber-900/50">
-                 (Sem impressão de cupom físico)
+                 (Sem impressão de talão físico)
                </p>
             )}
 
             <div className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-5 mb-6 shadow-inner">
               <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
-              <p className="text-2xl font-bold text-slate-200 font-mono mb-4">R$ {totalFinal.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-slate-200 font-mono mb-4">R$ {formatarMoeda(totalFinal)}</p>
 
               <p className="text-sm font-bold text-emerald-500 uppercase tracking-widest mb-1">Troco a Devolver</p>
-              <p className="text-5xl font-black text-emerald-400 font-mono tracking-tighter">R$ {trocoFinal.toFixed(2)}</p>
+              <p className="text-5xl font-black text-emerald-400 font-mono tracking-tighter">R$ {formatarMoeda(trocoFinal)}</p>
             </div>
 
             <button
@@ -23590,7 +23910,8 @@ export const useHardwareStore = create((set, get) => ({
   // --- AÇÕES DA BALANÇA ---
   conectarBalanca: async () => {
     try {
-      if (!navigator.serial) throw new Error("Web Serial API não suportada.");
+      if (!navigator.serial) throw new Error("Web Serial API não suportada neste navegador. Use Google Chrome ou Microsoft Edge.");
+
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 9600 });
 
@@ -23604,24 +23925,45 @@ export const useHardwareStore = create((set, get) => ({
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
+
         buffer += value;
-        const numeros = buffer.replace(/[^0-9]/g, '');
-        if (numeros.length >= 5) {
-          const pesoExtraido = numeros.slice(-5);
-          set({ pesoBalanca: (parseInt(pesoExtraido, 10) / 1000).toFixed(3) });
+
+        // Remove absolutamente tudo que não for número
+        const numerosLidos = buffer.replace(/[^0-9]/g, '');
+
+        // Balanças Filizola/Toledo mandam pacotes contínuos. Precisamos de 5 dígitos para formar 0.000kg
+        if (numerosLidos.length >= 5) {
+          // Extrai apenas os últimos 5 algarismos garantindo que é a leitura mais recente
+          const pesoCru = numerosLidos.slice(-5);
+
+          // Converte para float dividindo por 1000 (Ex: 04227 -> 4.227)
+          const pesoMascara = (parseInt(pesoCru, 10) / 1000).toFixed(3);
+
+          set({ pesoBalanca: pesoMascara });
+
+          // Esvazia o buffer para a próxima leitura
           buffer = "";
         }
+
+        // Despeja lixo de memória se o buffer engasgar com a porta serial (Safety net)
         if (buffer.length > 50) buffer = "";
       }
     } catch (err) {
-      if (err.name !== 'NotFoundError') set({ erroBalanca: err.message, balancaConectada: false });
+      // O erro NotFoundError é quando o utilizador abre o pop-up e clica em Cancelar. Não é erro real.
+      if (err.name !== 'NotFoundError') {
+        set({ erroBalanca: err.message, balancaConectada: false });
+      }
     }
   },
 
   desconectarBalanca: async () => {
     const { balancaReader, balancaPort } = get();
-    if (balancaReader) { await balancaReader.cancel(); }
-    if (balancaPort) { await balancaPort.close(); }
+    try {
+      if (balancaReader) { await balancaReader.cancel(); }
+      if (balancaPort) { await balancaPort.close(); }
+    } catch (error) {
+      console.warn("Erro suave ao desconectar a porta USB:", error);
+    }
     set({ balancaConectada: false, balancaReader: null, balancaPort: null, pesoBalanca: "0.000" });
   },
 
@@ -23630,7 +23972,7 @@ export const useHardwareStore = create((set, get) => ({
     try {
       if (!navigator.serial) throw new Error("Web Serial API não suportada.");
       const port = await navigator.serial.requestPort();
-      // Não abrimos a porta aqui, apenas guardamos a permissão do utilizador
+      // Guardamos a instância da porta sem a abrir. Só a abrimos e fechamos no milissegundo em que imprimimos.
       set({ impressoraPort: port, impressoraConectada: true });
     } catch (err) {
       console.error(err);
@@ -23643,6 +23985,7 @@ export const useHardwareStore = create((set, get) => ({
 
     set({ isPrinting: true });
     try {
+      // Abre a porta térmica a 9600bps (Padrão Epson/Bematech/Elgin)
       await impressoraPort.open({ baudRate: 9600 });
       const writer = impressoraPort.writable.getWriter();
       await writer.write(bytesPackage);
@@ -23651,7 +23994,9 @@ export const useHardwareStore = create((set, get) => ({
       set({ isPrinting: false });
       return true;
     } catch (err) {
-      console.error("Falha na impressão:", err);
+      console.error("Falha na impressão térmica:", err);
+      // Fecha forçadamente se a porta encravar
+      try { await impressoraPort.close(); } catch(e){}
       set({ isPrinting: false });
       return false;
     }
@@ -23740,37 +24085,88 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\utils\EscPosEncoder.js
 ========================================
 
 export class EscPosEncoder {
-    // 1. Acorda e reseta a impressora
-    static init() { return new Uint8Array([0x1B, 0x40]); }
 
-    // 2. Transforma texto em bytes (adicionando quebra de linha e removendo acentos para impressoras antigas)
-    static text(str) {
-        const cleanStr = str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        return new TextEncoder().encode(cleanStr + '\n');
+    // Inicializa a impressora (Limpa o buffer)
+    static init() {
+        return new Uint8Array([0x1B, 0x40]);
     }
 
-    // 3. Centraliza o texto (0 = Esquerda, 1 = Centro, 2 = Direita)
-    static align(position) { return new Uint8Array([0x1B, 0x61, position]); }
+    // Alinhamento: 0 = Esquerda, 1 = Centro, 2 = Direita
+    static align(mode) {
+        return new Uint8Array([0x1B, 0x61, mode]);
+    }
 
-    // 4. Negrito On/Off
-    static bold(on) { return new Uint8Array([0x1B, 0x45, on ? 1 : 0]); }
+    // Negrito: true = Ligado, false = Desligado
+    static bold(on) {
+        return new Uint8Array([0x1B, 0x45, on ? 1 : 0]);
+    }
 
-    // 5. Abre a gaveta de dinheiro ligada à impressora (Pulso RJ11)
-    static openDrawer() { return new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]); }
+    // Converte a String de texto para Bytes
+    static text(str) {
+        const stringLimpa = str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const encoder = new TextEncoder();
+        return encoder.encode(stringLimpa);
+    }
 
-    // 6. Corta o papel (Guilhotina)
-    static cut() { return new Uint8Array([0x1D, 0x56, 0x41, 0x10]); }
+    // Guilhotina: Corta o papel
+    static cut() {
+        return new Uint8Array([0x1D, 0x56, 0x41, 0x10]);
+    }
 
-    // Utilitário para fundir todos os comandos num único pacote de bytes contínuo
+    // Abre a gaveta de dinheiro
+    static openDrawer() {
+        return new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
+    }
+
+    // --- NOVO: Impressão Nativa de Código de Barras (CODE 128) ---
+    static barcode128(data) {
+        // Envolve em chave B para o padrão Code 128
+        const textBytes = this.text('{B' + data);
+        return new Uint8Array([
+            0x1D, 0x68, 0x40, // GS h 64 : Altura do código de barras (64 dots)
+            0x1D, 0x77, 0x02, // GS w 2 : Largura das barras
+            0x1D, 0x48, 0x02, // GS H 2 : Posição do texto (Abaixo do código)
+            0x1D, 0x6B, 0x49, textBytes.length, // GS k 73 [tamanho] [dados]
+            ...textBytes
+        ]);
+    }
+
+    // Junta todos os arrays de bytes num único pacote
     static build(commands) {
-        const totalLength = commands.reduce((acc, val) => acc + val.length, 0);
+        const totalLength = commands.reduce((acc, cmd) => acc + cmd.length, 0);
         const result = new Uint8Array(totalLength);
         let offset = 0;
-        commands.forEach(buffer => {
-            result.set(buffer, offset);
-            offset += buffer.length;
-        });
+
+        for (const cmd of commands) {
+            result.set(cmd, offset);
+            offset += cmd.length;
+        }
+
         return result;
+    }
+}
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\frontend\src\utils\ZplEncoder.js
+========================================
+
+export class ZplEncoder {
+    static buildLabel(produtoNome, quantidade, data, sku) {
+        const nomeLimpo = produtoNome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 40);
+
+        // Estrutura padrão ZPL para uma etiqueta de 4x2 polegadas
+        const zpl = `^XA
+^PW600
+^FO40,40^A0N,30,30^FDSCALLE WMS - RECEBIMENTO^FS
+^FO40,90^A0N,25,25^FD${nomeLimpo}^FS
+^FO40,140^A0N,20,20^FDQTD RECEBIDA: ${quantidade} | DT: ${data}^FS
+^FO40,190^BCN,80,Y,N,N^FD${sku}^FS
+^XZ
+`;
+        const encoder = new TextEncoder();
+        return encoder.encode(zpl);
     }
 }
 

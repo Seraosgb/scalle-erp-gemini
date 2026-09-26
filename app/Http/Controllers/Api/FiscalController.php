@@ -156,4 +156,33 @@ class FiscalController extends Controller
             return response()->json(['error' => ['message' => 'Erro de comunicação com a SEFAZ: ' . $e->getMessage()]], 422);
         }
     }
+    public function statusSefaz(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $tenantId = $user->tenant_id;
+            $empresaId = $user->empresa_padrao_id
+                      ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+            // Busca UF da Empresa ou assume RJ por padrão
+            $empresa = \App\Models\Empresa::find($empresaId);
+            $uf = $empresa->endereco_uf ?? 'RJ';
+
+            $resultado = \App\Services\MotorFiscalService::pingSefaz($tenantId, $empresaId, $uf);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Comunicação com a SEFAZ testada com sucesso.',
+                    'sefaz' => $resultado
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SEFAZ_COMMUNICATION_ERROR',
+                    'message' => $e->getMessage()
+                ]
+            ], 422);
+        }
+    }
 }
