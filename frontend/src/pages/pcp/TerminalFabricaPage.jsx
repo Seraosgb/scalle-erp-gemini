@@ -33,7 +33,6 @@ export default function TerminalFabricaPage() {
     inputBuscaRef.current?.focus();
   }, []);
 
-  // Lógica do Simulador IoT (Finge ser o ESP32 mandando dados via WebSocket)
   // Lógica de Telemetria IoT Real via WebSocket
   useEffect(() => {
     let ws;
@@ -88,12 +87,15 @@ export default function TerminalFabricaPage() {
 
   const carregarOps = async () => {
     try {
-      const res = await api.get('/pcp/ordens', { params: { status: 'EM_PRODUCAO' } });
+      const res = await api.get('/pcp/ordens-producao'); // CORRIGIDO PARA O ENDPOINT CERTO
       const raw = res.data?.data || res.data || [];
       const lista = Array.isArray(raw) ? raw : (raw.data || []);
-      setOps(lista);
-      if (lista.length > 0 && !opSelecionada) {
-        selecionarOp(lista[0]);
+
+      const ativas = lista.filter(op => op.status !== 'CONCLUIDA' && op.status !== 'CANCELADA');
+
+      setOps(ativas);
+      if (ativas.length > 0 && !opSelecionada) {
+        selecionarOp(ativas[0]);
       }
     } catch (e) {
       console.error("Erro ao carregar OPs:", e);
@@ -109,7 +111,7 @@ export default function TerminalFabricaPage() {
     setOpSelecionada(op);
 
     try {
-      const res = await api.get(`/pcp/ordens/${op.id}/genealogia`);
+      const res = await api.get(`/pcp/ordens-producao/${op.id}/genealogia`); // CORRIGIDO PARA O ENDPOINT CERTO
       setGenealogia(res.data?.data || []);
     } catch (e) {
       setGenealogia([]);
@@ -127,7 +129,7 @@ export default function TerminalFabricaPage() {
 
     setLoading(true);
     try {
-      await api.post(`/pcp/ordens/${opSelecionada.id}/apontar`, {
+      const res = await api.post(`/pcp/ordens-producao/${opSelecionada.id}/apontar`, { // CORRIGIDO PARA O ENDPOINT CERTO
         quantidade_produzida: produzidas,
         quantidade_refugo: refugos,
         horas_mod: parseFloat(horasMod) || 0,
@@ -143,9 +145,11 @@ export default function TerminalFabricaPage() {
       setProduzidas(0);
       setRefugos(0);
 
+      if (res.data?.data?.op) {
+        selecionarOp(res.data.data.op);
+      }
       carregarOps();
-      const resOp = await api.get(`/pcp/ordens/${opSelecionada.id}`);
-      selecionarOp(resOp.data?.data);
+
     } catch (err) {
       setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao registrar apontamento.' });
     } finally {
@@ -208,7 +212,7 @@ export default function TerminalFabricaPage() {
           feedback.tipo === 'sucesso' ? 'bg-emerald-950/90 border border-emerald-800 text-emerald-300' : 'bg-rose-950/90 border border-rose-800 text-rose-300'
         }`}>
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <AlertTriangle className="h-5 w-5 shrink-0" />}
             <span className="font-bold">{feedback.msg}</span>
           </div>
           <button type="button" onClick={() => setFeedback(null)} className="p-1 hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
@@ -223,7 +227,7 @@ export default function TerminalFabricaPage() {
           <div className="space-y-3 overflow-y-auto flex-1 pr-2 scrollbar-thin">
             {ops.length === 0 ? (
               <div className="bg-slate-900 border border-slate-800 p-8 text-center text-slate-500 rounded-2xl text-xs">
-                Nenhuma OP com status EM_PRODUCAO na fábrica.
+                Nenhuma OP planejada ou em execução.
               </div>
             ) : (
               ops.map((op) => {
@@ -347,7 +351,6 @@ export default function TerminalFabricaPage() {
             {/* CONTROLES DE MÁQUINA E APONTAMENTO */}
             <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-lg flex flex-col xl:flex-row justify-between items-center gap-4 shrink-0">
 
-              {/* Controle Play/Pause */}
               <div className="flex items-center gap-4 w-full xl:w-auto bg-slate-950 p-3 rounded-xl border border-slate-800">
                 <div className={`w-3 h-3 rounded-full shrink-0 ${statusMaquina === 'RODANDO' ? 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-rose-500'}`}></div>
                 <span className="text-sm font-black text-white uppercase tracking-widest shrink-0">
@@ -373,7 +376,6 @@ export default function TerminalFabricaPage() {
                 </div>
               </div>
 
-              {/* Form de Sincronização */}
               <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
                 <div className="flex gap-3 w-full sm:w-auto">
                   <div className="flex-1 sm:w-28">
@@ -409,7 +411,7 @@ export default function TerminalFabricaPage() {
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto pr-2 scrollbar-thin">
                 {genealogia.length === 0 ? (
-                  <div className="col-span-full text-slate-500 text-xs py-2">Rastreabilidade pendente do primeiro apontamento efetivado no ERP.</div>
+                  <div className="col-span-full text-slate-500 text-xs py-2">Rastreabilidade visível após o primeiro apontamento sincronizado.</div>
                 ) : (
                   genealogia.map((g) => (
                     <div key={g.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 flex justify-between items-center text-xs">
@@ -431,8 +433,8 @@ export default function TerminalFabricaPage() {
           <div className="lg:col-span-9 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center min-h-[400px]">
             <div className="text-center text-slate-500">
               <Factory className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-bold">Nenhuma OP Selecionada</p>
-              <p className="text-sm mt-1">Selecione uma ordem na fila para iniciar o terminal.</p>
+              <p className="text-lg font-bold">Terminal em Standby</p>
+              <p className="text-sm mt-1">Selecione uma ordem de produção na fila à esquerda para iniciar a operação.</p>
             </div>
           </div>
         )}
