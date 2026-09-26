@@ -259,7 +259,9 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/documentos', [FiscalController::class, 'index']);
         Route::get('/regras', [FiscalController::class, 'regras']);
         Route::post('/emitir', [FiscalController::class, 'emitir']);
-        Route::get('/fiscal/status-sefaz', [FiscalController::class, 'statusSefaz']);
+
+        // CORREÇÃO: Removido o "/fiscal" duplicado, pois o grupo já tem o prefixo
+        Route::get('/status-sefaz', [FiscalController::class, 'statusSefaz']);
 
         // Novas rotas de eventos fiscais
         Route::post('/{id}/cancelar', [FiscalController::class, 'cancelar']);

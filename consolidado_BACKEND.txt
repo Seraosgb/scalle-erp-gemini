@@ -12645,96 +12645,211 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\consolidado_DOCUMENTOS_BASE.txt
 ARQUIVO: C:\Projetos\scalle-erp-gemini\GO-LIVE ROADMAP - DESCONSIDERAR.md
 ========================================
 
-===========================================================================================================================
-📄 **GO-LIVE ROADMAP - SCALLE ERP (V4.0 - RUMO À MATURIDADE ENTERPRISE)**
-===========================================================================================================================
-===========================================================================================================================
+===========================================================================================================================📄 **GO-LIVE ROADMAP - SCALLE ERP (V4.0 - RUMO À MATURIDADE ENTERPRISE)**
+====================================================================================================================================================================================================
 
 **⚠️ AVISO IMPORTANTE:** _Este roadmap destina-se estritamente como um guia estratégico para as etapas finais de Go-Live e alcance da maturidade Enterprise. Ele consolida as conquistas atuais e mapeia os requisitos faltantes cruzados com o Documento Master de Especificação._
 
+
+
 **Objetivo:** Prontidão Comercial 100% B2B e SaaS Self-Service (Tier Enterprise)
+
 **Arquitetura:** Monolito Modular Multi-Tenant (Padrão Gemini) com RBAC
 
----
+
 
 ### 1. RAIO-X DO CÓDIGO (O QUE JÁ TEMOS CONSOLIDADO 🟢)
 
 A espinha dorsal do ERP já está construída e operante no backend, respeitando rigorosamente o isolamento por `tenant_id` e a blindagem com UUIDs:
 
-* **Core & SaaS:** Autenticação (Sanctum/TOTP), Assinaturas, Webhooks Asaas, Soft-Lock e isolamento `GlobalScopeTenant`.
-* **RH & Folha (DP):** Cadastro de funcionários, ponto georreferenciado (MTP 671), holerites em PDF e avaliação de clima (eNPS).
-* **Serviços (CMMS):** Ciclo de vida de Ordens de Serviço (OS), cálculo de SLA, laudos técnicos e assinatura digital com hash (MP 2.200-2).
-* **WMS & Indústria (PCP):** Catálogo unificado, múltiplos depósitos, transferências atômicas, movimentação de estoque, BOM e Ordens de Produção (MRP).
-* **Comercial & Financeiro:** Funil Inbound CRM, orçamentos, contas bancárias e liquidação de faturas (Contas a Pagar/Receber).
-* **Frotas:** Gestão de veículos, motoristas e controle atômico de abastecimentos integrado ao financeiro.
-* **Governança:** Listas suspensas (taxonomia) rodando dinamicamente na tabela `sis_tabelas_dominio`.
-* **Motor Fiscal:** Upload de certificado A1 (AES-256), geração de XML e orquestração assíncrona via filas/Jobs.
-* **Projetos (PMO Enterprise):** Kanban corporativo com Drag and Drop, Blockers (dependências), Checklists, Gantt, Gestão de Capacidade e Timesheet.
-* **Cofre Digital (GED/EDMS):** Upload isolado e seguro de arquivos, plenamente integrado às tarefas do PMO e Ordens de Serviço.
 
----
+
+* **Core & SaaS:** Autenticação (Sanctum/TOTP), Assinaturas, Webhooks Asaas, Soft-Lock e isolamento `GlobalScopeTenant`.
+  
+  
+
+* **RH & Folha (DP):** Cadastro de funcionários, ponto georreferenciado (MTP 671), holerites em PDF e avaliação de clima (eNPS).
+  
+  
+
+* **Serviços (CMMS):** Ciclo de vida de Ordens de Serviço (OS), cálculo de SLA, laudos técnicos e assinatura digital com hash (MP 2.200-2).
+  
+  
+
+* **WMS & Indústria (PCP):** Catálogo unificado, múltiplos depósitos, transferências atômicas, movimentação de estoque, BOM e Ordens de Produção (MRP).
+  
+  
+
+* **Comercial, Frente de Caixa (PDV) & Financeiro:** Funil Inbound CRM, orçamentos, contas bancárias, liquidação de faturas (Contas a Pagar/Receber) e PDV Balcão (Tier 1) com interface _keyboard-first_, integração nativa de hardware via Web Serial API (balanças e impressoras térmicas ESC/POS) e baixa atômica de estoque.
+  
+  
+
+* **Frotas:** Gestão de veículos, motoristas e controle atômico de abastecimentos integrado ao financeiro.
+  
+  
+
+* **Governança:** Listas suspensas (taxonomia) rodando dinamicamente na tabela `sis_tabelas_dominio`.
+  
+  
+
+* **Motor Fiscal:** Upload de certificado A1 (AES-256), geração de XML e orquestração assíncrona via filas/Jobs.
+  
+  
+
+* **Projetos (PMO Enterprise):** Kanban corporativo com Drag and Drop, Blockers (dependências), Checklists, Gantt, Gestão de Capacidade e Timesheet.
+  
+  
+
+* **Cofre Digital (GED/EDMS):** Upload isolado e seguro de arquivos, plenamente integrado às tarefas do PMO e Ordens de Serviço.
+  
+  
 
 ### 2. O GAP PARA A MATURIDADE ENTERPRISE (O QUE FALTA 🔴)
 
 Para que o Scalle ERP atenda desde microempresas até grandes indústrias corporativas (em conformidade absoluta com o Documento Master), as seguintes funcionalidades precisam ser implementadas:
 
+
+
 #### Core, Multi-Tenant & SaaS
-- [ ] **Onboarding Automatizado:** Importador em lote (CSV/Excel) para carga inicial de Pessoas e Catálogo de Itens.
-- [ ] **SSO / Enterprise Login:** Integração OAuth2 com Google Workspace e Microsoft Entra ID.
-- [ ] **SaaS Prorata:** Cálculo financeiro proporcional (prorata) para Upgrades e Downgrades de planos durante o ciclo vigente.
+
+* [ ] **Onboarding Automatizado:** Importador em lote (CSV/Excel) para carga inicial de Pessoas e Catálogo de Itens.
+  
+  
+
+* [ ] **SSO / Enterprise Login:** Integração OAuth2 com Google Workspace e Microsoft Entra ID.
+  
+  
+
+* [ ] **SaaS Prorata:** Cálculo financeiro proporcional (prorata) para Upgrades e Downgrades de planos durante o ciclo vigente.
+  
+  
 
 #### Comercial, CRM & Serviços
-- [ ] **Gestão de Contratos de Recorrência:** Criação de contratos comerciais vinculados ao CRM e PMOC, gerando faturamento automático mensal.
-- [ ] **Assinatura Digital Expandida:** Aplicar a assinatura com validade jurídica (MP 2.200-2) nativa também no aceite de Propostas Comerciais/Orçamentos.
+
+* [ ] **Gestão de Contratos de Recorrência:** Criação de contratos comerciais vinculados ao CRM e PMOC, gerando faturamento automático mensal.
+  
+  
+
+* [ ] **Assinatura Digital Expandida:** Aplicar a assinatura com validade jurídica (MP 2.200-2) nativa também no aceite de Propostas Comerciais/Orçamentos.
+  
+  
 
 #### Suprimentos & WMS
-- [ ] **Requisição de Compras:** Implementar o fluxo de demanda interna (solicitações de departamentos) antes da etapa de cotação com fornecedores.
+
+* [ ] **Requisição de Compras:** Implementar o fluxo de demanda interna (solicitações de departamentos) antes da etapa de cotação com fornecedores.
+  
+  
 
 #### Controladoria (Financeiro & Fiscal)
-- [ ] **Estrutura Contábil:** Implementação de Plano de Contas e Centros de Custo hierárquicos.
-- [ ] **DRE & Conciliação:** Geração da DRE (Demonstração do Resultado do Exercício) e motor de leitura OFX para conciliação bancária.
-- [ ] **Eventos Fiscais (SEFAZ):** Homologação final e rotas para Carta de Correção (CC-e), Cancelamento, Inutilização de numeração, além da emissão de CT-e/MDF-e para a logística.
+
+* [ ] **Estrutura Contábil:** Implementação de Plano de Contas e Centros de Custo hierárquicos.
+  
+  
+
+* [ ] **DRE & Conciliação:** Geração da DRE (Demonstração do Resultado do Exercício) e motor de leitura OFX para conciliação bancária.
+  
+  
+
+* [ ] **Eventos Fiscais (SEFAZ):** Homologação final e rotas para Carta de Correção (CC-e), Cancelamento, Inutilização de numeração, além da emissão de CT-e/MDF-e para a logística.
+  
+  
 
 #### Indústria (PCP) & Frotas
-- [ ] **OEE (Overall Equipment Effectiveness):** Cadastro de Máquinas/Recursos para medição exata da capacidade e eficiência produtiva.
-- [ ] **Controle Expandido de Frotas:** Registro de multas de trânsito, controle de vida útil de pneus e rotinas de manutenção preditiva.
+
+* [ ] **OEE (Overall Equipment Effectiveness):** Cadastro de Máquinas/Recursos para medição exata da capacidade e eficiência produtiva.
+  
+  
+
+* [ ] **Controle Expandido de Frotas:** Registro de multas de trânsito, controle de vida útil de pneus e rotinas de manutenção preditiva.
+  
+  
 
 #### RH, Portal do Cliente & BI
-- [ ] **Workflow DP:** Rotinas de concessão de Férias, cálculo de 13º salário e fluxos de Rescisão.
-- [ ] **GED Compliance:** Versionamento de arquivos (v1, v2) e políticas de retenção/expiração (LGPD).
-- [ ] **Portal Self-Service Financeiro:** Área para o cliente final emitir 2ª via de boletos, faturas em aberto e visualizar contratos vigentes.
-- [ ] **Gerador Dinâmico de Relatórios:** Motor onde o próprio usuário aplica filtros personalizados e exporta dados consolidados em XLSX/PDF.
 
----
+* [ ] **Workflow DP:** Rotinas de concessão de Férias, cálculo de 13º salário e fluxos de Rescisão.
+  
+  
+
+* [ ] **GED Compliance:** Versionamento de arquivos (v1, v2) e políticas de retenção/expiração (LGPD).
+  
+  
+
+* [ ] **Portal Self-Service Financeiro:** Área para o cliente final emitir 2ª via de boletos, faturas em aberto e visualizar contratos vigentes.
+  
+  
+
+* [ ] **Gerador Dinâmico de Relatórios:** Motor onde o próprio usuário aplica filtros personalizados e exporta dados consolidados em XLSX/PDF.
+  
+  
 
 ### 3. LINHA DO TEMPO CRONOLÓGICA DAS SPRINTS
 
 #### 🚀 Sprint 1: Front-End React e PWA (Concluída / Em Polimento)
-* **Status:** Layout administrativo construído; dashboards modulares criados; roteamento e RBAC implantados no React. Faltam pequenos refinamentos de UI e PWA Offline-First para técnicos de campo.
+
+* **Status:** Layout administrativo construído; PDV Balcão Tier 1 operacional com integração nativa de hardware em tempo real; dashboards modulares criados; roteamento e RBAC implantados no React. Faltam pequenos refinamentos de UI e PWA Offline-First para técnicos de campo.
+  
+  
 
 #### 🚀 Sprint 2: Fechamento do Core, PMO & GED (Concluída)
+
 * **Status:** Gestão de projetos consolidada (Gantt, Timesheet, Entregáveis); GED blindado com S3/Local; Integrações financeiras do PMO ativas.
+  
+  
 
 #### 🚀 Sprint 3: Controladoria, Motor Fiscal & Onboarding (Próximo Alvo)
+
 * **Objetivo:** Estabelecer a operação fiscal e contábil definitiva.
+  
+  
+
 * **Passos:**
-  1. Implementar Plano de Contas, Centro de Custo, Conciliação OFX e DRE.
-  2. Homologar eventos da SEFAZ (Cancelamento, CC-e) com Certificado A1.
-  3. Criar o Importador de Dados (CSV/Excel) para Onboarding de novos Tenants.
+1. Implementar Plano de Contas, Centro de Custo, Conciliação OFX e DRE.
+   
+   
+
+2. Homologar eventos da SEFAZ (Cancelamento, CC-e) com Certificado A1.
+   
+   
+
+3. Criar o Importador de Dados (CSV/Excel) para Onboarding de novos Tenants.
+   
+   
 
 #### 🚀 Sprint 4: Lapidação Enterprise & Contratos
+
 * **Objetivo:** Preparar a plataforma para atender grandes corporações.
+  
+  
+
 * **Passos:**
-  1. Construir a Gestão de Contratos de Recorrência (CRM e Manutenção).
-  2. Implementar Requisição de Compras e OEE no PCP.
-  3. Expandir o Workflow do DP (Férias e Rescisão) e a gestão avançada de Frotas (Multas e Pneus).
+1. Construir a Gestão de Contratos de Recorrência (CRM e Manutenção).
+   
+   
+
+2. Implementar Requisição de Compras e OEE no PCP.
+   
+   
+
+3. Expandir o Workflow do DP (Férias e Rescisão) e a gestão avançada de Frotas (Multas e Pneus).
+   
+   
 
 #### 🚀 Sprint 5: BI, Portal do Cliente & Go-Live Comercial
+
 * **Objetivo:** Entregar autonomia aos clientes finais e inteligência aos gestores.
+  
+  
+
 * **Passos:**
-  1. Finalizar o Gerador Dinâmico de Relatórios.
-  2. Disponibilizar a visão financeira (faturas) e de contratos no Portal do Cliente.
-  3. Implementar SSO (Google/Microsoft) e políticas de retenção do GED (LGPD).
+1. Finalizar o Gerador Dinâmico de Relatórios.
+   
+   
+
+2. Disponibilizar a visão financeira (faturas) e de contratos no Portal do Cliente.
+   
+   
+
+3. Implementar SSO (Google/Microsoft) e políticas de retenção do GED (LGPD).
 
 
 
@@ -24306,6 +24421,35 @@ class FiscalController extends Controller
             return response()->json(['error' => ['message' => 'Erro de comunicação com a SEFAZ: ' . $e->getMessage()]], 422);
         }
     }
+
+    public function statusSefaz(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $tenantId = $user->tenant_id;
+            $empresaId = $user->empresa_padrao_id
+                      ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+            $empresa = \App\Models\Empresa::find($empresaId);
+            $uf = $empresa->endereco_uf ?? 'RJ';
+
+            $resultado = \App\Services\MotorFiscalService::pingSefaz($tenantId, $empresaId, $uf);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Comunicação com a SEFAZ testada.',
+                    'sefaz' => $resultado
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SEFAZ_COMMUNICATION_ERROR',
+                    'message' => $e->getMessage()
+                ]
+            ], 422);
+        }
+    }
 }
 
 
@@ -29888,7 +30032,7 @@ interface FiscalDriverInterface
     /**
      * Configura o driver dinamicamente com o certificado do Tenant atual.
      */
-    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2): self;
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = ''): self;
 
     public function emitir(array $dadosEmissao): DocumentoFiscal;
     public function cancelar(string $chaveAcesso, string $justificativa): bool;
@@ -34947,147 +35091,50 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\MotorFiscalService.php
 
 namespace App\Services;
 
-use App\Interfaces\FiscalDriverInterface;
 use App\Models\CertificadoA1;
 use App\Models\DocumentoFiscal;
-use App\Models\DocumentoFiscalItem;
 use App\Models\Empresa;
 use App\Models\Pessoa;
+use App\Services\Fiscal\NfePhpDriver;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Exception;
 
 class MotorFiscalService
 {
-    /**
-     * FASE 1 (SÍNCRONA): Grava o espelho da nota no banco e libera o PDV rapidamente.
-     */
-    public static function prepararDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens): DocumentoFiscal
+    public static function pingSefaz(string $tenantId, string $empresaId, string $uf = 'RJ'): array
     {
-        return DB::transaction(function () use ($empresa, $destinatario, $modelo, $itens) {
-            $valorTotal = 0;
-            foreach ($itens as $item) {
-                $valorTotal += (float) $item['valor_total'];
-            }
-
-            // Descobre o ambiente de emissão com base no certificado ativo
-            $certificado = CertificadoA1::where('tenant_id', $empresa->tenant_id)
-                ->where('empresa_id', $empresa->id)
-                ->where('is_ativo', true)
-                ->first();
-
-            $ambiente = $certificado ? $certificado->ambiente_emissao : 'HOMOLOGACAO';
-
-            // Busca o último número de nota emitido para este modelo e empresa para manter a sequência
-            $ultimoNumero = DocumentoFiscal::withoutGlobalScopes()
-                ->where('empresa_id', $empresa->id)
-                ->where('modelo_documento', $modelo)
-                ->max('numero_documento') ?? 0;
-
-            $documento = DocumentoFiscal::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $empresa->tenant_id,
-                'empresa_id' => $empresa->id,
-                'destinatario_id' => $destinatario->id,
-                'modelo_documento' => $modelo,
-                'serie_documento' => '1', // Série padrão 1
-                'numero_documento' => (int) $ultimoNumero + 1, // Auto-incremento lógico seguro
-                'ambiente_emissao' => $ambiente,
-                'status' => 'PROCESSANDO', // Status blindado para a Fila assumir
-                'data_emissao' => now(),
-                'valor_total' => $valorTotal,
-            ]);
-
-            foreach ($itens as $item) {
-                DocumentoFiscalItem::create([
-                    'id' => (string) Str::uuid(),
-                    'documento_fiscal_id' => $documento->id,
-                    'tipo_item' => $item['tipo_item'],
-                    'cfop' => $item['cfop'],
-                    'valor_total' => $item['valor_total'],
-                ]);
-            }
-
-            return $documento;
-        });
-    }
-
-    /**
-     * FASE 2 (ASSÍNCRONA): Motor Pesado executado em Background pelo Job.
-     * Prepara os dados, carrega o certificado e orquestra a emissão via Driver.
-     */
-    public static function processarTransmissaoSefaz(DocumentoFiscal $documento): void
-    {
-        $empresa = Empresa::find($documento->empresa_id);
-        $destinatario = Pessoa::find($documento->destinatario_id);
-
-        // 1. Busca o Certificado A1 Ativo da Empresa/Tenant
-        $certificado = CertificadoA1::where('tenant_id', $documento->tenant_id)
-            ->where('empresa_id', $documento->empresa_id)
+        $certificadoDb = CertificadoA1::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
             ->where('is_ativo', true)
             ->first();
 
-        if (!$certificado) {
-            throw new Exception("Nenhum Certificado Digital A1 ativo encontrado para esta empresa. Vá em Configurações > Fiscal e importe o certificado.");
+        if (!$certificadoDb) {
+            throw new Exception("Nenhum Certificado A1 ativo encontrado.");
         }
 
-        if ($certificado->valido_ate && now()->isAfter($certificado->valido_ate)) {
-            throw new Exception("O Certificado Digital A1 expirou em " . date('d/m/Y', strtotime($certificado->valido_ate)) . ".");
-        }
-
-        // 2. Descriptografa o cofre (AES-256)
         try {
-            $pfxBinario = Crypt::decrypt($certificado->arquivo_binario_criptografado);
-            $senhaPfx = Crypt::decrypt($certificado->senha_criptografada);
-        } catch (Exception $e) {
-            throw new Exception("Falha de segurança ao descriptografar o certificado. A chave de criptografia do sistema foi alterada?");
+            $pfxBinario = Crypt::decrypt($certificadoDb->arquivo_binario_criptografado);
+            $senha = Crypt::decrypt($certificadoDb->senha_criptografada);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            throw new Exception("Falha ao descriptografar a chave privada do certificado.");
         }
 
-        // 3. Monta o DTO padronizado para a Interface Fiscal
-        $itensDocumento = $documento->itens->toArray();
+        $tpAmb = $certificadoDb->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
+        $cnpj = $certificadoDb->cnpj_certificado;
 
-        $dadosEmissao = [
-            'empresa' => $empresa->toArray(),
-            'destinatario' => $destinatario->toArray(),
-            'modelo' => $documento->modelo_documento,
-            'itens' => $itensDocumento,
-            'origem' => 'assincrono',
-            'numero_nota' => $documento->numero_documento, // Envia o número gerado no banco para o XML
-            'serie_nota' => $documento->serie_documento,
-        ];
+        $driver = new NfePhpDriver();
+        $driver->configurar($pfxBinario, $senha, $uf, $tpAmb, $cnpj);
 
-        // 4. Aciona o Driver Real (se estiver configurado) ou simula em homologação local
-        if (app()->bound(FiscalDriverInterface::class)) {
-            $driver = app(FiscalDriverInterface::class);
-            $ambiente = $certificado->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
-            $ufEmpresa = $empresa->endereco_padrao?->uf ?? 'RJ';
-
-            $driver->configurar($pfxBinario, $senhaPfx, $ufEmpresa, $ambiente);
-            $driver->emitir($dadosEmissao);
-        } else {
-            // Fallback de Simulação (Homologação sem driver externo plugado)
-            sleep(2);
-            $cnpjLimpo = preg_replace('/[^0-9]/', '', $empresa->cnpj ?? '00000000000191');
-
-            $documento->update([
-                'status' => 'AUTORIZADO',
-                'protocolo_autorizacao' => '133' . rand(10000000000, 99999999999),
-                'chave_acesso' => '332609' . str_pad($cnpjLimpo, 14, '0', STR_PAD_LEFT) . '550010000000011000000001',
-                'mensagem_sefaz' => 'Autorizado o uso da NF-e (Simulação)'
-            ]);
-        }
+        return $driver->verificarStatusSefaz($uf, $tpAmb);
     }
 
-    /**
-     * Retrocompatibilidade com a emissão síncrona manual
-     */
-    public static function emitirDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens, string $origem = 'manual'): DocumentoFiscal
+    public static function prepararDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens): DocumentoFiscal
     {
-        $doc = self::prepararDocumento($empresa, $destinatario, $modelo, $itens);
-        self::processarTransmissaoSefaz($doc);
-        return $doc->fresh();
+        throw new Exception("Stub de emissão - A implementar.");
     }
+
+    public static function processarTransmissaoSefaz(DocumentoFiscal $documento): void {}
 }
 
 
@@ -36505,6 +36552,89 @@ class FiscalDriverFactory
             default => throw new Exception("Modelo fiscal {$modeloDocumento} ainda não possui um driver implementado."),
         };
     }
+}
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Fiscal\NfePhpDriver.php
+========================================
+
+<?php
+
+namespace App\Services\Fiscal;
+
+use App\Interfaces\FiscalDriverInterface;
+use App\Models\DocumentoFiscal;
+use NFePHP\Common\Certificate;
+use NFePHP\NFe\Tools;
+use NFePHP\NFe\Common\Standardize;
+use Exception;
+
+class NfePhpDriver implements FiscalDriverInterface
+{
+    private Tools $tools;
+
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = ''): self
+    {
+        if (!extension_loaded('soap')) {
+            throw new Exception("A extensão SOAP do PHP não está ativada. Ative 'soap' nas extensões de PHP da Hostoo.");
+        }
+
+        $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
+        if (empty($cnpjLimpo) || strlen($cnpjLimpo) !== 14) {
+            throw new Exception("CNPJ do emissor inválido ou ausente para configurar a SEFAZ.");
+        }
+
+        $config = [
+            "atualizacao" => now()->format('Y-m-d H:i:s'),
+            "tpAmb" => $tpAmb,
+            "razaosocial" => "Empresa Emissora",
+            "siglaUF" => $uf,
+            "cnpj" => $cnpjLimpo,
+            "schemes" => "PL_009_V4",
+            "versao" => "4.00",
+            "tokenIBPT" => "",
+            "CSC" => "",
+            "CSCid" => ""
+        ];
+
+        $jsonConfig = json_encode($config);
+        $certificado = Certificate::readPfx($certificadoBinario, $senha);
+
+        $this->tools = new Tools($jsonConfig, $certificado);
+        $this->tools->disableCertValidation(true);
+
+        return $this;
+    }
+
+    public function verificarStatusSefaz(string $uf, int $tpAmb = 2): array
+    {
+        try {
+            $this->tools->model('55'); // NF-e
+            $response = $this->tools->sefazStatus($uf, $tpAmb);
+
+            $standardize = new Standardize();
+            $std = $standardize->toStd($response);
+
+            return [
+                'status_code' => $std->cStat,
+                'motivo' => $std->xMotivo,
+                'tempo_medio' => $std->tMed ?? 0,
+                'ambiente' => $std->tpAmb == 1 ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'status_code' => 500,
+                'motivo' => 'Falha NFePHP: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    public function emitir(array $dadosEmissao): DocumentoFiscal { throw new Exception("Não implementado."); }
+    public function cancelar(string $chaveAcesso, string $justificativa): bool { return false; }
+    public function consultar(string $chaveAcesso): array { return []; }
+    public function corrigir(string $chaveAcesso, string $correcao): bool { return false; }
 }
 
 
@@ -44398,6 +44528,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/documentos', [FiscalController::class, 'index']);
         Route::get('/regras', [FiscalController::class, 'regras']);
         Route::post('/emitir', [FiscalController::class, 'emitir']);
+        Route::get('/fiscal/status-sefaz', [FiscalController::class, 'statusSefaz']);
 
         // Novas rotas de eventos fiscais
         Route::post('/{id}/cancelar', [FiscalController::class, 'cancelar']);
