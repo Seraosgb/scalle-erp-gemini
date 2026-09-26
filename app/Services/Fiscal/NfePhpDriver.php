@@ -6,28 +6,25 @@ use App\Interfaces\FiscalDriverInterface;
 use App\Models\DocumentoFiscal;
 use NFePHP\Common\Certificate;
 use NFePHP\NFe\Tools;
-use NFePHP\NFe\Common\Standardize;
 use Exception;
 
 class NfePhpDriver implements FiscalDriverInterface
 {
     private Tools $tools;
 
-    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = ''): self
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = '', string $razaoSocial = ''): self
     {
-        if (!extension_loaded('soap')) {
-            throw new Exception("A extensão SOAP do PHP não está ativada. Ative 'soap' nas extensões de PHP da Hostoo.");
-        }
-
         $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
+
+        // O NFePHP exige um CNPJ válido de 14 dígitos na construção
         if (empty($cnpjLimpo) || strlen($cnpjLimpo) !== 14) {
-            throw new Exception("CNPJ do emissor inválido ou ausente para configurar a SEFAZ.");
+            $cnpjLimpo = str_pad($cnpjLimpo, 14, '0', STR_PAD_LEFT);
         }
 
         $config = [
             "atualizacao" => now()->format('Y-m-d H:i:s'),
-            "tpAmb" => $tpAmb,
-            "razaosocial" => "Empresa Emissora",
+            "tpAmb" => $tpAmb, // 1 = Producao, 2 = Homologacao
+            "razaosocial" => empty($razaoSocial) ? "Empresa Emissora" : substr($razaoSocial, 0, 60),
             "siglaUF" => $uf,
             "cnpj" => $cnpjLimpo,
             "schemes" => "PL_009_V4",
@@ -41,7 +38,6 @@ class NfePhpDriver implements FiscalDriverInterface
         $certificado = Certificate::readPfx($certificadoBinario, $senha);
 
         $this->tools = new Tools($jsonConfig, $certificado);
-        $this->tools->disableCertValidation(true);
 
         return $this;
     }
@@ -49,26 +45,29 @@ class NfePhpDriver implements FiscalDriverInterface
     public function verificarStatusSefaz(string $uf, int $tpAmb = 2): array
     {
         try {
-            $this->tools->model('55'); // NF-e
+            $this->tools->model('55'); // 55 = NF-e
+
+            // Dispara a requisição real para o Webservice da SEFAZ
             $response = $this->tools->sefazStatus($uf, $tpAmb);
 
-            $standardize = new Standardize();
-            $std = $standardize->toStd($response);
+            // Leitura nativa e blindada do XML de resposta da SEFAZ (<retConsStatServ>)
+            $xml = simplexml_load_string($response);
 
             return [
-                'status_code' => $std->cStat,
-                'motivo' => $std->xMotivo,
-                'tempo_medio' => $std->tMed ?? 0,
-                'ambiente' => $std->tpAmb == 1 ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
+                'status_code' => (int) $xml->cStat,
+                'motivo' => (string) $xml->xMotivo,
+                'tempo_medio' => (int) ($xml->tMed ?? 0),
+                'ambiente' => ((string) $xml->tpAmb) === '1' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
             ];
-        } catch (\Throwable $e) {
+        } catch (Exception $e) {
             return [
                 'status_code' => 500,
-                'motivo' => 'Falha NFePHP: ' . $e->getMessage()
+                'motivo' => 'Falha de Comunicação SEFAZ: ' . $e->getMessage()
             ];
         }
     }
 
+    // Stub para as futuras emissões
     public function emitir(array $dadosEmissao): DocumentoFiscal { throw new Exception("Não implementado."); }
     public function cancelar(string $chaveAcesso, string $justificativa): bool { return false; }
     public function consultar(string $chaveAcesso): array { return []; }
