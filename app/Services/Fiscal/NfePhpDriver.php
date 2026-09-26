@@ -6,6 +6,7 @@ use App\Interfaces\FiscalDriverInterface;
 use App\Models\DocumentoFiscal;
 use NFePHP\Common\Certificate;
 use NFePHP\NFe\Tools;
+use NFePHP\NFe\Common\Standardize;
 use Exception;
 
 class NfePhpDriver implements FiscalDriverInterface
@@ -50,14 +51,15 @@ class NfePhpDriver implements FiscalDriverInterface
             // Dispara a requisição real para o Webservice da SEFAZ
             $response = $this->tools->sefazStatus($uf, $tpAmb);
 
-            // Leitura nativa e blindada do XML de resposta da SEFAZ (<retConsStatServ>)
-            $xml = simplexml_load_string($response);
+            // A classe Standardize trata de remover o envelope SOAP e extrair a tag <retConsStatServ>
+            $standardize = new Standardize();
+            $std = $standardize->toStd($response);
 
             return [
-                'status_code' => (int) $xml->cStat,
-                'motivo' => (string) $xml->xMotivo,
-                'tempo_medio' => (int) ($xml->tMed ?? 0),
-                'ambiente' => ((string) $xml->tpAmb) === '1' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
+                'status_code' => (int) ($std->cStat ?? 0),
+                'motivo' => (string) ($std->xMotivo ?? 'Sem resposta decodificável da SEFAZ'),
+                'tempo_medio' => (int) ($std->tMed ?? 0),
+                'ambiente' => ((string) ($std->tpAmb ?? '')) === '1' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
             ];
         } catch (Exception $e) {
             return [
