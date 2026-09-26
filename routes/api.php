@@ -283,6 +283,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::get('/pcp/mrp/analise', [PcpController::class, 'analiseMrp']);
     Route::post('/pcp/mrp/gerar-cotacao', [PcpController::class, 'gerarCotacaoMrp']);
     Route::get('/pcp/ordens/{id}/genealogia', [PcpController::class, 'genealogiaLote']);
+    Route::get('/pcp/ordens-producao/{id}/genealogia', [PcpController::class, 'genealogiaLote']);
 
     // Auditoria (Administradores)
     Route::get('/auditoria', [AuditoriaController::class, 'index']);
