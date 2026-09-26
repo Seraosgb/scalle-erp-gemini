@@ -1,22 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
-import { 
-  Factory, Search, CheckCircle2, Play, AlertOctagon, 
-  BarChart2, Clock, Check, RefreshCw, Layers, ShieldCheck
+import {
+  Factory, Search, CheckCircle2, Play, AlertOctagon,
+  BarChart2, Clock, Check, RefreshCw, Layers, ShieldCheck,
+  Activity, Settings, AlertTriangle, PauseCircle, PlayCircle, Cpu, Wifi, Save
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function TerminalFabricaPage() {
+  // Estado do Backend (OPs e Genealogia)
   const [ops, setOps] = useState([]);
   const [opSelecionada, setOpSelecionada] = useState(null);
-  const [busca, setBusca] = useState('');
-  const [qtdProduzida, setQtdProduzida] = useState('');
-  const [qtdRefugo, setQtdRefugo] = useState('0');
-  const [horasMod, setHorasMod] = useState('1.0');
-  const [horasCif, setHorasCif] = useState('1.0');
   const [genealogia, setGenealogia] = useState([]);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
+
+  // Variáveis de Apontamento (Controladas Manualmente ou pelo IoT)
+  const [produzidas, setProduzidas] = useState(0);
+  const [refugos, setRefugos] = useState(0);
+  const [horasMod, setHorasMod] = useState('1.0');
+  const [horasCif, setHorasCif] = useState('1.0');
+
+  // Estado da Telemetria IoT (ESP32 Simulator)
+  const [statusMaquina, setStatusMaquina] = useState('PARADA'); // RODANDO, PARADA
+  const [simuladorEsp32, setSimuladorEsp32] = useState(false);
+  const [ultimoPulso, setUltimoPulso] = useState(new Date());
 
   const inputBuscaRef = useRef(null);
 
@@ -24,6 +32,24 @@ export default function TerminalFabricaPage() {
     carregarOps();
     inputBuscaRef.current?.focus();
   }, []);
+
+  // Lógica do Simulador IoT (Finge ser o ESP32 mandando dados via WebSocket)
+  useEffect(() => {
+    let intervalo;
+    if (simuladorEsp32 && statusMaquina === 'RODANDO' && opSelecionada) {
+      intervalo = setInterval(() => {
+        // Simula a passagem de uma peça na esteira (Sensor Óptico) a cada 3 a 5 segundos
+        setProduzidas(prev => prev + 1);
+        setUltimoPulso(new Date());
+
+        // 5% de chance de gerar um refugo simulado
+        if (Math.random() > 0.95) {
+          setRefugos(prev => prev + 1);
+        }
+      }, Math.floor(Math.random() * 2000) + 3000);
+    }
+    return () => clearInterval(intervalo);
+  }, [simuladorEsp32, statusMaquina, opSelecionada]);
 
   const carregarOps = async () => {
     try {
@@ -35,13 +61,18 @@ export default function TerminalFabricaPage() {
         selecionarOp(lista[0]);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao carregar OPs:", e);
     }
   };
 
   const selecionarOp = async (op) => {
+    // Reseta o terminal ao trocar de OP
+    setStatusMaquina('PARADA');
+    setSimuladorEsp32(false);
+    setProduzidas(0);
+    setRefugos(0);
     setOpSelecionada(op);
-    setQtdProduzida(Math.max(1, parseFloat(op.quantidade_planejada) - parseFloat(op.quantidade_produzida)).toString());
+
     try {
       const res = await api.get(`/pcp/ordens/${op.id}/genealogia`);
       setGenealogia(res.data?.data || []);
@@ -51,23 +82,32 @@ export default function TerminalFabricaPage() {
   };
 
   const handleApontar = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!opSelecionada) return;
+
+    if (produzidas === 0 && refugos === 0) {
+      setFeedback({ tipo: 'erro', msg: 'Nenhuma peça contada para apontamento. Inicie a máquina ou insira manualmente.' });
+      return;
+    }
 
     setLoading(true);
     try {
       await api.post(`/pcp/ordens/${opSelecionada.id}/apontar`, {
-        quantidade_produzida: parseFloat(qtdProduzida) || 0,
-        quantidade_refugo: parseFloat(qtdRefugo) || 0,
+        quantidade_produzida: produzidas,
+        quantidade_refugo: refugos,
         horas_mod: parseFloat(horasMod) || 0,
         custo_hora_mod: 45.00,
         horas_cif: parseFloat(horasCif) || 0,
         custo_hora_cif: 25.00,
-        observacoes: 'Apontamento via Terminal Touch Chão de Fábrica'
+        observacoes: 'Apontamento via Terminal Touch / Telemetria IoT'
       });
 
-      setFeedback({ tipo: 'sucesso', msg: `Apontamento de ${qtdProduzida} UN registrado com sucesso!` });
-      setQtdRefugo('0');
+      setFeedback({ tipo: 'sucesso', msg: `Sincronização ERP: ${produzidas} UN boas e ${refugos} refugos apontados com sucesso!` });
+
+      // Zera o contador do painel após o envio para o ERP
+      setProduzidas(0);
+      setRefugos(0);
+
       carregarOps();
       const resOp = await api.get(`/pcp/ordens/${opSelecionada.id}`);
       selecionarOp(resOp.data?.data);
@@ -78,51 +118,77 @@ export default function TerminalFabricaPage() {
     }
   };
 
+  // Cálculos de Produção Dinâmicos
+  const totalHistorico = opSelecionada ? parseFloat(opSelecionada.quantidade_produzida || 0) : 0;
+  const meta = opSelecionada ? parseFloat(opSelecionada.quantidade_planejada || 0) : 1;
+  const percentualConclusao = Math.min(100, Math.round(((totalHistorico + produzidas) / meta) * 100));
+  const pecasBoasPercentual = produzidas > 0 ? ((produzidas - refugos) / produzidas) * 100 : 100;
+
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto text-slate-200">
-      {/* Header Chão de Fábrica */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
+    <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-950 text-slate-200 overflow-hidden font-sans p-4 sm:p-6 gap-6">
+
+      {/* HEADER TIER 1 - CHÃO DE FÁBRICA */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-lg shrink-0 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-            <Factory className="h-6 w-6 text-indigo-400" />
-            Terminal de Chão de Fábrica (PCP Touch)
-          </h1>
-          <p className="text-xs text-slate-400">Apontamento em tempo real, controle de OEE e rastreabilidade de lote</p>
+          <div className="flex items-center gap-3">
+            <Factory className="h-7 w-7 md:h-8 md:w-8 text-indigo-500" />
+            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight uppercase">Terminal Máquina 01</h1>
+          </div>
+          <p className="text-slate-400 mt-1 font-mono text-xs md:text-sm">Célula de Montagem A • Operador(a) Logado(a)</p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <Link
             to="/app/pcp"
-            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition flex items-center gap-1.5"
+            className="flex-1 md:flex-none justify-center px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-inner"
           >
-            <Layers className="h-4 w-4 text-indigo-400" /> Painel de OPs
+            <Layers className="h-4 w-4 text-indigo-400" /> Voltar ao PCP
           </Link>
+
           <button
             type="button"
             onClick={carregarOps}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs"
+            className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold transition cursor-pointer shadow-inner"
+            title="Atualizar OPs"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
+
+          <div className="flex flex-col items-end w-full md:w-auto mt-2 md:mt-0">
+            <button
+              onClick={() => setSimuladorEsp32(!simuladorEsp32)}
+              className={`w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-xs transition cursor-pointer shadow-inner ${
+                simuladorEsp32 ? 'bg-emerald-950/50 border-emerald-800 text-emerald-400' : 'bg-slate-950 border-slate-700 text-slate-500 hover:text-white'
+              }`}
+            >
+              {simuladorEsp32 ? <Wifi className="h-4 w-4 animate-pulse" /> : <Cpu className="h-4 w-4" />}
+              {simuladorEsp32 ? 'RECEBENDO TELEMETRIA IOT' : 'LIGAR SENSOR IOT (ESP32)'}
+            </button>
+          </div>
         </div>
       </div>
 
       {feedback && (
-        <div className={`p-3.5 rounded-xl flex items-center gap-2 text-xs ${
-          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        <div className={`p-4 rounded-xl flex items-center justify-between text-xs sm:text-sm shadow-lg shrink-0 ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/90 border border-emerald-800 text-emerald-300' : 'bg-rose-950/90 border border-rose-800 text-rose-300'
         }`}>
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{feedback.msg}</span>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            <span className="font-bold">{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Coluna Esquerda: Fila de OPs em Produção */}
-        <div className="lg:col-span-4 space-y-2">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Fila de OPs Ativas</span>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+
+        {/* COLUNA ESQUERDA: Fila de OPs em Produção */}
+        <div className="lg:col-span-3 flex flex-col gap-2 min-h-0">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block shrink-0">Fila de OPs Ativas</span>
+          <div className="space-y-3 overflow-y-auto flex-1 pr-2 scrollbar-thin">
             {ops.length === 0 ? (
               <div className="bg-slate-900 border border-slate-800 p-8 text-center text-slate-500 rounded-2xl text-xs">
-                Nenhuma OP com status EM_PRODUCAO no momento.
+                Nenhuma OP com status EM_PRODUCAO na fábrica.
               </div>
             ) : (
               ops.map((op) => {
@@ -131,23 +197,20 @@ export default function TerminalFabricaPage() {
                   <div
                     key={op.id}
                     onClick={() => selecionarOp(op)}
-                    className={`p-3.5 rounded-2xl border cursor-pointer transition flex flex-col justify-between ${
-                      isSelected ? 'bg-indigo-950/60 border-indigo-500 shadow-lg shadow-indigo-950/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                    className={`p-4 rounded-2xl border cursor-pointer transition flex flex-col justify-between ${
+                      isSelected ? 'bg-indigo-950/80 border-indigo-500 shadow-lg shadow-indigo-950/50' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
                     }`}
                   >
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-start mb-2">
                       <div>
-                        <span className="font-mono font-bold text-white text-sm">OP #{op.numero_op}</span>
-                        <h3 className="text-xs font-semibold text-slate-200 line-clamp-1 mt-0.5">{op.produto?.nome}</h3>
+                        <span className={`font-mono font-bold text-sm ${isSelected ? 'text-white' : 'text-slate-300'}`}>OP #{op.numero_op}</span>
+                        <h3 className={`text-xs font-semibold line-clamp-2 mt-1 ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>{op.produto?.nome}</h3>
                       </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-950 text-indigo-300 border border-slate-800">
-                        OEE: {op.oee_percentual || 100}%
-                      </span>
                     </div>
 
-                    <div className="mt-3 flex justify-between items-center text-[11px] text-slate-400 border-t border-slate-800/80 pt-2 font-mono">
-                      <span>Produzido: <strong className="text-emerald-400">{parseFloat(op.quantidade_produzida).toFixed(0)}</strong> / {parseFloat(op.quantidade_planejada).toFixed(0)}</span>
-                      <span>Lote: {op.lote_produzido || 'A Gerar'}</span>
+                    <div className={`mt-2 flex justify-between items-center text-[10px] font-mono border-t pt-2 ${isSelected ? 'border-indigo-800/50 text-indigo-300' : 'border-slate-800/80 text-slate-500'}`}>
+                      <span>Prod: {parseFloat(op.quantidade_produzida).toFixed(0)} / {parseFloat(op.quantidade_planejada).toFixed(0)}</span>
+                      <span>{op.oee_percentual || 100}% OEE</span>
                     </div>
                   </div>
                 );
@@ -156,117 +219,188 @@ export default function TerminalFabricaPage() {
           </div>
         </div>
 
-        {/* Coluna Direita: Painel de Apontamento e Rastreabilidade */}
-        <div className="lg:col-span-8 space-y-4">
-          {opSelecionada ? (
-            <>
-              {/* Card de Informações da OP Ativa */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
-                  <div>
-                    <span className="text-xs text-indigo-400 font-mono font-bold">OP #{opSelecionada.numero_op} • {opSelecionada.produto?.codigo_sku}</span>
-                    <h2 className="text-base font-bold text-white">{opSelecionada.produto?.nome}</h2>
+        {/* COLUNA DIREITA: DASHBOARD DA OP E TELEMETRIA */}
+        {opSelecionada ? (
+          <div className="lg:col-span-9 flex flex-col gap-6 min-h-0 overflow-y-auto scrollbar-thin pr-2">
+
+            {/* CABEÇALHO DA OP E PROGRESSO */}
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-lg shrink-0">
+              <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-5">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2.5 py-1 bg-indigo-950 border border-indigo-800 text-indigo-400 font-bold rounded text-[10px] uppercase tracking-wider">
+                      OP Em Execução
+                    </span>
+                    <span className="text-xl font-black text-white font-mono">#{opSelecionada.numero_op}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <div className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-center">
-                      <span className="text-[9px] text-slate-500 uppercase block font-bold">OEE Apurado</span>
-                      <strong className="text-indigo-400 font-mono text-sm">{opSelecionada.oee_percentual || 100}%</strong>
-                    </div>
-                  </div>
+                  <h2 className="text-lg md:text-xl font-bold text-slate-200 leading-tight">{opSelecionada.produto?.nome}</h2>
+                  <p className="text-xs text-slate-500 font-mono mt-1">SKU: {opSelecionada.produto?.codigo_sku || 'N/A'} | Lote: {opSelecionada.lote_produzido || 'A Gerar'}</p>
                 </div>
 
-                {/* Formulário de Apontamento Chão de Fábrica */}
-                <form onSubmit={handleApontar} className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2">
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Qtd Produzida (Boas) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={qtdProduzida}
-                      onChange={(e) => setQtdProduzida(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-emerald-400 font-mono font-bold text-base text-center"
-                    />
+                <div className="flex items-center gap-4 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-500 uppercase font-bold">Qualidade OEE Atual</p>
+                    <p className="text-xl font-black text-white font-mono">{pecasBoasPercentual.toFixed(1)}%</p>
                   </div>
-
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Refugo / Sucata</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={qtdRefugo}
-                      onChange={(e) => setQtdRefugo(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-rose-400 font-mono font-bold text-base text-center"
-                    />
+                  <div className={`p-3 rounded-full ${pecasBoasPercentual >= 95 ? 'bg-emerald-950 text-emerald-500' : 'bg-amber-950 text-amber-500'}`}>
+                    {pecasBoasPercentual >= 95 ? <CheckCircle2 className="h-6 w-6" /> : <AlertTriangle className="h-6 w-6" />}
                   </div>
-
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Horas MOD (Homem)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={horasMod}
-                      onChange={(e) => setHorasMod(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-base text-center"
-                    />
-                  </div>
-
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <label className="block text-slate-400 font-semibold mb-1">Horas CIF (Máquina)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={horasCif}
-                      onChange={(e) => setHorasCif(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-base text-center"
-                    />
-                  </div>
-
-                  <div className="col-span-2 sm:col-span-4 pt-2">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition"
-                    >
-                      <Play className="h-5 w-5 fill-current" />
-                      {loading ? 'Processando Baixas e Apontamento...' : 'Registrar Apontamento de Chão de Fábrica'}
-                    </button>
-                  </div>
-                </form>
+                </div>
               </div>
 
-              {/* Rastreabilidade e Genealogia de Lotes */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <h3 className="text-xs font-bold text-white flex items-center gap-1.5 uppercase">
-                  <ShieldCheck className="h-4 w-4 text-emerald-400" /> Genealogia & Rastreabilidade de Lotes Consumidos
-                </h3>
+              {/* Barra de Progresso Global */}
+              <div className="pt-2">
+                <div className="flex justify-between items-end mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Progresso do Lote</span>
+                  <span className="text-xl font-black text-indigo-400 font-mono">{percentualConclusao}%</span>
+                </div>
+                <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800 shadow-inner">
+                  <div
+                    className="bg-indigo-600 h-full transition-all duration-500 ease-out"
+                    style={{ width: `${percentualConclusao}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-500 mt-1.5 font-mono font-bold">
+                  <span>Já no ERP: {parseFloat(opSelecionada.quantidade_produzida).toFixed(0)} UN</span>
+                  <span>Meta: {meta.toFixed(0)} UN</span>
+                </div>
+              </div>
+            </div>
 
-                <div className="max-h-48 overflow-y-auto space-y-1.5 text-xs font-mono">
-                  {genealogia.length === 0 ? (
-                    <div className="text-slate-500 text-center py-4">Nenhum consumo rastreado até o momento.</div>
+            {/* CONTADORES GIGANTES (TIER 1) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0">
+              {/* Contador de Produzidas */}
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-lg flex flex-col justify-center relative overflow-hidden group">
+                <div className="absolute top-5 left-5">
+                  <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> Leitura Válida
+                  </span>
+                </div>
+                <div className="text-center mt-6">
+                  <input
+                    type="number"
+                    value={produzidas}
+                    onChange={(e) => setProduzidas(Number(e.target.value))}
+                    className="w-full bg-transparent text-[6rem] md:text-[8rem] font-black text-white font-mono leading-none tracking-tighter text-center focus:outline-none focus:ring-0"
+                  />
+                  <span className="text-lg font-bold text-slate-500 uppercase tracking-widest block mt-2">Unidades Boas</span>
+                </div>
+                <div className="absolute bottom-4 w-full text-center left-0">
+                  <span className="text-[10px] font-mono text-slate-600">Último pulso: {ultimoPulso.toLocaleTimeString('pt-BR')}</span>
+                </div>
+              </div>
+
+              {/* Contador de Refugo */}
+              <div className="bg-slate-950 border border-rose-900/30 p-6 rounded-2xl shadow-lg flex flex-col justify-center relative group">
+                <div className="absolute top-5 left-5">
+                  <span className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4" /> Refugo / Sucata
+                  </span>
+                </div>
+                <div className="text-center mt-6">
+                  <input
+                    type="number"
+                    value={refugos}
+                    onChange={(e) => setRefugos(Number(e.target.value))}
+                    className="w-full bg-transparent text-[6rem] md:text-[8rem] font-black text-rose-500 font-mono leading-none tracking-tighter text-center focus:outline-none focus:ring-0"
+                  />
+                  <span className="text-lg font-bold text-rose-900 uppercase tracking-widest block mt-2">Unidades Perdidas</span>
+                </div>
+              </div>
+            </div>
+
+            {/* CONTROLES DE MÁQUINA E APONTAMENTO */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-lg flex flex-col xl:flex-row justify-between items-center gap-4 shrink-0">
+
+              {/* Controle Play/Pause */}
+              <div className="flex items-center gap-4 w-full xl:w-auto bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div className={`w-3 h-3 rounded-full shrink-0 ${statusMaquina === 'RODANDO' ? 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-rose-500'}`}></div>
+                <span className="text-sm font-black text-white uppercase tracking-widest shrink-0">
+                  {statusMaquina === 'RODANDO' ? 'MÁQUINA EM OPERAÇÃO' : 'MÁQUINA PARADA'}
+                </span>
+
+                <div className="ml-auto flex gap-2">
+                  {statusMaquina === 'RODANDO' ? (
+                    <button
+                      onClick={() => setStatusMaquina('PARADA')}
+                      className="px-4 py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs uppercase rounded-lg flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <PauseCircle className="h-4 w-4" /> Pausar
+                    </button>
                   ) : (
-                    genealogia.map((g) => (
-                      <div key={g.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 flex justify-between items-center">
-                        <div>
-                          <span className="text-white font-bold block">{g.insumo?.nome}</span>
-                          <span className="text-slate-400 text-[10px]">Lote Insumo: {g.lote_insumo || 'S/L'} • Qtd: {parseFloat(g.quantidade_consumida).toFixed(2)} {g.insumo?.unidade_medida}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-500 block">Lote Acabado</span>
-                          <strong className="text-indigo-400 text-xs">{g.lote_acabado_gerado}</strong>
-                        </div>
-                      </div>
-                    ))
+                    <button
+                      onClick={() => setStatusMaquina('RODANDO')}
+                      className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-lg flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <PlayCircle className="h-4 w-4" /> Retomar
+                    </button>
                   )}
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-500 text-xs">
-              Selecione uma Ordem de Produção à esquerda para iniciar os apontamentos.
+
+              {/* Form de Sincronização */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
+                <div className="flex gap-3 w-full sm:w-auto">
+                  <div className="flex-1 sm:w-28">
+                    <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Horas Homem</label>
+                    <input
+                      type="number" step="0.1" value={horasMod} onChange={e => setHorasMod(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 text-white text-sm font-mono px-3 py-2 rounded-lg text-center focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="flex-1 sm:w-28">
+                    <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Horas Máquina</label>
+                    <input
+                      type="number" step="0.1" value={horasCif} onChange={e => setHorasCif(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 text-white text-sm font-mono px-3 py-2 rounded-lg text-center focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleApontar}
+                  disabled={loading || (produzidas === 0 && refugos === 0)}
+                  className="w-full sm:w-auto px-6 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm uppercase rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 transition mt-2 sm:mt-0"
+                >
+                  <Save className="h-4 w-4" /> Sincronizar ERP
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* RASTREABILIDADE INFERIOR */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shrink-0">
+              <h3 className="text-xs font-bold text-slate-400 flex items-center gap-1.5 uppercase mb-3">
+                <ShieldCheck className="h-4 w-4 text-emerald-400" /> Rastreabilidade e Genealogia (BOM)
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto pr-2 scrollbar-thin">
+                {genealogia.length === 0 ? (
+                  <div className="col-span-full text-slate-500 text-xs py-2">Rastreabilidade pendente do primeiro apontamento efetivado no ERP.</div>
+                ) : (
+                  genealogia.map((g) => (
+                    <div key={g.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-white font-bold block truncate max-w-[150px] sm:max-w-[200px]">{g.insumo?.nome}</span>
+                        <span className="text-slate-500 text-[10px]">Lote Consumido: {g.lote_insumo || 'Sem Lote'}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-emerald-400 font-mono font-bold block">{parseFloat(g.quantidade_consumida).toFixed(2)} {g.insumo?.unidade_medida}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          <div className="lg:col-span-9 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center min-h-[400px]">
+            <div className="text-center text-slate-500">
+              <Factory className="h-16 w-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-bold">Nenhuma OP Selecionada</p>
+              <p className="text-sm mt-1">Selecione uma ordem na fila para iniciar o terminal.</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
