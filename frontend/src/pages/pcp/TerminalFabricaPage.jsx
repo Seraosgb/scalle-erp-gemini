@@ -3,7 +3,7 @@ import { api } from '../../services/api';
 import {
   Factory, Search, CheckCircle2, Play, AlertOctagon,
   BarChart2, Clock, Check, RefreshCw, Layers, ShieldCheck,
-  Activity, Settings, AlertTriangle, PauseCircle, PlayCircle, Cpu, Wifi, Save
+  Activity, Settings, AlertTriangle, PauseCircle, PlayCircle, Cpu, Wifi, Save, X
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -87,7 +87,7 @@ export default function TerminalFabricaPage() {
 
   const carregarOps = async () => {
     try {
-      const res = await api.get('/pcp/ordens-producao'); // CORRIGIDO PARA O ENDPOINT CERTO
+      const res = await api.get('/pcp/ordens-producao');
       const raw = res.data?.data || res.data || [];
       const lista = Array.isArray(raw) ? raw : (raw.data || []);
 
@@ -111,7 +111,7 @@ export default function TerminalFabricaPage() {
     setOpSelecionada(op);
 
     try {
-      const res = await api.get(`/pcp/ordens-producao/${op.id}/genealogia`); // CORRIGIDO PARA O ENDPOINT CERTO
+      const res = await api.get(`/pcp/ordens-producao/${op.id}/genealogia`);
       setGenealogia(res.data?.data || []);
     } catch (e) {
       setGenealogia([]);
@@ -129,7 +129,7 @@ export default function TerminalFabricaPage() {
 
     setLoading(true);
     try {
-      const res = await api.post(`/pcp/ordens-producao/${opSelecionada.id}/apontar`, { // CORRIGIDO PARA O ENDPOINT CERTO
+      const res = await api.post(`/pcp/ordens-producao/${opSelecionada.id}/apontar`, {
         quantidade_produzida: produzidas,
         quantidade_refugo: refugos,
         horas_mod: parseFloat(horasMod) || 0,
