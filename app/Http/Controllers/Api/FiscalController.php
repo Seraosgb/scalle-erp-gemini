@@ -156,6 +156,7 @@ class FiscalController extends Controller
             return response()->json(['error' => ['message' => 'Erro de comunicação com a SEFAZ: ' . $e->getMessage()]], 422);
         }
     }
+
     public function statusSefaz(Request $request): JsonResponse
     {
         try {
