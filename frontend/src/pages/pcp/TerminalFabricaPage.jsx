@@ -34,21 +34,56 @@ export default function TerminalFabricaPage() {
   }, []);
 
   // Lógica do Simulador IoT (Finge ser o ESP32 mandando dados via WebSocket)
+  // Lógica de Telemetria IoT Real via WebSocket
   useEffect(() => {
-    let intervalo;
-    if (simuladorEsp32 && statusMaquina === 'RODANDO' && opSelecionada) {
-      intervalo = setInterval(() => {
-        // Simula a passagem de uma peça na esteira (Sensor Óptico) a cada 3 a 5 segundos
-        setProduzidas(prev => prev + 1);
-        setUltimoPulso(new Date());
+    let ws;
 
-        // 5% de chance de gerar um refugo simulado
-        if (Math.random() > 0.95) {
-          setRefugos(prev => prev + 1);
+    // Só abre a conexão de rede se o operador ligou o sensor, a máquina está rodando e há OP selecionada
+    if (simuladorEsp32 && statusMaquina === 'RODANDO' && opSelecionada) {
+
+      // Em produção, utilize uma variável de ambiente (ex: import.meta.env.VITE_IOT_WS_URL)
+      ws = new WebSocket('ws://localhost:8080');
+
+      ws.onopen = () => {
+        console.log('[Terminal] Conectado ao Broker IoT da fábrica.');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+
+          // Diretriz de Arquitetura: Filtro Multi-Pipeline por Tenant
+          // (Substitua 'scalle_tenant_alpha' pela variável de estado do usuário logado no ERP)
+          if (payload.tenant === 'scalle_tenant_alpha') {
+
+            // Cada pacote recebido indica um ciclo da máquina.
+            setProduzidas(prev => prev + 1);
+            setUltimoPulso(new Date());
+
+            // Regra de Negócio: Se a telemetria relatar temperatura da máquina acima de 40°C,
+            // assume-se que a peça sofreu avaria térmica (Refugo).
+            if (payload.dados && parseFloat(payload.dados.temperatura_celsius) > 40.0) {
+                setRefugos(prev => prev + 1);
+            }
+          }
+        } catch (err) {
+          console.error('[Terminal] Erro de parse no pacote IoT:', err);
         }
-      }, Math.floor(Math.random() * 2000) + 3000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('[Terminal] Falha na conexão WebSocket:', error);
+        setFeedback({ tipo: 'erro', msg: 'Falha de comunicação com os sensores IoT.' });
+      };
     }
-    return () => clearInterval(intervalo);
+
+    // Cleanup: Encerra a conexão WebSocket automaticamente se o componente for desmontado
+    // ou se o status da máquina mudar para PARADA.
+    return () => {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+    };
   }, [simuladorEsp32, statusMaquina, opSelecionada]);
 
   const carregarOps = async () => {
