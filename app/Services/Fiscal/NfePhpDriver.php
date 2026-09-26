@@ -67,6 +67,13 @@ class NfePhpDriver implements FiscalDriverInterface
         try {
             $nfe = new Make();
 
+            // 0. Inicialização OBRIGATÓRIA da tag raiz no PHP 8+
+            $stdInfNFe = new \stdClass();
+            $stdInfNFe->versao = '4.00';
+            $stdInfNFe->Id = ''; // O NFePHP calcula automaticamente na hora de assinar
+            $stdInfNFe->pk_nItem = null;
+            $nfe->taginfNFe($stdInfNFe);
+
             // 1. Identificação da NFe (<ide>)
             $stdIde = new \stdClass();
             $stdIde->cUF = 33; // RJ
@@ -95,8 +102,6 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'];
             $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
             $stdEmit->CRT = 1; // Simples Nacional
-
-            // CORREÇÃO: Lê a propriedade "cnpj" ao invés de "documento"
             $stdEmit->CNPJ = preg_replace('/[^0-9]/', '', $dadosEmissao['emitente']['cnpj'] ?? $this->config['cnpj']);
             $nfe->tagemit($stdEmit);
 
@@ -235,7 +240,7 @@ class NfePhpDriver implements FiscalDriverInterface
             ]);
 
         } catch (Exception $e) {
-            throw new Exception("Erro ao montar XML (NFePHP Make): " . $e->getMessage() . " nas tags: " . implode(', ', $nfe->getErrors()));
+            throw new Exception("Erro ao montar XML (NFePHP Make): " . $e->getMessage());
         }
     }
 
