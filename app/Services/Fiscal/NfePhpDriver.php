@@ -95,7 +95,9 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'];
             $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
             $stdEmit->CRT = 1; // Simples Nacional
-            $stdEmit->CNPJ = preg_replace('/[^0-9]/', '', $dadosEmissao['emitente']['documento']);
+
+            // CORREÇÃO: Lê a propriedade "cnpj" ao invés de "documento"
+            $stdEmit->CNPJ = preg_replace('/[^0-9]/', '', $dadosEmissao['emitente']['cnpj'] ?? $this->config['cnpj']);
             $nfe->tagemit($stdEmit);
 
             $stdEnderEmit = new \stdClass();
@@ -113,7 +115,7 @@ class NfePhpDriver implements FiscalDriverInterface
             // 3. Destinatário (<dest>)
             $stdDest = new \stdClass();
             $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'Consumidor Final';
-            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj']);
+            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '00000000000');
             if (strlen($docDestino) === 14) $stdDest->CNPJ = $docDestino;
             else if (strlen($docDestino) === 11 && $docDestino !== '00000000000') $stdDest->CPF = $docDestino;
 
