@@ -101,7 +101,7 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'] ?? 'FANTASIA TESTE';
             $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
             $stdEmit->CRT = 1; // Simples Nacional
-            $stdEmit->CNPJ = $this->config['cnpj'];
+            $stdEmit->CNPJ = $this->config['cnpj']; // Forçado do certificado
             $nfe->tagemit($stdEmit);
 
             $stdEnderEmit = new \stdClass();
@@ -178,22 +178,16 @@ class NfePhpDriver implements FiscalDriverInterface
                 $stdIcms->CSOSN = '102'; // Simples Nacional
                 $nfe->tagICMSSN($stdIcms);
 
-                // Correção: Uso das tags genéricas de Outras Operações (CST 99)
+                // MÁGICA RESTAURADA: Métodos corretos com CST = 07
                 $stdPis = new \stdClass();
                 $stdPis->item = $nItem;
-                $stdPis->CST = '99';
-                $stdPis->vBC = 0.00;
-                $stdPis->pPIS = 0.00;
-                $stdPis->vPIS = 0.00;
-                $nfe->tagPISOutr($stdPis);
+                $stdPis->CST = '07';
+                $nfe->tagPIS($stdPis);
 
                 $stdCofins = new \stdClass();
                 $stdCofins->item = $nItem;
-                $stdCofins->CST = '99';
-                $stdCofins->vBC = 0.00;
-                $stdCofins->pCOFINS = 0.00;
-                $stdCofins->vCOFINS = 0.00;
-                $nfe->tagCOFINSOutr($stdCofins);
+                $stdCofins->CST = '07';
+                $nfe->tagCOFINS($stdCofins);
             }
 
             // 5. Totalizadores (<total>)
