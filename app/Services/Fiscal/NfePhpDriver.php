@@ -178,7 +178,6 @@ class NfePhpDriver implements FiscalDriverInterface
                 $stdIcms->CSOSN = '102'; // Simples Nacional
                 $nfe->tagICMSSN($stdIcms);
 
-                // MÁGICA RESTAURADA: Métodos corretos com CST = 07
                 $stdPis = new \stdClass();
                 $stdPis->item = $nItem;
                 $stdPis->CST = '07';
@@ -227,27 +226,29 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdDetPag->vPag = $totais;
             $nfe->tagdetPag($stdDetPag);
 
-            if ($nfe->monta()) {
-                $xmlString = $nfe->getXML();
-                $xmlAssinado = $this->tools->signNFe($xmlString);
+            $xmlString = $nfe->getXML();
 
-                return DocumentoFiscal::create([
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $dadosEmissao['tenant_id'],
-                    'empresa_id' => $dadosEmissao['empresa_id'],
-                    'destinatario_id' => $dadosEmissao['destinatario']['id'],
-                    'modelo_documento' => $dadosEmissao['modelo'],
-                    'numero_documento' => $dadosEmissao['numero'],
-                    'serie' => '1',
-                    'chave_acesso' => $nfe->getChave(),
-                    'status' => 'PROCESSANDO',
-                    'xml_conteudo' => $xmlAssinado,
-                    'data_emissao' => now(),
-                    'valor_total' => $totais,
-                ]);
-            } else {
-                throw new Exception("Falha de validação do schema XML");
+            if (!empty($nfe->getErrors())) {
+                throw new Exception("Falha de validação do schema XML: " . implode(' | ', $nfe->getErrors()));
             }
+
+            $xmlAssinado = $this->tools->signNFe($xmlString);
+
+            return DocumentoFiscal::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $dadosEmissao['tenant_id'],
+                'empresa_id' => $dadosEmissao['empresa_id'],
+                'destinatario_id' => $dadosEmissao['destinatario']['id'],
+                'modelo_documento' => $dadosEmissao['modelo'],
+                'numero_documento' => $dadosEmissao['numero'],
+                'serie' => '1',
+                'chave_acesso' => $nfe->getChave(),
+                'status' => 'PROCESSANDO',
+                'xml_conteudo' => $xmlAssinado,
+                'data_emissao' => now(),
+                'valor_total' => $totais,
+            ]);
+
         } catch (Exception $e) {
             $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
             throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
