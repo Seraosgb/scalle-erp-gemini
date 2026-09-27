@@ -385,6 +385,14 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::delete('/{dominio}/{id}', [PmoConfigController::class, 'destroy']);
     });
 
+    // Frente de Caixa (PDV) - Gaveta
+    Route::prefix('pdv')->group(function () {
+        Route::get('/caixa/status', [\App\Http\Controllers\Api\PdvController::class, 'status']);
+        Route::post('/caixa/abrir', [\App\Http\Controllers\Api\PdvController::class, 'abrir']);
+        Route::post('/caixa/movimentar', [\App\Http\Controllers\Api\PdvController::class, 'movimentar']);
+        Route::post('/caixa/fechar', [\App\Http\Controllers\Api\PdvController::class, 'fechar']);
+    });
+
     // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
     // ==========================================
