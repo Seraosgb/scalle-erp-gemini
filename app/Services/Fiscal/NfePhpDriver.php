@@ -101,7 +101,6 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'] ?? 'FANTASIA TESTE';
             $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
             $stdEmit->CRT = 1; // Simples Nacional
-            // FORÇA O CNPJ DO CERTIFICADO para evitar erro de assinatura e schema
             $stdEmit->CNPJ = $this->config['cnpj'];
             $nfe->tagemit($stdEmit);
 
@@ -122,10 +121,9 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'Consumidor Final';
             $stdDest->indIEDest = 9; // Não Contribuinte
 
-            // Padroniza documento para 11 ou 14 dígitos (exigência XML SEFAZ)
             $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
             if (empty($docDestino)) {
-                $stdDest->CPF = '00000000000'; // Preenchimento obrigatório mínimo
+                $stdDest->CPF = '00000000000';
             } elseif (strlen($docDestino) > 11) {
                 $stdDest->CNPJ = str_pad($docDestino, 14, '0', STR_PAD_LEFT);
             } else {
@@ -180,16 +178,22 @@ class NfePhpDriver implements FiscalDriverInterface
                 $stdIcms->CSOSN = '102'; // Simples Nacional
                 $nfe->tagICMSSN($stdIcms);
 
-                // Correção das tags PIS/COFINS (Isenção/Não tributado)
+                // Correção: Uso das tags genéricas de Outras Operações (CST 99)
                 $stdPis = new \stdClass();
                 $stdPis->item = $nItem;
-                $stdPis->CST = '07';
-                $nfe->tagPISNT($stdPis);
+                $stdPis->CST = '99';
+                $stdPis->vBC = 0.00;
+                $stdPis->pPIS = 0.00;
+                $stdPis->vPIS = 0.00;
+                $nfe->tagPISOutr($stdPis);
 
                 $stdCofins = new \stdClass();
                 $stdCofins->item = $nItem;
-                $stdCofins->CST = '07';
-                $nfe->tagCOFINSNT($stdCofins);
+                $stdCofins->CST = '99';
+                $stdCofins->vBC = 0.00;
+                $stdCofins->pCOFINS = 0.00;
+                $stdCofins->vCOFINS = 0.00;
+                $nfe->tagCOFINSOutr($stdCofins);
             }
 
             // 5. Totalizadores (<total>)
@@ -220,7 +224,6 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdTransp->modFrete = 9; // Sem frete
             $nfe->tagtransp($stdTransp);
 
-            // Correção vital: No layout 4.00, existe o grupo <pag> e os detalhes <detPag>
             $stdPag = new \stdClass();
             $stdPag->vTroco = 0.00;
             $nfe->tagpag($stdPag);
@@ -252,7 +255,6 @@ class NfePhpDriver implements FiscalDriverInterface
                 throw new Exception("Falha de validação do schema XML");
             }
         } catch (Exception $e) {
-            // Extrai os erros detalhados da validação XSD da SEFAZ
             $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
             throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
         }
