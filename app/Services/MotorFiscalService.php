@@ -66,12 +66,21 @@ class MotorFiscalService
         try {
             $driver = self::instanciarDriver($documento->tenant_id, $documento->empresa_id);
 
+            // Recarrega o modelo para garantir que o xml_conteudo mais fresco foi carregado do banco
+            $documento->refresh();
             $xmlAssinado = $documento->xml_conteudo;
+
+            if (empty($xmlAssinado)) {
+                throw new Exception("O XML assinado não foi gravado na base de dados (Null).");
+            }
 
             $reflection = new \ReflectionClass($driver);
             $property = $reflection->getProperty('tools');
             $property->setAccessible(true);
             $tools = $property->getValue($driver);
+
+            // Atualiza o Tools com o modelo exato do documento (Importante para a Sefaz)
+            $tools->model($documento->modelo_documento);
 
             $idLote = str_pad(100, 15, '0', STR_PAD_LEFT);
 

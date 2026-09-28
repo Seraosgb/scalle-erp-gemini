@@ -32,21 +32,22 @@ class NfePhpDriver implements FiscalDriverInterface
             "schemes" => "PL_009_V4",
             "versao" => "4.00",
             "tokenIBPT" => "",
-            "CSC" => "",
-            "CSCid" => ""
+            // Mock do Token CSC (Obrigatório para gerar o QR Code da NFC-e Modelo 65)
+            "CSC" => "GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E",
+            "CSCid" => "000001"
         ];
 
         $jsonConfig = json_encode($this->config);
         $certificado = Certificate::readPfx($certificadoBinario, $senha);
 
         $this->tools = new Tools($jsonConfig, $certificado);
-        $this->tools->model('55'); // Padrão NF-e
         return $this;
     }
 
     public function verificarStatusSefaz(string $uf, int $tpAmb = 2): array
     {
         try {
+            $this->tools->model('55');
             $response = $this->tools->sefazStatus($uf, $tpAmb);
             $standardize = new Standardize();
             $std = $standardize->toStd($response);
@@ -64,6 +65,10 @@ class NfePhpDriver implements FiscalDriverInterface
 
     public function emitir(array $dadosEmissao): DocumentoFiscal
     {
+        // 1. Avisa o NFePHP se é modelo 55 (NF-e) ou 65 (NFC-e) para acionar o gerador de QR Code
+        $modeloDoc = $dadosEmissao['modelo'] ?? '55';
+        $this->tools->model($modeloDoc);
+
         $nfe = new Make();
         try {
             // 0. Inicialização
@@ -78,14 +83,14 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdIde->cUF = 33; // RJ
             $stdIde->cNF = rand(11111111, 99999999);
             $stdIde->natOp = 'Venda de Mercadorias';
-            $stdIde->mod = $dadosEmissao['modelo']; // 55 ou 65
+            $stdIde->mod = $modeloDoc;
             $stdIde->serie = 1;
             $stdIde->nNF = $dadosEmissao['numero'];
             $stdIde->dhEmi = now()->format('Y-m-d\TH:i:sP');
             $stdIde->tpNF = 1; // Saída
             $stdIde->idDest = 1; // Operação Interna
             $stdIde->cMunFG = 3300456; // Belford Roxo
-            $stdIde->tpImp = 1; // DANFE Retrato
+            $stdIde->tpImp = 4; // DANFE NFC-e
             $stdIde->tpEmis = 1; // Emissão Normal
             $stdIde->tpAmb = $this->config['tpAmb'];
             $stdIde->finNFe = 1; // Normal
@@ -234,20 +239,23 @@ class NfePhpDriver implements FiscalDriverInterface
 
             $xmlAssinado = $this->tools->signNFe($xmlString);
 
-            return DocumentoFiscal::create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $dadosEmissao['tenant_id'],
-                'empresa_id' => $dadosEmissao['empresa_id'],
-                'destinatario_id' => $dadosEmissao['destinatario']['id'],
-                'modelo_documento' => $dadosEmissao['modelo'],
-                'numero_documento' => $dadosEmissao['numero'],
-                'serie' => '1',
-                'chave_acesso' => $nfe->getChave(),
-                'status' => 'PROCESSANDO',
-                'xml_conteudo' => $xmlAssinado,
-                'data_emissao' => now(),
-                'valor_total' => $totais,
-            ]);
+            // CORREÇÃO MESTRA: Uso de setters explícitos para contornar o $fillable (Mass Assignment) do Laravel
+            $doc = new DocumentoFiscal();
+            $doc->id = (string) Str::uuid();
+            $doc->tenant_id = $dadosEmissao['tenant_id'];
+            $doc->empresa_id = $dadosEmissao['empresa_id'];
+            $doc->destinatario_id = $dadosEmissao['destinatario']['id'] ?? null;
+            $doc->modelo_documento = $modeloDoc;
+            $doc->numero_documento = $dadosEmissao['numero'];
+            $doc->serie = '1';
+            $doc->chave_acesso = $nfe->getChave();
+            $doc->status = 'PROCESSANDO';
+            $doc->xml_conteudo = $xmlAssinado; // Agora grava com certeza absoluta
+            $doc->data_emissao = now();
+            $doc->valor_total = $totais;
+            $doc->save();
+
+            return $doc;
 
         } catch (Exception $e) {
             $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
