@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\PedidoVenda;
 use App\Models\Pessoa;
+use App\Models\PdvCaixa;
+use App\Models\PdvMovimentacao;
 use App\Services\MotorFiscalService;
 use App\Services\VendaService;
 use Exception;
@@ -74,8 +76,8 @@ class VendaController extends Controller
         $tenantId = $request->user()->tenant_id;
         $clienteId = self::resolverClienteId($validated['cliente_id'] ?? null, $tenantId);
 
-        $empresaId = $request->user()->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
                   ?? Empresa::first()->id;
 
         try {
@@ -90,7 +92,33 @@ class VendaController extends Controller
                 'PDV'
             );
 
+            // INTEGRAÇÃO BLINDADA COM A GAVETA DE DINHEIRO DO PDV
+            $caixa = PdvCaixa::where('usuario_id', $request->user()->id)->where('status', 'ABERTO')->first();
+            if ($caixa) {
+                foreach ($validated['pagamentos'] as $pag) {
+                    if (strtoupper($pag['forma_pagamento']) === 'DINHEIRO') {
+                        $valorTroco = (float) ($pag['valor_troco'] ?? 0.00);
+                        $valorLiquido = (float) $pag['valor_pago'] - $valorTroco;
+
+                        if ($valorLiquido > 0) {
+                            PdvMovimentacao::create([
+                                'id' => (string) Str::uuid(),
+                                'tenant_id' => $tenantId,
+                                'caixa_id' => $caixa->id,
+                                'tipo_movimento' => 'VENDA_DINHEIRO',
+                                'valor' => $valorLiquido,
+                                'forma_pagamento' => 'DINHEIRO',
+                                'observacoes' => "Venda Balcão #{$pedido->numero_pedido}",
+                            ]);
+                        }
+                    }
+                }
+            }
+
             $docFiscal = null;
+            $cupomBase64 = null;
+
+            // EMISSÃO HÍBRIDA DO CUPOM FISCAL TÉRMICO (NFC-e)
             if (!empty($validated['emitir_cupom_fiscal']) && $pedido->status === 'FATURADO') {
                 $itensFiscal = $pedido->itens->map(fn($i) => [
                     'tipo_item' => 'PRODUTO',
@@ -98,30 +126,43 @@ class VendaController extends Controller
                     'valor_total' => (float) $i->valor_total_liquido,
                 ])->toArray();
 
-                $docFiscal = MotorFiscalService::emitirDocumento(
-                    Empresa::find($empresaId),
-                    $pedido->cliente,
+                // 1. Resolvemos explicitamente as entidades
+                $clienteModel = Pessoa::find($clienteId);
+                $empresaModel = Empresa::find($empresaId);
+
+                // 2. Passa o Modelo 65 para acionar o layout do Consumidor
+                $docFiscal = MotorFiscalService::prepararDocumento(
+                    $empresaModel,
+                    $clienteModel,
                     '65',
-                    $itensFiscal,
-                    'vendas',
-                    $pedido->id
+                    $itensFiscal
                 );
+
+                // 3. Disparo Síncrono
+                MotorFiscalService::processarTransmissaoSefaz($docFiscal);
+                $docFiscal->refresh();
+
+                // 4. Converte o XML em PDF
+                $cupomBase64 = MotorFiscalService::gerarDanfceBase64($docFiscal);
             }
 
             return response()->json([
                 'data' => [
-                    'message' => $pedido->status === 'AGUARDANDO_APROVACAO' 
-                        ? "Venda registrada, aguardando aprovação de alçada de desconto!" 
+                    'message' => $pedido->status === 'AGUARDANDO_APROVACAO'
+                        ? "Venda registrada, aguardando aprovação!"
                         : "Venda #{$pedido->numero_pedido} faturada com sucesso!",
                     'pedido' => $pedido->load('itens.item', 'pagamentos', 'cliente'),
                     'documento_fiscal' => $docFiscal,
+                    'cupom_termico_base64' => $cupomBase64,
                 ]
             ], 201);
-        } catch (Exception $e) {
+
+        // Captura \Throwable para apanhar TypeErrors e Errors nativos do PHP
+        } catch (\Throwable $e) {
             return response()->json([
                 'error' => [
                     'code' => 'SALE_ERROR',
-                    'message' => $e->getMessage(),
+                    'message' => $e->getMessage() . ' no ficheiro ' . basename($e->getFile()) . ' linha ' . $e->getLine(),
                 ]
             ], 422);
         }
@@ -142,8 +183,8 @@ class VendaController extends Controller
         ]);
 
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
                   ?? Empresa::first()->id;
 
         try {
@@ -163,7 +204,7 @@ class VendaController extends Controller
                     'orcamento' => $orcamento->load('itens.item', 'cliente'),
                 ]
             ], 201);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
     }
@@ -189,7 +230,7 @@ class VendaController extends Controller
                     'pedido' => $pedidoConvertido->load('itens.item', 'pagamentos', 'cliente'),
                 ]
             ]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
     }
@@ -212,7 +253,7 @@ class VendaController extends Controller
                     'pedido' => $pedidoCancelado,
                 ]
             ]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
     }
@@ -272,6 +313,7 @@ class VendaController extends Controller
         }
         return $consumidor->id;
     }
+
     public function listarAlcadasPendentes(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -305,7 +347,6 @@ class VendaController extends Controller
                 'respondido_em' => now(),
             ]);
 
-            // Se for aprovado, libera o pedido e executa a baixa no WMS e financeiro
             if ($alcada->entidade_origem === 'pedidos' || $alcada->entidade_origem === 'vendas') {
                 $pedido = \App\Models\PedidoVenda::find($alcada->registro_origem_id);
                 if ($pedido) {
@@ -365,6 +406,7 @@ class VendaController extends Controller
             ]
         ]);
     }
+
     public function listarRegrasComissao(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -379,7 +421,7 @@ class VendaController extends Controller
     public function storeRegraComissao(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
+        $empresaId = $request->user()->empresa_padrao_id
                   ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
 
         $validated = $request->validate([
@@ -412,6 +454,7 @@ class VendaController extends Controller
 
         return response()->json(['data' => $regra]);
     }
+
     public function processarCartaoPdv(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -430,7 +473,7 @@ class VendaController extends Controller
             );
 
             return response()->json(['data' => $resultado]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'error' => [
                     'code' => 'CARD_PROCESSING_ERROR',
