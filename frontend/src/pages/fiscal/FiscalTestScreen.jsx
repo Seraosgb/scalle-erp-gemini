@@ -15,6 +15,7 @@ export default function FiscalTestScreen() {
   // Estados Auxiliares (Dropdowns)
   const [depositosDisponiveis, setDepositosDisponiveis] = useState([]);
   const [produtosDisponiveis, setProdutosDisponiveis] = useState([]);
+  const [clientesDisponiveis, setClientesDisponiveis] = useState([]);
 
   // Estados do PDV (Simulação de Venda)
   const [depositoId, setDepositoId] = useState('');
@@ -51,22 +52,32 @@ export default function FiscalTestScreen() {
         if (dataDep.data?.length > 0) setDepositoId(dataDep.data[0].id);
       }
 
-      // 2. Busca Produtos (Ignora serviços)
+      // 2. Busca Produtos
       const resItens = await fetch('/api/itens?tipo=PRODUTO', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (resItens.ok) {
         const dataItens = await resItens.json();
-        // O Laravel envia paginação nativa, logo o array fica dentro de data.data
         const listaProdutos = dataItens.data || [];
         setProdutosDisponiveis(listaProdutos);
         if (listaProdutos.length > 0) {
             setItemId(listaProdutos[0].id);
-            setValorTotal(listaProdutos[0].preco_venda || '10.00'); // Puxa o preço real do banco
+            setValorTotal(listaProdutos[0].preco_venda || '10.00');
         }
       }
+
+      // 3. Busca Clientes
+      const resClientes = await fetch('/api/pessoas?tipo=CLIENTE', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resClientes.ok) {
+        const dataClientes = await resClientes.json();
+        // A paginação do Laravel devolve a array dentro de 'data' ou 'data.data' dependendo da versão
+        const listaClientes = dataClientes.data?.data || dataClientes.data || [];
+        setClientesDisponiveis(listaClientes);
+      }
     } catch (err) {
-      addLog(`⚠️ Falha ao carregar depósitos e produtos: ${err.message}`);
+      addLog(`⚠️ Falha ao carregar listas dinâmicas: ${err.message}`);
     }
   };
 
@@ -98,6 +109,7 @@ export default function FiscalTestScreen() {
     setUsuarioNome('');
     setDepositosDisponiveis([]);
     setProdutosDisponiveis([]);
+    setClientesDisponiveis([]);
     setCupomPdf(null);
     localStorage.removeItem('scalle_token');
     addLog('👋 Logout realizado. Sessão encerrada.');
@@ -139,7 +151,7 @@ export default function FiscalTestScreen() {
 
     const payload = {
       deposito_id: depositoId,
-      cliente_id: clienteId || null,
+      cliente_id: clienteId || null, // Nulo envia como Consumidor Final
       itens: [
         {
           item_id: itemId,
@@ -240,7 +252,6 @@ export default function FiscalTestScreen() {
               <h2 className="text-xl font-semibold mb-4 text-blue-400">3. Emissão PDV (NFC-e)</h2>
               <form onSubmit={handleFaturarPdv} className="space-y-4">
 
-                {/* SELECTS DINÂMICOS */}
                 <div className="grid grid-cols-2 gap-2">
                     <div>
                         <label className="block text-xs mb-1 text-slate-400">Depósito de Saída</label>
@@ -276,10 +287,21 @@ export default function FiscalTestScreen() {
                     </div>
                 </div>
 
+                {/* NOVO SELECT DE CLIENTES */}
                 <div>
-                  <label className="block text-sm mb-1 text-slate-400">UUID Cliente (Em branco = Consumidor Final)</label>
-                  <input type="text" value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-blue-500" />
+                  <label className="block text-sm mb-1 text-slate-400">Cliente (Destinatário)</label>
+                  <select
+                      value={clienteId}
+                      onChange={(e) => setClienteId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-blue-500"
+                  >
+                      <option value="">Consumidor Final (Sem Cadastro)</option>
+                      {clientesDisponiveis.map(cli => (
+                          <option key={cli.id} value={cli.id}>{cli.nome_razao_social} ({cli.cpf_cnpj})</option>
+                      ))}
+                  </select>
                 </div>
+
                 <div>
                   <label className="block text-sm mb-1 text-slate-400">Valor Pago (R$)</label>
                   <input type="number" step="0.01" value={valorTotal} onChange={(e) => setValorTotal(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-blue-500" />
