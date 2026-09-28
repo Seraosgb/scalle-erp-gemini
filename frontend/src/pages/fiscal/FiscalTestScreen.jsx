@@ -23,7 +23,7 @@ export default function FiscalTestScreen() {
   const [clienteId, setClienteId] = useState('');
   const [valorTotal, setValorTotal] = useState('180.50');
 
-  // Estado do PDF Base64
+  // Estado do PDF URL (agora será um Blob URL)
   const [cupomPdf, setCupomPdf] = useState(null);
 
   // Log
@@ -33,7 +33,6 @@ export default function FiscalTestScreen() {
     setLog((prev) => prev + '\n[' + new Date().toLocaleTimeString() + '] ' + message);
   };
 
-  // CARREGAMENTO DINÂMICO DE DADOS
   useEffect(() => {
     if (token) {
       carregarListasFixas();
@@ -42,7 +41,6 @@ export default function FiscalTestScreen() {
 
   const carregarListasFixas = async () => {
     try {
-      // 1. Busca Depósitos
       const resDep = await fetch('/api/wms/depositos', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -52,7 +50,6 @@ export default function FiscalTestScreen() {
         if (dataDep.data?.length > 0) setDepositoId(dataDep.data[0].id);
       }
 
-      // 2. Busca Produtos
       const resItens = await fetch('/api/itens?tipo=PRODUTO', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -66,13 +63,11 @@ export default function FiscalTestScreen() {
         }
       }
 
-      // 3. Busca Clientes
       const resClientes = await fetch('/api/pessoas?tipo=CLIENTE', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (resClientes.ok) {
         const dataClientes = await resClientes.json();
-        // A paginação do Laravel devolve a array dentro de 'data' ou 'data.data' dependendo da versão
         const listaClientes = dataClientes.data?.data || dataClientes.data || [];
         setClientesDisponiveis(listaClientes);
       }
@@ -151,7 +146,7 @@ export default function FiscalTestScreen() {
 
     const payload = {
       deposito_id: depositoId,
-      cliente_id: clienteId || null, // Nulo envia como Consumidor Final
+      cliente_id: clienteId || null,
       itens: [
         {
           item_id: itemId,
@@ -184,8 +179,19 @@ export default function FiscalTestScreen() {
         addLog(`✅ Venda Faturada! Caixa alimentado. Status Fiscal: ${data.data.documento_fiscal?.status}`);
 
         if (data.data.cupom_termico_base64) {
-            addLog('🖨️ DANFE NFC-e (PDF Base64) recebido com sucesso!');
-            setCupomPdf(data.data.cupom_termico_base64);
+            addLog('🖨️ DANFE NFC-e processado. Gerando blob para impressão...');
+
+            // CONVERSÃO PARA BLOB (Resolve o erro de Security/CORS)
+            const byteCharacters = atob(data.data.cupom_termico_base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(blob);
+
+            setCupomPdf(blobUrl);
         }
       } else {
         addLog(`❌ Erro PDV: ${data.error?.message || JSON.stringify(data)}`);
@@ -198,6 +204,7 @@ export default function FiscalTestScreen() {
   const handlePrintIframe = () => {
     const iframe = document.getElementById('print-iframe');
     if (iframe) {
+        // Agora o navegador confia na origem do arquivo
         iframe.contentWindow.print();
     }
   };
@@ -287,7 +294,6 @@ export default function FiscalTestScreen() {
                     </div>
                 </div>
 
-                {/* NOVO SELECT DE CLIENTES */}
                 <div>
                   <label className="block text-sm mb-1 text-slate-400">Cliente (Destinatário)</label>
                   <select
@@ -323,7 +329,7 @@ export default function FiscalTestScreen() {
                 <div className="flex justify-center bg-gray-300 p-4 rounded overflow-hidden">
                     <iframe
                         id="print-iframe"
-                        src={`data:application/pdf;base64,${cupomPdf}#toolbar=0&navpanes=0`}
+                        src={`${cupomPdf}#toolbar=0&navpanes=0`}
                         className="w-80 h-96 border border-gray-400 shadow-lg bg-white"
                         title="Cupom Fiscal"
                     />
