@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function FiscalTestScreen() {
   // Estados de Autenticação
@@ -11,6 +11,10 @@ export default function FiscalTestScreen() {
   const [arquivo, setArquivo] = useState(null);
   const [senhaCert, setSenhaCert] = useState('123456');
   const [ambiente, setAmbiente] = useState('HOMOLOGACAO');
+
+  // Estados Auxiliares (Dropdowns)
+  const [depositosDisponiveis, setDepositosDisponiveis] = useState([]);
+  const [produtosDisponiveis, setProdutosDisponiveis] = useState([]);
 
   // Estados do PDV (Simulação de Venda)
   const [depositoId, setDepositoId] = useState('');
@@ -26,6 +30,44 @@ export default function FiscalTestScreen() {
 
   const addLog = (message) => {
     setLog((prev) => prev + '\n[' + new Date().toLocaleTimeString() + '] ' + message);
+  };
+
+  // CARREGAMENTO DINÂMICO DE DADOS
+  useEffect(() => {
+    if (token) {
+      carregarListasFixas();
+    }
+  }, [token]);
+
+  const carregarListasFixas = async () => {
+    try {
+      // 1. Busca Depósitos
+      const resDep = await fetch('/api/wms/depositos', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resDep.ok) {
+        const dataDep = await resDep.json();
+        setDepositosDisponiveis(dataDep.data || []);
+        if (dataDep.data?.length > 0) setDepositoId(dataDep.data[0].id);
+      }
+
+      // 2. Busca Produtos (Ignora serviços)
+      const resItens = await fetch('/api/itens?tipo=PRODUTO', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resItens.ok) {
+        const dataItens = await resItens.json();
+        // O Laravel envia paginação nativa, logo o array fica dentro de data.data
+        const listaProdutos = dataItens.data || [];
+        setProdutosDisponiveis(listaProdutos);
+        if (listaProdutos.length > 0) {
+            setItemId(listaProdutos[0].id);
+            setValorTotal(listaProdutos[0].preco_venda || '10.00'); // Puxa o preço real do banco
+        }
+      }
+    } catch (err) {
+      addLog(`⚠️ Falha ao carregar depósitos e produtos: ${err.message}`);
+    }
   };
 
   const handleLogin = async (e) => {
@@ -54,6 +96,9 @@ export default function FiscalTestScreen() {
   const handleLogout = () => {
     setToken('');
     setUsuarioNome('');
+    setDepositosDisponiveis([]);
+    setProdutosDisponiveis([]);
+    setCupomPdf(null);
     localStorage.removeItem('scalle_token');
     addLog('👋 Logout realizado. Sessão encerrada.');
   };
@@ -85,17 +130,16 @@ export default function FiscalTestScreen() {
     }
   };
 
-  // EMISSÃO VIA PDV (GAVETA + NFC-e)
   const handleFaturarPdv = async (e) => {
     e.preventDefault();
-    if (!depositoId || !itemId) return addLog('❌ Erro: Informe os UUIDs do Depósito e do Item!');
+    if (!depositoId || !itemId) return addLog('❌ Erro: Selecione o Depósito e o Produto!');
 
     addLog('⏳ Faturando venda no PDV e gerando Cupom Fiscal (NFC-e)...');
-    setCupomPdf(null); // Limpa o cupom anterior
+    setCupomPdf(null);
 
     const payload = {
       deposito_id: depositoId,
-      cliente_id: clienteId || null, // Consumidor Final se vazio
+      cliente_id: clienteId || null,
       itens: [
         {
           item_id: itemId,
@@ -109,7 +153,7 @@ export default function FiscalTestScreen() {
           valor_pago: parseFloat(valorTotal)
         }
       ],
-      emitir_cupom_fiscal: true // Aciona o MotorFiscalService para modelo 65
+      emitir_cupom_fiscal: true
     };
 
     try {
@@ -139,7 +183,6 @@ export default function FiscalTestScreen() {
     }
   };
 
-  // Funções de Impressão Direta
   const handlePrintIframe = () => {
     const iframe = document.getElementById('print-iframe');
     if (iframe) {
@@ -196,18 +239,45 @@ export default function FiscalTestScreen() {
             <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
               <h2 className="text-xl font-semibold mb-4 text-blue-400">3. Emissão PDV (NFC-e)</h2>
               <form onSubmit={handleFaturarPdv} className="space-y-4">
+
+                {/* SELECTS DINÂMICOS */}
                 <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="block text-xs mb-1 text-slate-400">UUID Depósito</label>
-                        <input type="text" value={depositoId} onChange={(e) => setDepositoId(e.target.value)} placeholder="Obrigatório" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs focus:outline-none focus:border-blue-500" required />
+                        <label className="block text-xs mb-1 text-slate-400">Depósito de Saída</label>
+                        <select
+                            value={depositoId}
+                            onChange={(e) => setDepositoId(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs focus:outline-none focus:border-blue-500"
+                            required
+                        >
+                            {depositosDisponiveis.length === 0 && <option value="">Carregando...</option>}
+                            {depositosDisponiveis.map(dep => (
+                                <option key={dep.id} value={dep.id}>{dep.nome}</option>
+                            ))}
+                        </select>
                     </div>
                     <div>
-                        <label className="block text-xs mb-1 text-slate-400">UUID Produto</label>
-                        <input type="text" value={itemId} onChange={(e) => setItemId(e.target.value)} placeholder="Obrigatório" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs focus:outline-none focus:border-blue-500" required />
+                        <label className="block text-xs mb-1 text-slate-400">Produto</label>
+                        <select
+                            value={itemId}
+                            onChange={(e) => {
+                                setItemId(e.target.value);
+                                const prod = produtosDisponiveis.find(p => p.id === e.target.value);
+                                if(prod) setValorTotal(prod.preco_venda);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs focus:outline-none focus:border-blue-500"
+                            required
+                        >
+                            {produtosDisponiveis.length === 0 && <option value="">Carregando...</option>}
+                            {produtosDisponiveis.map(prod => (
+                                <option key={prod.id} value={prod.id}>{prod.nome} (R$ {prod.preco_venda})</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
+
                 <div>
-                  <label className="block text-sm mb-1 text-slate-400">UUID Cliente (Opcional - Em branco = Consumidor)</label>
+                  <label className="block text-sm mb-1 text-slate-400">UUID Cliente (Em branco = Consumidor Final)</label>
                   <input type="text" value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
@@ -220,7 +290,6 @@ export default function FiscalTestScreen() {
           </div>
         )}
 
-        {/* ÁREA DE RENDERIZAÇÃO DO CUPOM TÉRMICO */}
         {cupomPdf && (
             <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
                 <div className="flex justify-between items-center mb-4">
