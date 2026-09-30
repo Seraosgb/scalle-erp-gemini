@@ -30,6 +30,7 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\composer.json
         "laravel/framework": "^12.0 || ^13.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "nfephp-org/sped-da": "^1.1",
         "nfephp-org/sped-nfe": "^5.2"
     },
     "require-dev": {
@@ -12638,218 +12639,6 @@ class RegraComissao extends Model
 ========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\consolidado_DOCUMENTOS_BASE.txt
 ========================================
-
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\GO-LIVE ROADMAP - DESCONSIDERAR.md
-========================================
-
-===========================================================================================================================📄 **GO-LIVE ROADMAP - SCALLE ERP (V4.0 - RUMO À MATURIDADE ENTERPRISE)**
-====================================================================================================================================================================================================
-
-**⚠️ AVISO IMPORTANTE:** _Este roadmap destina-se estritamente como um guia estratégico para as etapas finais de Go-Live e alcance da maturidade Enterprise. Ele consolida as conquistas atuais e mapeia os requisitos faltantes cruzados com o Documento Master de Especificação._
-
-
-
-**Objetivo:** Prontidão Comercial 100% B2B e SaaS Self-Service (Tier Enterprise)
-
-**Arquitetura:** Monolito Modular Multi-Tenant (Padrão Gemini) com RBAC
-
-
-
-### 1. RAIO-X DO CÓDIGO (O QUE JÁ TEMOS CONSOLIDADO 🟢)
-
-A espinha dorsal do ERP já está construída e operante no backend, respeitando rigorosamente o isolamento por `tenant_id` e a blindagem com UUIDs:
-
-
-
-* **Core & SaaS:** Autenticação (Sanctum/TOTP), Assinaturas, Webhooks Asaas, Soft-Lock e isolamento `GlobalScopeTenant`.
-  
-  
-
-* **RH & Folha (DP):** Cadastro de funcionários, ponto georreferenciado (MTP 671), holerites em PDF e avaliação de clima (eNPS).
-  
-  
-
-* **Serviços (CMMS):** Ciclo de vida de Ordens de Serviço (OS), cálculo de SLA, laudos técnicos e assinatura digital com hash (MP 2.200-2).
-  
-  
-
-* **WMS & Indústria (PCP):** Catálogo unificado, múltiplos depósitos, transferências atômicas, movimentação de estoque, BOM e Ordens de Produção (MRP).
-  
-  
-
-* **Comercial, Frente de Caixa (PDV) & Financeiro:** Funil Inbound CRM, orçamentos, contas bancárias, liquidação de faturas (Contas a Pagar/Receber) e PDV Balcão (Tier 1) com interface _keyboard-first_, integração nativa de hardware via Web Serial API (balanças e impressoras térmicas ESC/POS) e baixa atômica de estoque.
-  
-  
-
-* **Frotas:** Gestão de veículos, motoristas e controle atômico de abastecimentos integrado ao financeiro.
-  
-  
-
-* **Governança:** Listas suspensas (taxonomia) rodando dinamicamente na tabela `sis_tabelas_dominio`.
-  
-  
-
-* **Motor Fiscal:** Upload de certificado A1 (AES-256), geração de XML e orquestração assíncrona via filas/Jobs.
-  
-  
-
-* **Projetos (PMO Enterprise):** Kanban corporativo com Drag and Drop, Blockers (dependências), Checklists, Gantt, Gestão de Capacidade e Timesheet.
-  
-  
-
-* **Cofre Digital (GED/EDMS):** Upload isolado e seguro de arquivos, plenamente integrado às tarefas do PMO e Ordens de Serviço.
-  
-  
-
-### 2. O GAP PARA A MATURIDADE ENTERPRISE (O QUE FALTA 🔴)
-
-Para que o Scalle ERP atenda desde microempresas até grandes indústrias corporativas (em conformidade absoluta com o Documento Master), as seguintes funcionalidades precisam ser implementadas:
-
-
-
-#### Core, Multi-Tenant & SaaS
-
-* [ ] **Onboarding Automatizado:** Importador em lote (CSV/Excel) para carga inicial de Pessoas e Catálogo de Itens.
-  
-  
-
-* [ ] **SSO / Enterprise Login:** Integração OAuth2 com Google Workspace e Microsoft Entra ID.
-  
-  
-
-* [ ] **SaaS Prorata:** Cálculo financeiro proporcional (prorata) para Upgrades e Downgrades de planos durante o ciclo vigente.
-  
-  
-
-#### Comercial, CRM & Serviços
-
-* [ ] **Gestão de Contratos de Recorrência:** Criação de contratos comerciais vinculados ao CRM e PMOC, gerando faturamento automático mensal.
-  
-  
-
-* [ ] **Assinatura Digital Expandida:** Aplicar a assinatura com validade jurídica (MP 2.200-2) nativa também no aceite de Propostas Comerciais/Orçamentos.
-  
-  
-
-#### Suprimentos & WMS
-
-* [ ] **Requisição de Compras:** Implementar o fluxo de demanda interna (solicitações de departamentos) antes da etapa de cotação com fornecedores.
-  
-  
-
-#### Controladoria (Financeiro & Fiscal)
-
-* [ ] **Estrutura Contábil:** Implementação de Plano de Contas e Centros de Custo hierárquicos.
-  
-  
-
-* [ ] **DRE & Conciliação:** Geração da DRE (Demonstração do Resultado do Exercício) e motor de leitura OFX para conciliação bancária.
-  
-  
-
-* [ ] **Eventos Fiscais (SEFAZ):** Homologação final e rotas para Carta de Correção (CC-e), Cancelamento, Inutilização de numeração, além da emissão de CT-e/MDF-e para a logística.
-  
-  
-
-#### Indústria (PCP) & Frotas
-
-* [ ] **OEE (Overall Equipment Effectiveness):** Cadastro de Máquinas/Recursos para medição exata da capacidade e eficiência produtiva.
-  
-  
-
-* [ ] **Controle Expandido de Frotas:** Registro de multas de trânsito, controle de vida útil de pneus e rotinas de manutenção preditiva.
-  
-  
-
-#### RH, Portal do Cliente & BI
-
-* [ ] **Workflow DP:** Rotinas de concessão de Férias, cálculo de 13º salário e fluxos de Rescisão.
-  
-  
-
-* [ ] **GED Compliance:** Versionamento de arquivos (v1, v2) e políticas de retenção/expiração (LGPD).
-  
-  
-
-* [ ] **Portal Self-Service Financeiro:** Área para o cliente final emitir 2ª via de boletos, faturas em aberto e visualizar contratos vigentes.
-  
-  
-
-* [ ] **Gerador Dinâmico de Relatórios:** Motor onde o próprio usuário aplica filtros personalizados e exporta dados consolidados em XLSX/PDF.
-  
-  
-
-### 3. LINHA DO TEMPO CRONOLÓGICA DAS SPRINTS
-
-#### 🚀 Sprint 1: Front-End React e PWA (Concluída / Em Polimento)
-
-* **Status:** Layout administrativo construído; PDV Balcão Tier 1 operacional com integração nativa de hardware em tempo real; dashboards modulares criados; roteamento e RBAC implantados no React. Faltam pequenos refinamentos de UI e PWA Offline-First para técnicos de campo.
-  
-  
-
-#### 🚀 Sprint 2: Fechamento do Core, PMO & GED (Concluída)
-
-* **Status:** Gestão de projetos consolidada (Gantt, Timesheet, Entregáveis); GED blindado com S3/Local; Integrações financeiras do PMO ativas.
-  
-  
-
-#### 🚀 Sprint 3: Controladoria, Motor Fiscal & Onboarding (Próximo Alvo)
-
-* **Objetivo:** Estabelecer a operação fiscal e contábil definitiva.
-  
-  
-
-* **Passos:**
-1. Implementar Plano de Contas, Centro de Custo, Conciliação OFX e DRE.
-   
-   
-
-2. Homologar eventos da SEFAZ (Cancelamento, CC-e) com Certificado A1.
-   
-   
-
-3. Criar o Importador de Dados (CSV/Excel) para Onboarding de novos Tenants.
-   
-   
-
-#### 🚀 Sprint 4: Lapidação Enterprise & Contratos
-
-* **Objetivo:** Preparar a plataforma para atender grandes corporações.
-  
-  
-
-* **Passos:**
-1. Construir a Gestão de Contratos de Recorrência (CRM e Manutenção).
-   
-   
-
-2. Implementar Requisição de Compras e OEE no PCP.
-   
-   
-
-3. Expandir o Workflow do DP (Férias e Rescisão) e a gestão avançada de Frotas (Multas e Pneus).
-   
-   
-
-#### 🚀 Sprint 5: BI, Portal do Cliente & Go-Live Comercial
-
-* **Objetivo:** Entregar autonomia aos clientes finais e inteligência aos gestores.
-  
-  
-
-* **Passos:**
-1. Finalizar o Gerador Dinâmico de Relatórios.
-   
-   
-
-2. Disponibilizar a visão financeira (faturas) e de contratos no Portal do Cliente.
-   
-   
-
-3. Implementar SSO (Google/Microsoft) e políticas de retenção do GED (LGPD).
 
 
 
@@ -27429,6 +27218,161 @@ class PcpController extends Controller
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PdvController.php
+========================================
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Empresa;
+use App\Models\PdvCaixa;
+use App\Models\PdvMovimentacao;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Exception;
+
+class PdvController extends Controller
+{
+    public function status(Request $request): JsonResponse
+    {
+        $caixa = PdvCaixa::where('usuario_id', $request->user()->id)
+            ->where('status', 'ABERTO')
+            ->first();
+
+        return response()->json(['data' => ['caixa_aberto' => (bool)$caixa, 'caixa' => $caixa]]);
+    }
+
+    public function abrir(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'saldo_abertura' => 'required|numeric|min:0',
+        ]);
+
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+        $empresaId = $user->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        if (PdvCaixa::where('usuario_id', $user->id)->where('status', 'ABERTO')->exists()) {
+            return response()->json(['error' => ['message' => 'Você já possui um caixa aberto.']], 422);
+        }
+
+        $caixa = DB::transaction(function () use ($validated, $tenantId, $empresaId, $user) {
+            $novoCaixa = PdvCaixa::create([
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'usuario_id' => $user->id,
+                'data_abertura' => now(),
+                'saldo_abertura' => (float) $validated['saldo_abertura'],
+                'status' => 'ABERTO',
+            ]);
+
+            if ($novoCaixa->saldo_abertura > 0) {
+                PdvMovimentacao::create([
+                    'tenant_id' => $tenantId,
+                    'caixa_id' => $novoCaixa->id,
+                    'tipo_movimento' => 'SUPRIMENTO',
+                    'valor' => $novoCaixa->saldo_abertura,
+                    'observacoes' => 'Fundo de troco inicial',
+                ]);
+            }
+
+            return $novoCaixa;
+        });
+
+        return response()->json(['data' => ['message' => 'Caixa aberto com sucesso!', 'caixa' => $caixa]], 201);
+    }
+
+    public function movimentar(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tipo_movimento' => 'required|string|in:SANGRIA,SUPRIMENTO',
+            'valor' => 'required|numeric|min:0.01',
+            'observacoes' => 'required|string|max:255',
+            'email_supervisor' => 'nullable|email',
+            'senha_supervisor' => 'nullable|string',
+        ]);
+
+        $user = $request->user();
+        $caixa = PdvCaixa::where('usuario_id', $user->id)->where('status', 'ABERTO')->firstOrFail();
+
+        $autorizadorId = null;
+
+        // Regra RBAC: Se for Sangria e o usuário não for Gestor/Admin, exige senha de supervisor
+        if ($validated['tipo_movimento'] === 'SANGRIA' && !$user->is_master && !str_contains(strtoupper($user->perfil->nome ?? ''), 'ADMIN')) {
+            if (empty($validated['email_supervisor']) || empty($validated['senha_supervisor'])) {
+                return response()->json(['error' => ['message' => 'Autorização de supervisor obrigatória para sangrias.']], 403);
+            }
+
+            $supervisor = User::where('tenant_id', $user->tenant_id)->where('email', $validated['email_supervisor'])->first();
+
+            if (!$supervisor || !Hash::check($validated['senha_supervisor'], $supervisor->password) || (!str_contains(strtoupper($supervisor->perfil->nome ?? ''), 'ADMIN') && !$supervisor->is_master)) {
+                return response()->json(['error' => ['message' => 'Credenciais de supervisor inválidas ou sem privilégios.']], 403);
+            }
+            $autorizadorId = $supervisor->id;
+        }
+
+        $movimentacao = PdvMovimentacao::create([
+            'tenant_id' => $user->tenant_id,
+            'caixa_id' => $caixa->id,
+            'tipo_movimento' => $validated['tipo_movimento'],
+            'valor' => (float) $validated['valor'],
+            'autorizador_id' => $autorizadorId,
+            'observacoes' => $validated['observacoes'],
+        ]);
+
+        return response()->json(['data' => ['message' => "{$validated['tipo_movimento']} registrada com sucesso!", 'movimentacao' => $movimentacao]]);
+    }
+
+    public function fechar(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'saldo_informado' => 'required|numeric|min:0',
+        ]);
+
+        $caixa = PdvCaixa::where('usuario_id', $request->user()->id)->where('status', 'ABERTO')->firstOrFail();
+
+        // Cálculo dinâmico do saldo do gaveta
+        $entradas = PdvMovimentacao::where('caixa_id', $caixa->id)
+            ->whereIn('tipo_movimento', ['SUPRIMENTO', 'VENDA_DINHEIRO'])
+            ->sum('valor');
+
+        $saidas = PdvMovimentacao::where('caixa_id', $caixa->id)
+            ->where('tipo_movimento', 'SANGRIA')
+            ->sum('valor');
+
+        $saldoCalculado = $entradas - $saidas;
+        $saldoInformado = (float) $validated['saldo_informado'];
+        $quebra = $saldoInformado - $saldoCalculado;
+
+        $caixa->update([
+            'data_fechamento' => now(),
+            'saldo_informado' => $saldoInformado,
+            'saldo_calculado' => $saldoCalculado,
+            'quebra_caixa' => $quebra,
+            'status' => 'FECHADO',
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Caixa fechado com sucesso!',
+                'resumo' => [
+                    'saldo_calculado' => $saldoCalculado,
+                    'saldo_informado' => $saldoInformado,
+                    'quebra_caixa' => $quebra,
+                ]
+            ]
+        ]);
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PerfilController.php
 ========================================
 
@@ -29281,6 +29225,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\PedidoVenda;
 use App\Models\Pessoa;
+use App\Models\PdvCaixa;
+use App\Models\PdvMovimentacao;
 use App\Services\MotorFiscalService;
 use App\Services\VendaService;
 use Exception;
@@ -29349,8 +29295,8 @@ class VendaController extends Controller
         $tenantId = $request->user()->tenant_id;
         $clienteId = self::resolverClienteId($validated['cliente_id'] ?? null, $tenantId);
 
-        $empresaId = $request->user()->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
                   ?? Empresa::first()->id;
 
         try {
@@ -29365,7 +29311,33 @@ class VendaController extends Controller
                 'PDV'
             );
 
+            // INTEGRAÇÃO BLINDADA COM A GAVETA DE DINHEIRO DO PDV
+            $caixa = PdvCaixa::where('usuario_id', $request->user()->id)->where('status', 'ABERTO')->first();
+            if ($caixa) {
+                foreach ($validated['pagamentos'] as $pag) {
+                    if (strtoupper($pag['forma_pagamento']) === 'DINHEIRO') {
+                        $valorTroco = (float) ($pag['valor_troco'] ?? 0.00);
+                        $valorLiquido = (float) $pag['valor_pago'] - $valorTroco;
+
+                        if ($valorLiquido > 0) {
+                            PdvMovimentacao::create([
+                                'id' => (string) Str::uuid(),
+                                'tenant_id' => $tenantId,
+                                'caixa_id' => $caixa->id,
+                                'tipo_movimento' => 'VENDA_DINHEIRO',
+                                'valor' => $valorLiquido,
+                                'forma_pagamento' => 'DINHEIRO',
+                                'observacoes' => "Venda Balcão #{$pedido->numero_pedido}",
+                            ]);
+                        }
+                    }
+                }
+            }
+
             $docFiscal = null;
+            $cupomBase64 = null;
+
+            // EMISSÃO HÍBRIDA DO CUPOM FISCAL TÉRMICO (NFC-e)
             if (!empty($validated['emitir_cupom_fiscal']) && $pedido->status === 'FATURADO') {
                 $itensFiscal = $pedido->itens->map(fn($i) => [
                     'tipo_item' => 'PRODUTO',
@@ -29373,30 +29345,43 @@ class VendaController extends Controller
                     'valor_total' => (float) $i->valor_total_liquido,
                 ])->toArray();
 
-                $docFiscal = MotorFiscalService::emitirDocumento(
-                    Empresa::find($empresaId),
-                    $pedido->cliente,
+                // 1. Resolvemos explicitamente as entidades
+                $clienteModel = Pessoa::find($clienteId);
+                $empresaModel = Empresa::find($empresaId);
+
+                // 2. Passa o Modelo 65 para acionar o layout do Consumidor
+                $docFiscal = MotorFiscalService::prepararDocumento(
+                    $empresaModel,
+                    $clienteModel,
                     '65',
-                    $itensFiscal,
-                    'vendas',
-                    $pedido->id
+                    $itensFiscal
                 );
+
+                // 3. Disparo Síncrono
+                MotorFiscalService::processarTransmissaoSefaz($docFiscal);
+                $docFiscal->refresh();
+
+                // 4. Converte o XML em PDF
+                $cupomBase64 = MotorFiscalService::gerarDanfceBase64($docFiscal);
             }
 
             return response()->json([
                 'data' => [
-                    'message' => $pedido->status === 'AGUARDANDO_APROVACAO' 
-                        ? "Venda registrada, aguardando aprovação de alçada de desconto!" 
+                    'message' => $pedido->status === 'AGUARDANDO_APROVACAO'
+                        ? "Venda registrada, aguardando aprovação!"
                         : "Venda #{$pedido->numero_pedido} faturada com sucesso!",
                     'pedido' => $pedido->load('itens.item', 'pagamentos', 'cliente'),
                     'documento_fiscal' => $docFiscal,
+                    'cupom_termico_base64' => $cupomBase64,
                 ]
             ], 201);
-        } catch (Exception $e) {
+
+        // Captura \Throwable para apanhar TypeErrors e Errors nativos do PHP
+        } catch (\Throwable $e) {
             return response()->json([
                 'error' => [
                     'code' => 'SALE_ERROR',
-                    'message' => $e->getMessage(),
+                    'message' => $e->getMessage() . ' no ficheiro ' . basename($e->getFile()) . ' linha ' . $e->getLine(),
                 ]
             ], 422);
         }
@@ -29417,8 +29402,8 @@ class VendaController extends Controller
         ]);
 
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
-                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
                   ?? Empresa::first()->id;
 
         try {
@@ -29438,7 +29423,7 @@ class VendaController extends Controller
                     'orcamento' => $orcamento->load('itens.item', 'cliente'),
                 ]
             ], 201);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
     }
@@ -29464,7 +29449,7 @@ class VendaController extends Controller
                     'pedido' => $pedidoConvertido->load('itens.item', 'pagamentos', 'cliente'),
                 ]
             ]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
     }
@@ -29487,7 +29472,7 @@ class VendaController extends Controller
                     'pedido' => $pedidoCancelado,
                 ]
             ]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
     }
@@ -29547,6 +29532,7 @@ class VendaController extends Controller
         }
         return $consumidor->id;
     }
+
     public function listarAlcadasPendentes(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -29580,7 +29566,6 @@ class VendaController extends Controller
                 'respondido_em' => now(),
             ]);
 
-            // Se for aprovado, libera o pedido e executa a baixa no WMS e financeiro
             if ($alcada->entidade_origem === 'pedidos' || $alcada->entidade_origem === 'vendas') {
                 $pedido = \App\Models\PedidoVenda::find($alcada->registro_origem_id);
                 if ($pedido) {
@@ -29640,6 +29625,7 @@ class VendaController extends Controller
             ]
         ]);
     }
+
     public function listarRegrasComissao(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
@@ -29654,7 +29640,7 @@ class VendaController extends Controller
     public function storeRegraComissao(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id 
+        $empresaId = $request->user()->empresa_padrao_id
                   ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
 
         $validated = $request->validate([
@@ -29687,6 +29673,7 @@ class VendaController extends Controller
 
         return response()->json(['data' => $regra]);
     }
+
     public function processarCartaoPdv(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -29705,7 +29692,7 @@ class VendaController extends Controller
             );
 
             return response()->json(['data' => $resultado]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'error' => [
                     'code' => 'CARD_PROCESSING_ERROR',
@@ -29715,6 +29702,7 @@ class VendaController extends Controller
         }
     }
 }
+
 
 
 ========================================
@@ -32784,6 +32772,82 @@ class Pdi extends Model {
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PdvCaixa.php
+========================================
+
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class PdvCaixa extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pdv_caixas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'usuario_id', 'data_abertura',
+        'data_fechamento', 'saldo_abertura', 'saldo_informado',
+        'saldo_calculado', 'quebra_caixa', 'status', 'observacoes'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function movimentacoes()
+    {
+        return $this->hasMany(PdvMovimentacao::class, 'caixa_id');
+    }
+}
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PdvMovimentacao.php
+========================================
+
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class PdvMovimentacao extends Model
+{
+    use BelongsToTenant;
+
+    protected $table = 'pdv_movimentacoes';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'caixa_id', 'tipo_movimento', 'valor',
+        'autorizador_id', 'forma_pagamento', 'observacoes'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+}
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PedidoVenda.php
 ========================================
 
@@ -35098,10 +35162,12 @@ use App\Models\Pessoa;
 use App\Services\Fiscal\NfePhpDriver;
 use Illuminate\Support\Facades\Crypt;
 use Exception;
+use NFePHP\NFe\Common\Standardize;
+use NFePHP\DA\NFe\Danfce;
 
 class MotorFiscalService
 {
-    public static function pingSefaz(string $tenantId, string $empresaId, string $uf = 'RJ'): array
+    private static function instanciarDriver(string $tenantId, string $empresaId): NfePhpDriver
     {
         $certificadoDb = CertificadoA1::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
@@ -35109,32 +35175,112 @@ class MotorFiscalService
             ->where('is_ativo', true)
             ->first();
 
-        if (!$certificadoDb) {
-            throw new Exception("Nenhum Certificado A1 ativo encontrado.");
-        }
+        if (!$certificadoDb) throw new Exception("Nenhum Certificado A1 ativo encontrado.");
 
-        try {
-            $pfxBinario = Crypt::decrypt($certificadoDb->arquivo_binario_criptografado);
-            $senha = Crypt::decrypt($certificadoDb->senha_criptografada);
-        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-            throw new Exception("Falha ao descriptografar a chave privada do certificado.");
-        }
-
-        $tpAmb = $certificadoDb->ambiente_emissao === 'PRODUCAO' ? 1 : 2;
-        $cnpj = $certificadoDb->cnpj_certificado;
+        $pfxBinario = Crypt::decrypt($certificadoDb->arquivo_binario_criptografado);
+        $senha = Crypt::decrypt($certificadoDb->senha_criptografada);
+        $tpAmb = 2; // Homologação
 
         $driver = new NfePhpDriver();
-        $driver->configurar($pfxBinario, $senha, $uf, $tpAmb, $cnpj);
+        $driver->configurar(
+            $pfxBinario, $senha, 'RJ', $tpAmb,
+            $certificadoDb->cnpj_certificado, $certificadoDb->razao_social_certificado
+        );
+        return $driver;
+    }
 
-        return $driver->verificarStatusSefaz($uf, $tpAmb);
+    public static function pingSefaz(string $tenantId, string $empresaId, string $uf = 'RJ'): array
+    {
+        $driver = self::instanciarDriver($tenantId, $empresaId);
+        return $driver->verificarStatusSefaz($uf);
     }
 
     public static function prepararDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens): DocumentoFiscal
     {
-        throw new Exception("Stub de emissão - A implementar.");
+        $driver = self::instanciarDriver($empresa->tenant_id, $empresa->id);
+
+        $ultimoNumero = DocumentoFiscal::where('empresa_id', $empresa->id)->max('numero_documento') ?? 1000;
+
+        $dadosEmissao = [
+            'tenant_id' => $empresa->tenant_id,
+            'empresa_id' => $empresa->id,
+            'modelo' => $modelo,
+            'numero' => $ultimoNumero + 1,
+            'emitente' => $empresa->toArray(),
+            'destinatario' => $destinatario->toArray(),
+            'itens' => $itens
+        ];
+
+        return $driver->emitir($dadosEmissao);
     }
 
-    public static function processarTransmissaoSefaz(DocumentoFiscal $documento): void {}
+    public static function processarTransmissaoSefaz(DocumentoFiscal $documento): void
+    {
+        try {
+            $driver = self::instanciarDriver($documento->tenant_id, $documento->empresa_id);
+
+            // Recarrega o modelo para garantir que o xml_conteudo mais fresco foi carregado do banco
+            $documento->refresh();
+            $xmlAssinado = $documento->xml_conteudo;
+
+            if (empty($xmlAssinado)) {
+                throw new Exception("O XML assinado não foi gravado na base de dados (Null).");
+            }
+
+            $reflection = new \ReflectionClass($driver);
+            $property = $reflection->getProperty('tools');
+            $property->setAccessible(true);
+            $tools = $property->getValue($driver);
+
+            // Atualiza o Tools com o modelo exato do documento (Importante para a Sefaz)
+            $tools->model($documento->modelo_documento);
+
+            $idLote = str_pad(100, 15, '0', STR_PAD_LEFT);
+
+            $respSefaz = $tools->sefazEnviaLote([$xmlAssinado], $idLote);
+
+            $std = (new Standardize())->toStd($respSefaz);
+            $cStat = $std->cStat;
+            $xMotivo = $std->xMotivo;
+
+            if ($cStat == 103 || $cStat == 104) {
+                $documento->update([
+                    'status' => 'AUTORIZADO',
+                    'mensagem_sefaz' => "Autorizado o uso da NFe. CSTAT: {$cStat}",
+                ]);
+            } else {
+                $documento->update([
+                    'status' => 'REJEITADO',
+                    'mensagem_sefaz' => "Rejeição: {$xMotivo} (cStat: {$cStat})"
+                ]);
+            }
+
+        } catch (Exception $e) {
+            $documento->update([
+                'status' => 'FALHA_COMUNICACAO',
+                'mensagem_sefaz' => 'Falha na transmissão Sefaz: ' . $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    public static function gerarDanfceBase64(DocumentoFiscal $documento): ?string
+    {
+        try {
+            if (empty($documento->xml_conteudo)) return null;
+
+            // 2 = Retrato. A classe Danfce renderiza o cupom em formato térmico estreito
+            $danfce = new Danfce($documento->xml_conteudo, '', 2);
+            $danfce->creditsIntegratorFooter('Scalle ERP - BTEC');
+            $danfce->printParameters(80, 58); // Bobina de 80mm (Padrão Epson/Bematech/Elgin)
+
+            $pdf = $danfce->render();
+            return base64_encode($pdf);
+        } catch (Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Erro DANFCE: " . $e->getMessage());
+            return null;
+        }
+    }
 }
 
 
@@ -36568,70 +36714,263 @@ use App\Interfaces\FiscalDriverInterface;
 use App\Models\DocumentoFiscal;
 use NFePHP\Common\Certificate;
 use NFePHP\NFe\Tools;
+use NFePHP\NFe\Make;
 use NFePHP\NFe\Common\Standardize;
+use Illuminate\Support\Str;
 use Exception;
 
 class NfePhpDriver implements FiscalDriverInterface
 {
     private Tools $tools;
+    private array $config;
 
-    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = ''): self
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = '', string $razaoSocial = ''): self
     {
-        if (!extension_loaded('soap')) {
-            throw new Exception("A extensão SOAP do PHP não está ativada. Ative 'soap' nas extensões de PHP da Hostoo.");
-        }
-
         $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
         if (empty($cnpjLimpo) || strlen($cnpjLimpo) !== 14) {
-            throw new Exception("CNPJ do emissor inválido ou ausente para configurar a SEFAZ.");
+            $cnpjLimpo = str_pad($cnpjLimpo, 14, '0', STR_PAD_LEFT);
         }
 
-        $config = [
+        $this->config = [
             "atualizacao" => now()->format('Y-m-d H:i:s'),
             "tpAmb" => $tpAmb,
-            "razaosocial" => "Empresa Emissora",
+            "razaosocial" => empty($razaoSocial) ? "Empresa Emissora" : substr($razaoSocial, 0, 60),
             "siglaUF" => $uf,
             "cnpj" => $cnpjLimpo,
             "schemes" => "PL_009_V4",
             "versao" => "4.00",
             "tokenIBPT" => "",
-            "CSC" => "",
-            "CSCid" => ""
+            // Mock do Token CSC (Obrigatório para gerar o QR Code da NFC-e Modelo 65)
+            "CSC" => "GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E",
+            "CSCid" => "000001"
         ];
 
-        $jsonConfig = json_encode($config);
+        $jsonConfig = json_encode($this->config);
         $certificado = Certificate::readPfx($certificadoBinario, $senha);
 
         $this->tools = new Tools($jsonConfig, $certificado);
-        $this->tools->disableCertValidation(true);
-
         return $this;
     }
 
     public function verificarStatusSefaz(string $uf, int $tpAmb = 2): array
     {
         try {
-            $this->tools->model('55'); // NF-e
+            $this->tools->model('55');
             $response = $this->tools->sefazStatus($uf, $tpAmb);
-
             $standardize = new Standardize();
             $std = $standardize->toStd($response);
 
             return [
-                'status_code' => $std->cStat,
-                'motivo' => $std->xMotivo,
-                'tempo_medio' => $std->tMed ?? 0,
-                'ambiente' => $std->tpAmb == 1 ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
+                'status_code' => (int) ($std->cStat ?? 0),
+                'motivo' => (string) ($std->xMotivo ?? 'Sem resposta decodificável'),
+                'tempo_medio' => (int) ($std->tMed ?? 0),
+                'ambiente' => ((string) ($std->tpAmb ?? '')) === '1' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
             ];
-        } catch (\Throwable $e) {
-            return [
-                'status_code' => 500,
-                'motivo' => 'Falha NFePHP: ' . $e->getMessage()
-            ];
+        } catch (Exception $e) {
+            return ['status_code' => 500, 'motivo' => 'Falha de Comunicação SEFAZ: ' . $e->getMessage()];
         }
     }
 
-    public function emitir(array $dadosEmissao): DocumentoFiscal { throw new Exception("Não implementado."); }
+    public function emitir(array $dadosEmissao): DocumentoFiscal
+    {
+        // 1. Avisa o NFePHP se é modelo 55 (NF-e) ou 65 (NFC-e) para acionar o gerador de QR Code
+        $modeloDoc = $dadosEmissao['modelo'] ?? '55';
+        $this->tools->model($modeloDoc);
+
+        $nfe = new Make();
+        try {
+            // 0. Inicialização
+            $stdInfNFe = new \stdClass();
+            $stdInfNFe->versao = '4.00';
+            $stdInfNFe->Id = '';
+            $stdInfNFe->pk_nItem = null;
+            $nfe->taginfNFe($stdInfNFe);
+
+            // 1. Identificação da NFe (<ide>)
+            $stdIde = new \stdClass();
+            $stdIde->cUF = 33; // RJ
+            $stdIde->cNF = rand(11111111, 99999999);
+            $stdIde->natOp = 'Venda de Mercadorias';
+            $stdIde->mod = $modeloDoc;
+            $stdIde->serie = 1;
+            $stdIde->nNF = $dadosEmissao['numero'];
+            $stdIde->dhEmi = now()->format('Y-m-d\TH:i:sP');
+            $stdIde->tpNF = 1; // Saída
+            $stdIde->idDest = 1; // Operação Interna
+            $stdIde->cMunFG = 3300456; // Belford Roxo
+            $stdIde->tpImp = 4; // DANFE NFC-e
+            $stdIde->tpEmis = 1; // Emissão Normal
+            $stdIde->tpAmb = $this->config['tpAmb'];
+            $stdIde->finNFe = 1; // Normal
+            $stdIde->indFinal = 1; // Consumidor Final
+            $stdIde->indPres = 1; // Operação Presencial
+            $stdIde->procEmi = 0; // Aplicativo Contribuinte
+            $stdIde->verProc = '1.0';
+            $nfe->tagide($stdIde);
+
+            // 2. Emitente (<emit>)
+            $stdEmit = new \stdClass();
+            $stdEmit->xNome = $dadosEmissao['emitente']['razao_social'] ?? 'EMPRESA TESTE';
+            $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'] ?? 'FANTASIA TESTE';
+            $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
+            $stdEmit->CRT = 1; // Simples Nacional
+            $stdEmit->CNPJ = $this->config['cnpj']; // Forçado do certificado
+            $nfe->tagemit($stdEmit);
+
+            $stdEnderEmit = new \stdClass();
+            $stdEnderEmit->xLgr = 'Rua de Teste';
+            $stdEnderEmit->nro = '123';
+            $stdEnderEmit->xBairro = 'Centro';
+            $stdEnderEmit->cMun = 3300456;
+            $stdEnderEmit->xMun = 'Belford Roxo';
+            $stdEnderEmit->UF = 'RJ';
+            $stdEnderEmit->CEP = '26110000';
+            $stdEnderEmit->cPais = 1058;
+            $stdEnderEmit->xPais = 'Brasil';
+            $nfe->tagenderEmit($stdEnderEmit);
+
+            // 3. Destinatário (<dest>)
+            $stdDest = new \stdClass();
+            $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'Consumidor Final';
+            $stdDest->indIEDest = 9; // Não Contribuinte
+
+            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
+            if (empty($docDestino)) {
+                $stdDest->CPF = '00000000000';
+            } elseif (strlen($docDestino) > 11) {
+                $stdDest->CNPJ = str_pad($docDestino, 14, '0', STR_PAD_LEFT);
+            } else {
+                $stdDest->CPF = str_pad($docDestino, 11, '0', STR_PAD_LEFT);
+            }
+            $nfe->tagdest($stdDest);
+
+            $stdEnderDest = new \stdClass();
+            $stdEnderDest->xLgr = 'Rua do Cliente';
+            $stdEnderDest->nro = 'SN';
+            $stdEnderDest->xBairro = 'Centro';
+            $stdEnderDest->cMun = 3300456;
+            $stdEnderDest->xMun = 'Belford Roxo';
+            $stdEnderDest->UF = 'RJ';
+            $stdEnderDest->CEP = '26110000';
+            $stdEnderDest->cPais = 1058;
+            $stdEnderDest->xPais = 'Brasil';
+            $nfe->tagenderDest($stdEnderDest);
+
+            // 4. Produtos e Impostos (<det>)
+            $totais = 0.00;
+            foreach ($dadosEmissao['itens'] as $idx => $item) {
+                $nItem = $idx + 1;
+                $valorTotalItem = (float) $item['valor_total'];
+                $totais += $valorTotalItem;
+
+                $stdProd = new \stdClass();
+                $stdProd->item = $nItem;
+                $stdProd->cProd = 'PRD' . str_pad($nItem, 3, '0', STR_PAD_LEFT);
+                $stdProd->cEAN = 'SEM GTIN';
+                $stdProd->xProd = 'PRODUTO DE TESTE ' . $nItem;
+                $stdProd->NCM = '94039090';
+                $stdProd->CFOP = '5102'; // Venda
+                $stdProd->uCom = 'UN';
+                $stdProd->qCom = 1.0000;
+                $stdProd->vUnCom = $valorTotalItem;
+                $stdProd->vProd = $valorTotalItem;
+                $stdProd->cEANTrib = 'SEM GTIN';
+                $stdProd->uTrib = 'UN';
+                $stdProd->qTrib = 1.0000;
+                $stdProd->vUnTrib = $valorTotalItem;
+                $stdProd->indTot = 1;
+                $nfe->tagprod($stdProd);
+
+                $stdImposto = new \stdClass();
+                $stdImposto->item = $nItem;
+                $nfe->tagimposto($stdImposto);
+
+                $stdIcms = new \stdClass();
+                $stdIcms->item = $nItem;
+                $stdIcms->orig = 0;
+                $stdIcms->CSOSN = '102'; // Simples Nacional
+                $nfe->tagICMSSN($stdIcms);
+
+                $stdPis = new \stdClass();
+                $stdPis->item = $nItem;
+                $stdPis->CST = '07';
+                $nfe->tagPIS($stdPis);
+
+                $stdCofins = new \stdClass();
+                $stdCofins->item = $nItem;
+                $stdCofins->CST = '07';
+                $nfe->tagCOFINS($stdCofins);
+            }
+
+            // 5. Totalizadores (<total>)
+            $stdIcmsTot = new \stdClass();
+            $stdIcmsTot->vBC = 0.00;
+            $stdIcmsTot->vICMS = 0.00;
+            $stdIcmsTot->vICMSDeson = 0.00;
+            $stdIcmsTot->vFCP = 0.00;
+            $stdIcmsTot->vBCST = 0.00;
+            $stdIcmsTot->vST = 0.00;
+            $stdIcmsTot->vFCPST = 0.00;
+            $stdIcmsTot->vFCPSTRet = 0.00;
+            $stdIcmsTot->vProd = $totais;
+            $stdIcmsTot->vFrete = 0.00;
+            $stdIcmsTot->vSeg = 0.00;
+            $stdIcmsTot->vDesc = 0.00;
+            $stdIcmsTot->vII = 0.00;
+            $stdIcmsTot->vIPI = 0.00;
+            $stdIcmsTot->vIPIDevol = 0.00;
+            $stdIcmsTot->vPIS = 0.00;
+            $stdIcmsTot->vCOFINS = 0.00;
+            $stdIcmsTot->vOutro = 0.00;
+            $stdIcmsTot->vNF = $totais;
+            $nfe->tagICMSTot($stdIcmsTot);
+
+            // 6. Transporte e Pagamento (<transp>, <pag>)
+            $stdTransp = new \stdClass();
+            $stdTransp->modFrete = 9; // Sem frete
+            $nfe->tagtransp($stdTransp);
+
+            $stdPag = new \stdClass();
+            $stdPag->vTroco = 0.00;
+            $nfe->tagpag($stdPag);
+
+            $stdDetPag = new \stdClass();
+            $stdDetPag->tPag = '01'; // Dinheiro
+            $stdDetPag->vPag = $totais;
+            $nfe->tagdetPag($stdDetPag);
+
+            $xmlString = $nfe->getXML();
+
+            if (!empty($nfe->getErrors())) {
+                throw new Exception("Falha de validação do schema XML: " . implode(' | ', $nfe->getErrors()));
+            }
+
+            $xmlAssinado = $this->tools->signNFe($xmlString);
+
+            // CORREÇÃO MESTRA: Uso de setters explícitos para contornar o $fillable (Mass Assignment) do Laravel
+            $doc = new DocumentoFiscal();
+            $doc->id = (string) Str::uuid();
+            $doc->tenant_id = $dadosEmissao['tenant_id'];
+            $doc->empresa_id = $dadosEmissao['empresa_id'];
+            $doc->destinatario_id = $dadosEmissao['destinatario']['id'] ?? null;
+            $doc->modelo_documento = $modeloDoc;
+            $doc->numero_documento = $dadosEmissao['numero'];
+            $doc->serie = '1';
+            $doc->chave_acesso = $nfe->getChave();
+            $doc->status = 'PROCESSANDO';
+            $doc->xml_conteudo = $xmlAssinado; // Agora grava com certeza absoluta
+            $doc->data_emissao = now();
+            $doc->valor_total = $totais;
+            $doc->save();
+
+            return $doc;
+
+        } catch (Exception $e) {
+            $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
+            throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
+        }
+    }
+
     public function cancelar(string $chaveAcesso, string $justificativa): bool { return false; }
     public function consultar(string $chaveAcesso): array { return []; }
     public function corrigir(string $chaveAcesso, string $correcao): bool { return false; }
@@ -43260,6 +43599,108 @@ return new class extends Migration
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_26_233313_create_pdv_tables.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('pdv_caixas', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id')->index();
+            $table->uuid('empresa_id')->index();
+            $table->uuid('usuario_id')->index();
+            $table->dateTime('data_abertura');
+            $table->dateTime('data_fechamento')->nullable();
+            $table->decimal('saldo_abertura', 15, 2)->default(0.00);
+            $table->decimal('saldo_informado', 15, 2)->nullable(); // Fechamento Cego
+            $table->decimal('saldo_calculado', 15, 2)->nullable(); // Calculado pelo sistema
+            $table->decimal('quebra_caixa', 15, 2)->nullable(); // Diferença (Positiva ou Negativa)
+            $table->string('status', 30)->default('ABERTO');
+            $table->text('observacoes')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::create('pdv_movimentacoes', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id')->index();
+            $table->uuid('caixa_id')->index();
+            $table->string('tipo_movimento', 30); // SUPRIMENTO, SANGRIA, VENDA_DINHEIRO
+            $table->decimal('valor', 15, 2);
+            $table->uuid('autorizador_id')->nullable(); // Preenchido se exigiu alçada/senha
+            $table->string('forma_pagamento', 50)->default('DINHEIRO');
+            $table->text('observacoes')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('pdv_movimentacoes');
+        Schema::dropIfExists('pdv_caixas');
+    }
+};
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_27_231542_add_xml_and_status_to_fis_documentos_fiscais.php
+========================================
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('fis_documentos_fiscais', function (Blueprint $table) {
+            // Colunas cruciais para o motor NFePHP que faltavam na tabela original
+            if (!Schema::hasColumn('fis_documentos_fiscais', 'xml_conteudo')) {
+                $table->text('xml_conteudo')->nullable();
+            }
+            if (!Schema::hasColumn('fis_documentos_fiscais', 'mensagem_sefaz')) {
+                $table->text('mensagem_sefaz')->nullable();
+            }
+
+            // Garantir que as colunas de valor e status existem e estão corretas
+            if (!Schema::hasColumn('fis_documentos_fiscais', 'status')) {
+                $table->string('status', 50)->default('PROCESSANDO');
+            }
+            if (!Schema::hasColumn('fis_documentos_fiscais', 'chave_acesso')) {
+                $table->string('chave_acesso', 50)->nullable();
+            }
+            if (!Schema::hasColumn('fis_documentos_fiscais', 'valor_total')) {
+                $table->decimal('valor_total', 15, 2)->default(0.00);
+            }
+            if (!Schema::hasColumn('fis_documentos_fiscais', 'data_emissao')) {
+                $table->dateTime('data_emissao')->nullable();
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('fis_documentos_fiscais', function (Blueprint $table) {
+            $table->dropColumn(['xml_conteudo', 'mensagem_sefaz']);
+        });
+    }
+};
+
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\DatabaseSeeder.php
 ========================================
 
@@ -44528,7 +44969,9 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/documentos', [FiscalController::class, 'index']);
         Route::get('/regras', [FiscalController::class, 'regras']);
         Route::post('/emitir', [FiscalController::class, 'emitir']);
-        Route::get('/fiscal/status-sefaz', [FiscalController::class, 'statusSefaz']);
+
+        // CORREÇÃO: Removido o "/fiscal" duplicado, pois o grupo já tem o prefixo
+        Route::get('/status-sefaz', [FiscalController::class, 'statusSefaz']);
 
         // Novas rotas de eventos fiscais
         Route::post('/{id}/cancelar', [FiscalController::class, 'cancelar']);
@@ -44650,6 +45093,14 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::post('/{dominio}', [PmoConfigController::class, 'store']);
         Route::put('/{dominio}/{id}', [PmoConfigController::class, 'update']);
         Route::delete('/{dominio}/{id}', [PmoConfigController::class, 'destroy']);
+    });
+
+    // Frente de Caixa (PDV) - Gaveta
+    Route::prefix('pdv')->group(function () {
+        Route::get('/caixa/status', [\App\Http\Controllers\Api\PdvController::class, 'status']);
+        Route::post('/caixa/abrir', [\App\Http\Controllers\Api\PdvController::class, 'abrir']);
+        Route::post('/caixa/movimentar', [\App\Http\Controllers\Api\PdvController::class, 'movimentar']);
+        Route::post('/caixa/fechar', [\App\Http\Controllers\Api\PdvController::class, 'fechar']);
     });
 
     // ==========================================

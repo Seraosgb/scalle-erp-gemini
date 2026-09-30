@@ -4,8 +4,6 @@ namespace App\Models;
 
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -18,12 +16,12 @@ class CentroCusto extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'tenant_id', 'parent_id', 'codigo', 'nome', 'is_sintetico', 'is_ativo'
+        'id', 'tenant_id', 'empresa_id', 'parent_id',
+        'codigo', 'nome', 'is_sintetico'
     ];
 
     protected $casts = [
-        'is_sintetico' => 'boolean',
-        'is_ativo' => 'boolean',
+        'is_sintetico' => 'boolean'
     ];
 
     protected static function boot(): void
@@ -32,13 +30,10 @@ class CentroCusto extends Model
         static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
     }
 
-    public function parent(): BelongsTo
+    public function children()
     {
-        return $this->belongsTo(CentroCusto::class, 'parent_id');
-    }
-
-    public function children(): HasMany
-    {
-        return $this->hasMany(CentroCusto::class, 'parent_id')->orderBy('codigo');
+        return $this->hasMany(CentroCusto::class, 'parent_id')
+                    ->with('children')
+                    ->orderBy('codigo');
     }
 }

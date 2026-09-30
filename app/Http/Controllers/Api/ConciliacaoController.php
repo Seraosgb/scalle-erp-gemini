@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\TituloFinanceiro;
 use App\Models\ContaFinanceira;
+use App\Models\MovimentacaoExtrato;
 use App\Services\OfxParserService;
 use Exception;
 use Illuminate\Http\JsonResponse;
@@ -93,13 +94,13 @@ class ConciliacaoController extends Controller
         $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
 
         try {
-            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId) {
+            $titulo = DB::transaction(function () use ($validated, $tenantId, $empresaId) {
 
                 // 2. Cria ou recupera uma Pessoa Genérica para não quebrar a Foreign Key do BD
                 $pessoaPadrao = \App\Models\Pessoa::firstOrCreate(
                     ['tenant_id' => $tenantId, 'cpf_cnpj' => '00000000000000'],
                     [
-                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'id' => (string) Str::uuid(),
                         'tipo_pessoa' => 'PJ',
                         'nome_razao_social' => 'Operações Bancárias / Avulsos',
                         'is_fornecedor' => true,
@@ -108,9 +109,9 @@ class ConciliacaoController extends Controller
                 );
 
                 // 3. Usa forceFill para injetar direto no banco ignorando proteções de $fillable do Model
-                $novoTitulo = new \App\Models\TituloFinanceiro();
+                $novoTitulo = new TituloFinanceiro();
                 $novoTitulo->forceFill([
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
                     'empresa_id' => $empresaId,
                     'pessoa_id' => $pessoaPadrao->id, // Pessoa garantida!
@@ -132,20 +133,33 @@ class ConciliacaoController extends Controller
                 $novoTitulo->save();
 
                 // 4. Atualiza o saldo da conta
-                $conta = \App\Models\ContaFinanceira::findOrFail($validated['conta_financeira_id']);
+                $conta = ContaFinanceira::findOrFail($validated['conta_financeira_id']);
                 $tipoMov = $validated['natureza'] === 'PAGAR' ? 'SAIDA' : 'ENTRADA';
 
-                $conta->update([
-                    'saldo_atual' => $tipoMov === 'ENTRADA'
+                $novoSaldo = $tipoMov === 'ENTRADA'
                         ? $conta->saldo_atual + $validated['valor']
-                        : $conta->saldo_atual - $validated['valor']
+                        : $conta->saldo_atual - $validated['valor'];
+
+                $conta->update(['saldo_atual' => $novoSaldo]);
+
+                // 5. Regista a movimentação do extrato atómica
+                MovimentacaoExtrato::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'conta_financeira_id' => $conta->id,
+                    'titulo_id' => $novoTitulo->id,
+                    'tipo_movimento' => $tipoMov,
+                    'valor' => $validated['valor'],
+                    'data_movimento' => $validated['data_transacao'],
+                    'saldo_apos_movimento' => $novoSaldo,
+                    'descricao' => 'Conciliação OFX: ' . $validated['descricao'],
                 ]);
 
                 return $novoTitulo;
             });
 
             return response()->json(['data' => ['message' => 'Lançamento avulso criado e conciliado com sucesso!', 'titulo' => $titulo]]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json(['error' => ['message' => 'Erro interno ao salvar: ' . $e->getMessage()]], 422);
         }
     }

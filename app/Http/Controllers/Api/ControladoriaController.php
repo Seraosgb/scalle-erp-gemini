@@ -18,10 +18,9 @@ class ControladoriaController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Retorna a árvore hierárquica (apenas raízes que carregam seus filhos)
         $planos = PlanoConta::where('tenant_id', $tenantId)
             ->whereNull('parent_id')
-            ->with('children.children') // Até 3 níveis para exibição rápida
+            ->with('children.children')
             ->orderBy('codigo')
             ->get();
 
@@ -39,7 +38,10 @@ class ControladoriaController extends Controller
             'is_sintetico' => 'boolean'
         ]);
 
-        $plano = PlanoConta::create(array_merge($validated, ['tenant_id' => $tenantId]));
+        $plano = PlanoConta::create(array_merge($validated, [
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId
+        ]));
 
         return response()->json(['data' => $plano], 201);
     }
@@ -70,7 +72,10 @@ class ControladoriaController extends Controller
             'is_sintetico' => 'boolean'
         ]);
 
-        $centro = CentroCusto::create(array_merge($validated, ['tenant_id' => $tenantId]));
+        $centro = CentroCusto::create(array_merge($validated, [
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId
+        ]));
 
         return response()->json(['data' => $centro], 201);
     }
@@ -82,7 +87,6 @@ class ControladoriaController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Evita duplicidade se já houver plano de contas
         if (\App\Models\PlanoConta::where('tenant_id', $tenantId)->exists()) {
             return response()->json(['error' => ['message' => 'O Tenant já possui uma estrutura de contas cadastrada.']], 422);
         }
@@ -119,6 +123,9 @@ class ControladoriaController extends Controller
         return response()->json(['data' => ['message' => 'Estrutura contábil e de centros de custo gerada com sucesso!']]);
     }
 
+    // ==========================================
+    // CONCILIAÇÃO BANCÁRIA
+    // ==========================================
     public function conciliarManual(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -136,10 +143,10 @@ class ControladoriaController extends Controller
         $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
 
         try {
-            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId, $request) {
-                // 1. Cria o Título já liquidado
+            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId) {
+
                 $novoTitulo = \App\Models\TituloFinanceiro::create([
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
                     'empresa_id' => $empresaId,
                     'plano_conta_id' => $validated['plano_conta_id'],
@@ -158,7 +165,6 @@ class ControladoriaController extends Controller
                     'historico' => 'Conciliação Avulsa OFX: ' . $validated['descricao'],
                 ]);
 
-                // 2. Altera o saldo do banco (A tabela de MovimentacaoExtrato deve existir ou ser ignorada caso não a usemos estritamente aqui)
                 $conta = \App\Models\ContaFinanceira::findOrFail($validated['conta_financeira_id']);
                 $tipoMov = $validated['natureza'] === 'PAGAR' ? 'SAIDA' : 'ENTRADA';
 
@@ -170,8 +176,117 @@ class ControladoriaController extends Controller
             });
 
             return response()->json(['data' => ['message' => 'Lançamento avulso criado e conciliado!', 'titulo' => $titulo]]);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
+    }
+
+    // ==========================================
+    // MOTOR DA DRE (INTELIGÊNCIA FINANCEIRA)
+    // ==========================================
+    public function gerarDre(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        $validated = $request->validate([
+            'data_inicio' => 'required|date',
+            'data_fim' => 'required|date|after_or_equal:data_inicio',
+            'regime' => 'required|string|in:CAIXA,COMPETENCIA'
+        ]);
+
+        $dataInicio = $validated['data_inicio'];
+        $dataFim = $validated['data_fim'];
+        $isCaixa = $validated['regime'] === 'CAIXA';
+
+        // 1. Coleta os títulos financeiros enquadrados no período e regime
+        $queryTitulos = \App\Models\TituloFinanceiro::where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->whereNotNull('plano_conta_id');
+
+        if ($isCaixa) {
+            $queryTitulos->where('status', 'LIQUIDADO')
+                         ->whereBetween('data_liquidacao', [$dataInicio, $dataFim]);
+        } else {
+            $queryTitulos->whereBetween('data_emissao', [$dataInicio, $dataFim]);
+        }
+
+        $titulos = $queryTitulos->get(['plano_conta_id', 'valor_pago_acumulado', 'valor_original']);
+
+        // 2. Agrupa valores absolutos direto no ID da conta analítica
+        $somasPorConta = [];
+        foreach ($titulos as $t) {
+            $contaId = $t->plano_conta_id;
+            if (!isset($somasPorConta[$contaId])) {
+                $somasPorConta[$contaId] = 0.00;
+            }
+            $valor = $isCaixa ? (float) $t->valor_pago_acumulado : (float) $t->valor_original;
+            $somasPorConta[$contaId] += $valor;
+        }
+
+        // 3. Monta a árvore completa do Plano de Contas
+        $planos = PlanoConta::where('tenant_id', $tenantId)
+            ->whereNull('parent_id')
+            ->with('children.children')
+            ->orderBy('codigo')
+            ->get();
+
+        // 4. Agregações recursivas de baixo para cima (Analítico para Sintético)
+        $calcularSaldosRecursivo = function ($nodos) use (&$calcularSaldosRecursivo, $somasPorConta) {
+            $resultado = [];
+            $totalNivel = 0.00;
+
+            foreach ($nodos as $nodo) {
+                $nodoData = [
+                    'id' => $nodo->id,
+                    'codigo' => $nodo->codigo,
+                    'nome' => $nodo->nome,
+                    'tipo' => $nodo->tipo,
+                    'is_sintetico' => $nodo->is_sintetico,
+                    'valor_total' => 0.00,
+                    'children' => []
+                ];
+
+                if ($nodo->is_sintetico && $nodo->children->isNotEmpty()) {
+                    $filhos = $calcularSaldosRecursivo($nodo->children);
+                    $nodoData['children'] = $filhos['nodos'];
+                    $nodoData['valor_total'] = $filhos['total_nivel'];
+                } else {
+                    $nodoData['valor_total'] = $somasPorConta[$nodo->id] ?? 0.00;
+                }
+
+                $totalNivel += $nodoData['valor_total'];
+                $resultado[] = $nodoData;
+            }
+
+            return ['nodos' => $resultado, 'total_nivel' => $totalNivel];
+        };
+
+        $arvoreDre = $calcularSaldosRecursivo($planos)['nodos'];
+
+        // 5. Apuração do Resultado Líquido do Exercício
+        $totalReceitas = 0.00;
+        $totalDespesas = 0.00;
+
+        foreach ($arvoreDre as $nodo) {
+            if ($nodo['tipo'] === 'RECEITA') $totalReceitas += $nodo['valor_total'];
+            if ($nodo['tipo'] === 'DESPESA') $totalDespesas += $nodo['valor_total'];
+        }
+
+        return response()->json([
+            'data' => [
+                'parametros' => [
+                    'regime' => $validated['regime'],
+                    'periodo' => "{$dataInicio} a {$dataFim}"
+                ],
+                'apuracao' => [
+                    'receitas_totais' => $totalReceitas,
+                    'despesas_totais' => $totalDespesas,
+                    'resultado_liquido' => $totalReceitas - $totalDespesas,
+                    'lucro' => ($totalReceitas - $totalDespesas) > 0
+                ],
+                'dre' => $arvoreDre
+            ]
+        ]);
     }
 }
