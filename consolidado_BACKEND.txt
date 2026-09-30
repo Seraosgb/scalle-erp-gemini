@@ -21843,6 +21843,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\TituloFinanceiro;
 use App\Models\ContaFinanceira;
+use App\Models\MovimentacaoExtrato;
 use App\Services\OfxParserService;
 use Exception;
 use Illuminate\Http\JsonResponse;
@@ -21931,13 +21932,13 @@ class ConciliacaoController extends Controller
         $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
 
         try {
-            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId) {
+            $titulo = DB::transaction(function () use ($validated, $tenantId, $empresaId) {
 
                 // 2. Cria ou recupera uma Pessoa Genérica para não quebrar a Foreign Key do BD
                 $pessoaPadrao = \App\Models\Pessoa::firstOrCreate(
                     ['tenant_id' => $tenantId, 'cpf_cnpj' => '00000000000000'],
                     [
-                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'id' => (string) Str::uuid(),
                         'tipo_pessoa' => 'PJ',
                         'nome_razao_social' => 'Operações Bancárias / Avulsos',
                         'is_fornecedor' => true,
@@ -21946,9 +21947,9 @@ class ConciliacaoController extends Controller
                 );
 
                 // 3. Usa forceFill para injetar direto no banco ignorando proteções de $fillable do Model
-                $novoTitulo = new \App\Models\TituloFinanceiro();
+                $novoTitulo = new TituloFinanceiro();
                 $novoTitulo->forceFill([
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
                     'empresa_id' => $empresaId,
                     'pessoa_id' => $pessoaPadrao->id, // Pessoa garantida!
@@ -21970,20 +21971,33 @@ class ConciliacaoController extends Controller
                 $novoTitulo->save();
 
                 // 4. Atualiza o saldo da conta
-                $conta = \App\Models\ContaFinanceira::findOrFail($validated['conta_financeira_id']);
+                $conta = ContaFinanceira::findOrFail($validated['conta_financeira_id']);
                 $tipoMov = $validated['natureza'] === 'PAGAR' ? 'SAIDA' : 'ENTRADA';
 
-                $conta->update([
-                    'saldo_atual' => $tipoMov === 'ENTRADA'
+                $novoSaldo = $tipoMov === 'ENTRADA'
                         ? $conta->saldo_atual + $validated['valor']
-                        : $conta->saldo_atual - $validated['valor']
+                        : $conta->saldo_atual - $validated['valor'];
+
+                $conta->update(['saldo_atual' => $novoSaldo]);
+
+                // 5. Regista a movimentação do extrato atómica
+                MovimentacaoExtrato::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'conta_financeira_id' => $conta->id,
+                    'titulo_id' => $novoTitulo->id,
+                    'tipo_movimento' => $tipoMov,
+                    'valor' => $validated['valor'],
+                    'data_movimento' => $validated['data_transacao'],
+                    'saldo_apos_movimento' => $novoSaldo,
+                    'descricao' => 'Conciliação OFX: ' . $validated['descricao'],
                 ]);
 
                 return $novoTitulo;
             });
 
             return response()->json(['data' => ['message' => 'Lançamento avulso criado e conciliado com sucesso!', 'titulo' => $titulo]]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json(['error' => ['message' => 'Erro interno ao salvar: ' . $e->getMessage()]], 422);
         }
     }
@@ -22015,10 +22029,9 @@ class ControladoriaController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Retorna a árvore hierárquica (apenas raízes que carregam seus filhos)
         $planos = PlanoConta::where('tenant_id', $tenantId)
             ->whereNull('parent_id')
-            ->with('children.children') // Até 3 níveis para exibição rápida
+            ->with('children.children')
             ->orderBy('codigo')
             ->get();
 
@@ -22036,7 +22049,10 @@ class ControladoriaController extends Controller
             'is_sintetico' => 'boolean'
         ]);
 
-        $plano = PlanoConta::create(array_merge($validated, ['tenant_id' => $tenantId]));
+        $plano = PlanoConta::create(array_merge($validated, [
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId
+        ]));
 
         return response()->json(['data' => $plano], 201);
     }
@@ -22067,7 +22083,10 @@ class ControladoriaController extends Controller
             'is_sintetico' => 'boolean'
         ]);
 
-        $centro = CentroCusto::create(array_merge($validated, ['tenant_id' => $tenantId]));
+        $centro = CentroCusto::create(array_merge($validated, [
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId
+        ]));
 
         return response()->json(['data' => $centro], 201);
     }
@@ -22079,7 +22098,6 @@ class ControladoriaController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Evita duplicidade se já houver plano de contas
         if (\App\Models\PlanoConta::where('tenant_id', $tenantId)->exists()) {
             return response()->json(['error' => ['message' => 'O Tenant já possui uma estrutura de contas cadastrada.']], 422);
         }
@@ -22116,6 +22134,9 @@ class ControladoriaController extends Controller
         return response()->json(['data' => ['message' => 'Estrutura contábil e de centros de custo gerada com sucesso!']]);
     }
 
+    // ==========================================
+    // CONCILIAÇÃO BANCÁRIA
+    // ==========================================
     public function conciliarManual(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -22133,10 +22154,10 @@ class ControladoriaController extends Controller
         $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
 
         try {
-            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId, $request) {
-                // 1. Cria o Título já liquidado
+            $titulo = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $tenantId, $empresaId) {
+
                 $novoTitulo = \App\Models\TituloFinanceiro::create([
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'id' => (string) Str::uuid(),
                     'tenant_id' => $tenantId,
                     'empresa_id' => $empresaId,
                     'plano_conta_id' => $validated['plano_conta_id'],
@@ -22155,7 +22176,6 @@ class ControladoriaController extends Controller
                     'historico' => 'Conciliação Avulsa OFX: ' . $validated['descricao'],
                 ]);
 
-                // 2. Altera o saldo do banco (A tabela de MovimentacaoExtrato deve existir ou ser ignorada caso não a usemos estritamente aqui)
                 $conta = \App\Models\ContaFinanceira::findOrFail($validated['conta_financeira_id']);
                 $tipoMov = $validated['natureza'] === 'PAGAR' ? 'SAIDA' : 'ENTRADA';
 
@@ -22167,9 +22187,118 @@ class ControladoriaController extends Controller
             });
 
             return response()->json(['data' => ['message' => 'Lançamento avulso criado e conciliado!', 'titulo' => $titulo]]);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             return response()->json(['error' => ['message' => $e->getMessage()]], 422);
         }
+    }
+
+    // ==========================================
+    // MOTOR DA DRE (INTELIGÊNCIA FINANCEIRA)
+    // ==========================================
+    public function gerarDre(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        $validated = $request->validate([
+            'data_inicio' => 'required|date',
+            'data_fim' => 'required|date|after_or_equal:data_inicio',
+            'regime' => 'required|string|in:CAIXA,COMPETENCIA'
+        ]);
+
+        $dataInicio = $validated['data_inicio'];
+        $dataFim = $validated['data_fim'];
+        $isCaixa = $validated['regime'] === 'CAIXA';
+
+        // 1. Coleta os títulos financeiros enquadrados no período e regime
+        $queryTitulos = \App\Models\TituloFinanceiro::where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->whereNotNull('plano_conta_id');
+
+        if ($isCaixa) {
+            $queryTitulos->where('status', 'LIQUIDADO')
+                         ->whereBetween('data_liquidacao', [$dataInicio, $dataFim]);
+        } else {
+            $queryTitulos->whereBetween('data_emissao', [$dataInicio, $dataFim]);
+        }
+
+        $titulos = $queryTitulos->get(['plano_conta_id', 'valor_pago_acumulado', 'valor_original']);
+
+        // 2. Agrupa valores absolutos direto no ID da conta analítica
+        $somasPorConta = [];
+        foreach ($titulos as $t) {
+            $contaId = $t->plano_conta_id;
+            if (!isset($somasPorConta[$contaId])) {
+                $somasPorConta[$contaId] = 0.00;
+            }
+            $valor = $isCaixa ? (float) $t->valor_pago_acumulado : (float) $t->valor_original;
+            $somasPorConta[$contaId] += $valor;
+        }
+
+        // 3. Monta a árvore completa do Plano de Contas
+        $planos = PlanoConta::where('tenant_id', $tenantId)
+            ->whereNull('parent_id')
+            ->with('children.children')
+            ->orderBy('codigo')
+            ->get();
+
+        // 4. Agregações recursivas de baixo para cima (Analítico para Sintético)
+        $calcularSaldosRecursivo = function ($nodos) use (&$calcularSaldosRecursivo, $somasPorConta) {
+            $resultado = [];
+            $totalNivel = 0.00;
+
+            foreach ($nodos as $nodo) {
+                $nodoData = [
+                    'id' => $nodo->id,
+                    'codigo' => $nodo->codigo,
+                    'nome' => $nodo->nome,
+                    'tipo' => $nodo->tipo,
+                    'is_sintetico' => $nodo->is_sintetico,
+                    'valor_total' => 0.00,
+                    'children' => []
+                ];
+
+                if ($nodo->is_sintetico && $nodo->children->isNotEmpty()) {
+                    $filhos = $calcularSaldosRecursivo($nodo->children);
+                    $nodoData['children'] = $filhos['nodos'];
+                    $nodoData['valor_total'] = $filhos['total_nivel'];
+                } else {
+                    $nodoData['valor_total'] = $somasPorConta[$nodo->id] ?? 0.00;
+                }
+
+                $totalNivel += $nodoData['valor_total'];
+                $resultado[] = $nodoData;
+            }
+
+            return ['nodos' => $resultado, 'total_nivel' => $totalNivel];
+        };
+
+        $arvoreDre = $calcularSaldosRecursivo($planos)['nodos'];
+
+        // 5. Apuração do Resultado Líquido do Exercício
+        $totalReceitas = 0.00;
+        $totalDespesas = 0.00;
+
+        foreach ($arvoreDre as $nodo) {
+            if ($nodo['tipo'] === 'RECEITA') $totalReceitas += $nodo['valor_total'];
+            if ($nodo['tipo'] === 'DESPESA') $totalDespesas += $nodo['valor_total'];
+        }
+
+        return response()->json([
+            'data' => [
+                'parametros' => [
+                    'regime' => $validated['regime'],
+                    'periodo' => "{$dataInicio} a {$dataFim}"
+                ],
+                'apuracao' => [
+                    'receitas_totais' => $totalReceitas,
+                    'despesas_totais' => $totalDespesas,
+                    'resultado_liquido' => $totalReceitas - $totalDespesas,
+                    'lucro' => ($totalReceitas - $totalDespesas) > 0
+                ],
+                'dre' => $arvoreDre
+            ]
+        ]);
     }
 }
 
@@ -30355,8 +30484,6 @@ namespace App\Models;
 
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -30369,12 +30496,12 @@ class CentroCusto extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'tenant_id', 'parent_id', 'codigo', 'nome', 'is_sintetico', 'is_ativo'
+        'id', 'tenant_id', 'empresa_id', 'parent_id',
+        'codigo', 'nome', 'is_sintetico'
     ];
 
     protected $casts = [
-        'is_sintetico' => 'boolean',
-        'is_ativo' => 'boolean',
+        'is_sintetico' => 'boolean'
     ];
 
     protected static function boot(): void
@@ -30383,14 +30510,11 @@ class CentroCusto extends Model
         static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
     }
 
-    public function parent(): BelongsTo
+    public function children()
     {
-        return $this->belongsTo(CentroCusto::class, 'parent_id');
-    }
-
-    public function children(): HasMany
-    {
-        return $this->hasMany(CentroCusto::class, 'parent_id')->orderBy('codigo');
+        return $this->hasMany(CentroCusto::class, 'parent_id')
+                    ->with('children')
+                    ->orderBy('codigo');
     }
 }
 
@@ -33263,8 +33387,6 @@ namespace App\Models;
 
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -33277,12 +33399,12 @@ class PlanoConta extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'tenant_id', 'parent_id', 'codigo', 'nome', 'tipo', 'is_sintetico', 'is_ativo'
+        'id', 'tenant_id', 'empresa_id', 'parent_id',
+        'codigo', 'nome', 'tipo', 'is_sintetico'
     ];
 
     protected $casts = [
-        'is_sintetico' => 'boolean',
-        'is_ativo' => 'boolean',
+        'is_sintetico' => 'boolean'
     ];
 
     protected static function boot(): void
@@ -33291,14 +33413,12 @@ class PlanoConta extends Model
         static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
     }
 
-    public function parent(): BelongsTo
+    // MÁGICA: Carrega todos os "filhos" recursivamente para formar a árvore no Frontend
+    public function children()
     {
-        return $this->belongsTo(PlanoConta::class, 'parent_id');
-    }
-
-    public function children(): HasMany
-    {
-        return $this->hasMany(PlanoConta::class, 'parent_id')->orderBy('codigo');
+        return $this->hasMany(PlanoConta::class, 'parent_id')
+                    ->with('children')
+                    ->orderBy('codigo');
     }
 }
 
@@ -43697,6 +43817,48 @@ return new class extends Migration
         });
     }
 };
+
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_09_29_222746_create_controladoria_tables.php
+========================================
+
+public function up(): void
+    {
+        if (!Schema::hasTable('fin_planos_contas')) {
+            Schema::create('fin_planos_contas', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('empresa_id')->nullable()->index();
+                $table->uuid('parent_id')->nullable();
+                $table->string('codigo', 50);
+                $table->string('nome', 150);
+                $table->string('tipo', 20)->nullable();
+                $table->boolean('is_sintetico')->default(false);
+                $table->timestamps();
+                $table->softDeletes();
+
+                $table->foreign('parent_id')->references('id')->on('fin_planos_contas')->onDelete('cascade');
+            });
+        }
+
+        if (!Schema::hasTable('fin_centros_custos')) {
+            Schema::create('fin_centros_custos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('empresa_id')->nullable()->index();
+                $table->uuid('parent_id')->nullable();
+                $table->string('codigo', 50);
+                $table->string('nome', 150);
+                $table->boolean('is_sintetico')->default(false);
+                $table->timestamps();
+                $table->softDeletes();
+
+                $table->foreign('parent_id')->references('id')->on('fin_centros_custos')->onDelete('cascade');
+            });
+        }
+    }
 
 
 

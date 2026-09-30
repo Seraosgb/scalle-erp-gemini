@@ -1,5 +1,14 @@
-public function up(): void
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
     {
+        // Só cria se a tabela não existir, evitando erro 42P07
         if (!Schema::hasTable('fin_planos_contas')) {
             Schema::create('fin_planos_contas', function (Blueprint $table) {
                 $table->uuid('id')->primary();
@@ -33,3 +42,10 @@ public function up(): void
             });
         }
     }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('fin_centros_custos');
+        Schema::dropIfExists('fin_planos_contas');
+    }
+};
