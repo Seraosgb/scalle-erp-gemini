@@ -1,0 +1,4569 @@
+﻿ge' => 'Você já possui um cronômetro rodando para esta tarefa.']], 422);
+        }
+
+        $apontamento = Apontamento::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'tarefa_id' => $tarefaId,
+            'usuario_id' => $request->user()->id,
+            'inicio' => now(),
+            'is_faturavel' => true,
+        ]);
+
+        return response()->json(['data' => ['message' => 'Cronômetro iniciado!', 'apontamento' => $apontamento]]);
+    }
+
+    public function stop(Request $request, string $tarefaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $apontamento = Apontamento::where('tenant_id', $tenantId)
+            ->where('tarefa_id', $tarefaId)
+            ->where('usuario_id', $request->user()->id)
+            ->whereNull('fim')
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'descricao' => 'nullable|string'
+        ]);
+
+        $apontamento->update([
+            'fim' => now(),
+            'descricao' => $validated['descricao'] ?? 'Apontamento finalizado via cronômetro.'
+        ]);
+
+        // A MÁGICA DE CORREÇÃO: Procura o Projeto através da Etapa, ignorando falhas do Model Tarefa
+        $vinculo = DB::table('prj_tarefas')
+            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
+            ->where('prj_tarefas.id', $tarefaId)
+            ->select('prj_etapas.projeto_id')
+            ->first();
+
+        $novoCustoTotal = 0.00;
+        if ($vinculo && $vinculo->projeto_id) {
+            // Corrige a tarefa silenciosamente na base de dados
+            DB::table('prj_tarefas')->where('id', $tarefaId)->update(['projeto_id' => $vinculo->projeto_id]);
+
+            $novoCustoTotal = self::recalcularCustoProjeto($vinculo->projeto_id);
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => 'Cronômetro parado! Custo atual do projeto subiu para R$ ' . number_format($novoCustoTotal, 2, ',', '.'),
+                'apontamento' => $apontamento
+            ]
+        ]);
+    }
+
+    /**
+     * Motor Financeiro Absoluto: Soma Horas + Despesas
+     */
+    public static function recalcularCustoProjeto(string $projetoId)
+    {
+        // 1. Somatório das Despesas Externas
+        $totalDespesas = DB::table('prj_projeto_custos')
+            ->where('projeto_id', $projetoId)
+            ->sum('valor');
+
+        $totalDespesas = is_numeric($totalDespesas) ? (float) $totalDespesas : 0.00;
+
+        // 2. Apontamentos (usando a tabela de etapas para garantir o projeto_id correto)
+        $queryApontamentos = DB::table('prj_apontamentos')
+            ->join('prj_tarefas', 'prj_apontamentos.tarefa_id', '=', 'prj_tarefas.id')
+            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
+            ->where('prj_etapas.projeto_id', $projetoId)
+            ->whereNotNull('prj_apontamentos.fim')
+            ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim');
+
+        // Proteção caso a tabela não suporte soft deletes
+        if (Schema::hasColumn('prj_apontamentos', 'deleted_at')) {
+            $queryApontamentos->whereNull('prj_apontamentos.deleted_at');
+        }
+
+        $apontamentos = $queryApontamentos->get();
+
+        // 3. Mapeamento Primitivo de Custos da Equipe
+        $membros = DB::table('prj_projeto_equipe')
+            ->where('projeto_id', $projetoId)
+            ->get();
+
+        $mapaCustos = [];
+        foreach ($membros as $m) {
+            $mapaCustos[$m->usuario_id] = (float) $m->custo_hora;
+        }
+
+        $custoMaoDeObra = 0.00;
+
+        foreach ($apontamentos as $ap) {
+            if (empty($ap->inicio) || empty($ap->fim)) continue;
+
+            $inicio = Carbon::parse($ap->inicio);
+            $fim = Carbon::parse($ap->fim);
+
+            $minutos = $inicio->diffInMinutes($fim);
+            if ($minutos < 1) $minutos = 1;
+
+            $horas = $minutos / 60.0;
+
+            $custoHora = isset($mapaCustos[$ap->usuario_id]) ? $mapaCustos[$ap->usuario_id] : 0.00;
+
+            $custoMaoDeObra += ($horas * $custoHora);
+        }
+
+        $custoTotalReal = $totalDespesas + $custoMaoDeObra;
+
+        // 4. Atualiza o Totalizador do Projeto de forma forçada
+        DB::table('prj_projetos')
+            ->where('id', $projetoId)
+            ->update(['custo_total_real' => $custoTotalReal]);
+
+        return $custoTotalReal;
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\UsuarioController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Empresa;
+use App\Models\Perfil;
+use App\Models\Tenant;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Response;
+
+class UsuarioController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $loggedUser = $request->user();
+        $tenantId = $loggedUser->tenant_id ?? Tenant::first()?->id;
+
+        // Se o usuário logado estava sem tenant_id, auto-repara no banco
+        if (!$loggedUser->tenant_id && $tenantId) {
+            $loggedUser->update(['tenant_id' => $tenantId]);
+        }
+
+        // Busca usuários garantindo compatibilidade com registros antigos
+        $query = User::withoutGlobalScopes()->where(function ($q) use ($tenantId) {
+            $q->where('tenant_id', $tenantId)
+              ->orWhereNull('tenant_id');
+        })->with(['perfil', 'empresaPadrao']);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'ILIKE', "%{$search}%")
+                  ->orWhere('email', 'ILIKE', "%{$search}%")
+                  ->orWhere('telefone', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('is_ativo')) {
+            $query->where('is_ativo', filter_var($request->get('is_ativo'), FILTER_VALIDATE_BOOLEAN));
+        }
+
+        $usuarios = $query->orderBy('name')->get();
+
+        // Garante que todos os usuários listados tenham o tenant_id preenchido
+        foreach ($usuarios as $u) {
+            if (empty($u->tenant_id) && $tenantId) {
+                $u->update(['tenant_id' => $tenantId]);
+            }
+        }
+
+        $perfis = Perfil::withoutGlobalScopes()->where(function ($q) use ($tenantId) {
+            $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id');
+        })->get();
+
+        return response()->json([
+            'data' => [
+                'usuarios' => $usuarios,
+                'perfis' => $perfis,
+            ]
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $loggedUser = $request->user();
+        $tenantId = $loggedUser->tenant_id ?? Tenant::first()?->id;
+
+        $assinatura = Assinatura::where('tenant_id', $tenantId)->with('plano')->first();
+        if ($assinatura && $assinatura->plano) {
+            $totalUsuarios = User::withoutGlobalScopes()->where('tenant_id', $tenantId)->count();
+            if ($totalUsuarios >= $assinatura->plano->limite_usuarios) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'USER_QUOTA_EXCEEDED',
+                        'message' => "Limite de assentos atingido ({$assinatura->plano->limite_usuarios} usuários no plano {$assinatura->plano->nome}). Faça upgrade para adicionar mais membros.",
+                    ]
+                ], Response::HTTP_PAYMENT_REQUIRED);
+            }
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:150',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:6',
+            'telefone' => 'nullable|string|max:30',
+            'perfil_id' => 'nullable|uuid|exists:sis_perfis,id',
+            'empresa_padrao_id' => 'nullable|uuid|exists:sis_empresas,id',
+        ]);
+
+        $empresaPadrao = $validated['empresa_padrao_id']
+                      ?? $loggedUser->empresa_padrao_id
+                      ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $usuario = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => $validated['password'], // Removido o Hash::make()            'telefone' => $validated['telefone'] ?? null,
+            'perfil_id' => $validated['perfil_id'] ?? null,
+            'empresa_padrao_id' => $empresaPadrao,
+            'is_ativo' => true,
+        ]);
+
+        return response()->json(['data' => $usuario->load('perfil', 'empresaPadrao')], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $usuario = User::withoutGlobalScopes()->findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:150',
+            'email' => "required|email|unique:users,email,{$id},id",
+            'password' => 'nullable|string|min:6',
+            'telefone' => 'nullable|string|max:30',
+            'perfil_id' => 'nullable|uuid|exists:sis_perfis,id',
+            'empresa_padrao_id' => 'nullable|uuid|exists:sis_empresas,id',
+            'is_ativo' => 'boolean',
+        ]);
+
+        $usuario->name = $validated['name'];
+        $usuario->email = $validated['email'];
+        $usuario->telefone = $validated['telefone'] ?? null;
+        $usuario->perfil_id = $validated['perfil_id'] ?? null;
+        $usuario->empresa_padrao_id = $validated['empresa_padrao_id'] ?? $usuario->empresa_padrao_id;
+
+        if (empty($usuario->tenant_id) && $tenantId) {
+            $usuario->tenant_id = $tenantId;
+        }
+
+        if (isset($validated['is_ativo'])) {
+            $usuario->is_ativo = $validated['is_ativo'];
+        }
+
+        if (!empty($validated['password'])) {
+                $usuario->password = $validated['password']; // Removido o Hash::make()
+            }
+
+        $usuario->save();
+
+        return response()->json(['data' => $usuario->load('perfil', 'empresaPadrao')]);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $usuario = User::withoutGlobalScopes()->findOrFail($id);
+
+        if ($usuario->id === $request->user()->id) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SELF_DELETE_FORBIDDEN',
+                    'message' => 'Você não pode excluir seu próprio usuário logado.',
+                ]
+            ], 422);
+        }
+
+        $usuario->delete();
+
+        return response()->json(['data' => ['message' => 'Usuário removido com sucesso.']]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\VendaController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Empresa;
+use App\Models\PedidoVenda;
+use App\Models\Pessoa;
+use App\Models\PdvCaixa;
+use App\Models\PdvMovimentacao;
+use App\Services\MotorFiscalService;
+use App\Services\VendaService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+
+class VendaController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = PedidoVenda::where('tenant_id', $tenantId)
+            ->with(['cliente', 'vendedor', 'itens.item', 'pagamentos']);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('numero_pedido', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('cliente', fn($c) => $c->where('nome_razao_social', 'ILIKE', "%{$search}%"));
+            });
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->get('status'));
+        }
+
+        if ($request->filled('tipo_documento')) {
+            $query->where('tipo_documento', $request->get('tipo_documento'));
+        }
+
+        $vendas = $query->orderByDesc('created_at')->paginate(15);
+
+        return response()->json($vendas);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $pedido = PedidoVenda::where('tenant_id', $tenantId)
+            ->with(['cliente', 'vendedor', 'deposito', 'itens.item', 'pagamentos'])
+            ->findOrFail($id);
+
+        return response()->json(['data' => $pedido]);
+    }
+
+    public function faturar(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
+            'desconto_geral' => 'nullable|numeric|min:0',
+            'itens' => 'required|array|min:1',
+            'itens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'itens.*.quantidade' => 'required|numeric|min:0.0001',
+            'itens.*.preco_unitario' => 'required|numeric|min:0',
+            'itens.*.desconto_unitario' => 'nullable|numeric|min:0',
+            'itens.*.lote' => 'nullable|string|max:50',
+            'pagamentos' => 'required|array|min:1',
+            'pagamentos.*.forma_pagamento' => 'required|string',
+            'pagamentos.*.valor_pago' => 'required|numeric|min:0.01',
+            'pagamentos.*.valor_troco' => 'nullable|numeric|min:0',
+            'emitir_cupom_fiscal' => 'nullable|boolean',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $clienteId = self::resolverClienteId($validated['cliente_id'] ?? null, $tenantId);
+
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
+                  ?? Empresa::first()->id;
+
+        try {
+            $pedido = VendaService::faturarVenda(
+                $empresaId,
+                $clienteId,
+                $validated['deposito_id'],
+                $request->user(),
+                $validated['itens'],
+                $validated['pagamentos'],
+                (float) ($validated['desconto_geral'] ?? 0.00),
+                'PDV'
+            );
+
+            // INTEGRAÇÃO BLINDADA COM A GAVETA DE DINHEIRO DO PDV
+            $caixa = PdvCaixa::where('usuario_id', $request->user()->id)->where('status', 'ABERTO')->first();
+            if ($caixa) {
+                foreach ($validated['pagamentos'] as $pag) {
+                    if (strtoupper($pag['forma_pagamento']) === 'DINHEIRO') {
+                        $valorTroco = (float) ($pag['valor_troco'] ?? 0.00);
+                        $valorLiquido = (float) $pag['valor_pago'] - $valorTroco;
+
+                        if ($valorLiquido > 0) {
+                            PdvMovimentacao::create([
+                                'id' => (string) Str::uuid(),
+                                'tenant_id' => $tenantId,
+                                'caixa_id' => $caixa->id,
+                                'tipo_movimento' => 'VENDA_DINHEIRO',
+                                'valor' => $valorLiquido,
+                                'forma_pagamento' => 'DINHEIRO',
+                                'observacoes' => "Venda Balcão #{$pedido->numero_pedido}",
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            $docFiscal = null;
+            $cupomBase64 = null;
+
+            // EMISSÃO HÍBRIDA DO CUPOM FISCAL TÉRMICO (NFC-e)
+            if (!empty($validated['emitir_cupom_fiscal']) && $pedido->status === 'FATURADO') {
+                $itensFiscal = $pedido->itens->map(fn($i) => [
+                    'tipo_item' => 'PRODUTO',
+                    'cfop' => $i->item->cfop_padrao ?? '5102',
+                    'valor_total' => (float) $i->valor_total_liquido,
+                ])->toArray();
+
+                // 1. Resolvemos explicitamente as entidades
+                $clienteModel = Pessoa::find($clienteId);
+                $empresaModel = Empresa::find($empresaId);
+
+                // 2. Passa o Modelo 65 para acionar o layout do Consumidor
+                $docFiscal = MotorFiscalService::prepararDocumento(
+                    $empresaModel,
+                    $clienteModel,
+                    '65',
+                    $itensFiscal
+                );
+
+                // 3. Disparo Síncrono
+                MotorFiscalService::processarTransmissaoSefaz($docFiscal);
+                $docFiscal->refresh();
+
+                // 4. Converte o XML em PDF
+                $cupomBase64 = MotorFiscalService::gerarDanfceBase64($docFiscal);
+            }
+
+            return response()->json([
+                'data' => [
+                    'message' => $pedido->status === 'AGUARDANDO_APROVACAO'
+                        ? "Venda registrada, aguardando aprovação!"
+                        : "Venda #{$pedido->numero_pedido} faturada com sucesso!",
+                    'pedido' => $pedido->load('itens.item', 'pagamentos', 'cliente'),
+                    'documento_fiscal' => $docFiscal,
+                    'cupom_termico_base64' => $cupomBase64,
+                ]
+            ], 201);
+
+        // Captura \Throwable para apanhar TypeErrors e Errors nativos do PHP
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SALE_ERROR',
+                    'message' => $e->getMessage() . ' no ficheiro ' . basename($e->getFile()) . ' linha ' . $e->getLine(),
+                ]
+            ], 422);
+        }
+    }
+
+    public function orcamento(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
+            'desconto_geral' => 'nullable|numeric|min:0',
+            'data_validade' => 'nullable|date',
+            'itens' => 'required|array|min:1',
+            'itens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'itens.*.quantidade' => 'required|numeric|min:0.0001',
+            'itens.*.preco_unitario' => 'required|numeric|min:0',
+            'itens.*.desconto_unitario' => 'nullable|numeric|min:0',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
+                  ?? Empresa::first()->id;
+
+        try {
+            $orcamento = VendaService::criarOrcamento(
+                $empresaId,
+                $validated['cliente_id'],
+                $validated['deposito_id'],
+                $request->user(),
+                $validated['itens'],
+                (float) ($validated['desconto_geral'] ?? 0.00),
+                $validated['data_validade'] ?? null
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => "Orçamento #{$orcamento->numero_pedido} registrado com sucesso!",
+                    'orcamento' => $orcamento->load('itens.item', 'cliente'),
+                ]
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function converter(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pedido = PedidoVenda::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'pagamentos' => 'required|array|min:1',
+            'pagamentos.*.forma_pagamento' => 'required|string',
+            'pagamentos.*.valor_pago' => 'required|numeric|min:0.01',
+            'pagamentos.*.valor_troco' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $pedidoConvertido = VendaService::converterOrcamento($pedido, $validated['pagamentos'], $request->user());
+
+            return response()->json([
+                'data' => [
+                    'message' => "Orçamento #{$pedidoConvertido->numero_pedido} convertido em venda faturada!",
+                    'pedido' => $pedidoConvertido->load('itens.item', 'pagamentos', 'cliente'),
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function cancelar(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pedido = PedidoVenda::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'motivo' => 'required|string|max:255',
+        ]);
+
+        try {
+            $pedidoCancelado = VendaService::cancelarVenda($pedido, $validated['motivo'], $request->user());
+
+            return response()->json([
+                'data' => [
+                    'message' => "Pedido #{$pedidoCancelado->numero_pedido} cancelado e estoque estornado com sucesso!",
+                    'pedido' => $pedidoCancelado,
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function metricas(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $hoje = now()->toDateString();
+        $vendasHoje = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereDate('data_emissao', $hoje)
+            ->sum('valor_total_liquido') ?? 0.00;
+
+        $qtdHoje = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereDate('data_emissao', $hoje)
+            ->count();
+
+        $orcamentosAbertos = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'ORCAMENTO')
+            ->count();
+
+        $totalMes = PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereMonth('data_emissao', now()->month)
+            ->whereYear('data_emissao', now()->year)
+            ->sum('valor_total_liquido') ?? 0.00;
+
+        return response()->json([
+            'data' => [
+                'faturamento_hoje' => (float) $vendasHoje,
+                'vendas_hoje_qtd' => (int) $qtdHoje,
+                'orcamentos_abertos_qtd' => (int) $orcamentosAbertos,
+                'faturamento_mes' => (float) $totalMes,
+            ]
+        ]);
+    }
+
+    private static function resolverClienteId(?string $clienteId, string $tenantId): string
+    {
+        if (!empty($clienteId)) {
+            return $clienteId;
+        }
+
+        $consumidor = Pessoa::where('tenant_id', $tenantId)->where('cpf_cnpj', '00000000000')->first();
+        if (!$consumidor) {
+            $consumidor = Pessoa::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'tipo_pessoa' => 'PF',
+                'nome_razao_social' => 'Consumidor Final',
+                'cpf_cnpj' => '00000000000',
+                'is_cliente' => true,
+                'is_ativo' => true,
+            ]);
+        }
+        return $consumidor->id;
+    }
+
+    public function listarAlcadasPendentes(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $alcadas = \App\Models\AlcadaAprovacao::where('tenant_id', $tenantId)
+            ->where('status', 'PENDENTE')
+            ->with(['solicitante'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $alcadas]);
+    }
+
+    public function responderAlcada(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $alcada = \App\Models\AlcadaAprovacao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'status' => 'required|string|in:APROVADO,REJEITADO',
+            'justificativa' => 'nullable|string|max:255',
+        ]);
+
+        $statusAprov = $validated['status'];
+        $user = $request->user();
+
+        \DB::transaction(function () use ($alcada, $statusAprov, $validated, $user) {
+            $alcada->update([
+                'aprovador_id' => $user->id,
+                'status' => $statusAprov,
+                'justificativa_resposta' => $validated['justificativa'] ?? null,
+                'respondido_em' => now(),
+            ]);
+
+            if ($alcada->entidade_origem === 'pedidos' || $alcada->entidade_origem === 'vendas') {
+                $pedido = \App\Models\PedidoVenda::find($alcada->registro_origem_id);
+                if ($pedido) {
+                    if ($statusAprov === 'APROVADO') {
+                        $pedido->update(['status' => 'FATURADO']);
+
+                        foreach ($pedido->itens as $item) {
+                            \App\Services\EstoqueService::movimentar(
+                                $pedido->deposito_saida_id,
+                                $item->item_id,
+                                (float) $item->quantidade,
+                                'SAIDA_VENDA',
+                                $user->id,
+                                'vendas',
+                                $pedido->id,
+                                $item->lote,
+                                (float) $item->preco_venda_unitario
+                            );
+                        }
+                    } else {
+                        $pedido->update(['status' => 'CANCELADO', 'observacoes' => 'Desconto rejeitado pela gerência']);
+                    }
+                }
+            }
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => "Solicitação de alçada {$statusAprov} com sucesso!",
+                'alcada' => $alcada
+            ]
+        ]);
+    }
+
+    public function extratoComissoes(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $dtInicio = $request->get('data_inicio', now()->startOfMonth()->toDateString());
+        $dtFim = $request->get('data_fim', now()->endOfMonth()->toDateString());
+
+        $vendas = \App\Models\PedidoVenda::where('tenant_id', $tenantId)
+            ->where('status', 'FATURADO')
+            ->whereBetween('data_emissao', [$dtInicio, $dtFim])
+            ->with(['vendedor', 'cliente'])
+            ->orderByDesc('data_emissao')
+            ->get();
+
+        $totalComissoes = $vendas->sum('valor_comissao_vendedor') ?? 0.00;
+        $totalVendas = $vendas->sum('valor_total_liquido') ?? 0.00;
+
+        return response()->json([
+            'data' => [
+                'periodo' => ['inicio' => $dtInicio, 'fim' => $dtFim],
+                'total_faturamento' => (float) $totalVendas,
+                'total_comissoes' => (float) $totalComissoes,
+                'vendas' => $vendas,
+            ]
+        ]);
+    }
+
+    public function listarRegrasComissao(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $regras = \App\Models\RegraComissao::where('tenant_id', $tenantId)
+            ->with('categoria')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $regras]);
+    }
+
+    public function storeRegraComissao(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'cargo_ou_perfil' => 'required|string|max:50',
+            'categoria_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+            'faixa_valor_min' => 'nullable|numeric|min:0',
+            'faixa_valor_max' => 'nullable|numeric|min:0',
+            'percentual_comissao' => 'required|numeric|min:0|max:100',
+        ]);
+
+        $regra = \App\Models\RegraComissao::create([
+            'tenant_id' => $tenantId,
+            'empresa_id' => $empresaId,
+            'cargo_ou_perfil' => strtoupper($validated['cargo_ou_perfil']),
+            'categoria_id' => $validated['categoria_id'] ?? null,
+            'faixa_valor_min' => (float) ($validated['faixa_valor_min'] ?? 0.00),
+            'faixa_valor_max' => !empty($validated['faixa_valor_max']) ? (float) $validated['faixa_valor_max'] : null,
+            'percentual_comissao' => (float) $validated['percentual_comissao'],
+            'is_ativo' => true,
+        ]);
+
+        return response()->json(['data' => $regra->load('categoria')], 201);
+    }
+
+    public function toggleRegraComissao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $regra = \App\Models\RegraComissao::where('tenant_id', $tenantId)->findOrFail($id);
+        $regra->update(['is_ativo' => !$regra->is_ativo]);
+
+        return response()->json(['data' => $regra]);
+    }
+
+    public function processarCartaoPdv(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'valor' => 'required|numeric|min:0.01',
+            'modalidade' => 'required|string|in:CARTAO_CREDITO,CARTAO_DEBITO',
+            'parcelas' => 'nullable|integer|min:1|max:12',
+            'dados_cartao' => 'nullable|array',
+        ]);
+
+        try {
+            $resultado = \App\Services\CartaoGatewayService::processarTransacao(
+                (float) $validated['valor'],
+                $validated['modalidade'],
+                (int) ($validated['parcelas'] ?? 1),
+                $validated['dados_cartao'] ?? null
+            );
+
+            return response()->json(['data' => $resultado]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CARD_PROCESSING_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\CheckMaster.php
+========================================
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class CheckMaster
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        $user = $request->user();
+
+        if (!$user || !$user->is_master) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MASTER_ACCESS_REQUIRED',
+                    'message' => 'Acesso restrito ao Administrador Global (SaaS Owner).',
+                ]
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        return $next($request);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\CheckPermission.php
+========================================
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class CheckPermission
+{
+    public function handle(Request $request, Closure $next, string $permission): Response
+    {
+        $user = $request->user();
+
+        if (!$user || !$user->hasPermission($permission)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN_ACCESS',
+                    'message' => 'Você não possui permissão para executar esta ação.',
+                ]
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        return $next($request);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\CheckProjetoStatus.php
+========================================
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\DB;
+
+class CheckProjetoStatus
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        // Só bloqueia ações de alteração (POST, PUT, PATCH, DELETE)
+        if ($request->isMethod('get')) {
+            return $next($request);
+        }
+
+        // Tenta encontrar o ID do projeto na rota ou no body da requisição
+        $projetoId = $request->route('projetoId') ?? $request->route('id') ?? $request->input('projeto_id');
+
+        if (!$projetoId) {
+            // Se for uma rota de tarefa (ex: mover tarefa, timer, anexo), precisamos buscar a qual projeto a tarefa pertence
+            $tarefaId = $request->route('tarefaId') ?? $request->input('tarefa_id');
+            if ($tarefaId) {
+                $projetoId = DB::table('prj_tarefas')->where('id', $tarefaId)->value('projeto_id');
+            }
+        }
+
+        if ($projetoId) {
+            $status = DB::table('prj_projetos')->where('id', $projetoId)->value('status');
+
+            if ($status && in_array($status, ['CONCLUIDO', 'CANCELADO'])) {
+                return response()->json([
+                    'error' => [
+                        'message' => 'O projeto está ' . $status . ' e encontra-se bloqueado para novas alterações (Modo Somente Leitura).'
+                    ]
+                ], 403);
+            }
+        }
+
+        return $next($request);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\CheckStorageQuota.php
+========================================
+<?php
+
+namespace App\Http\Middleware;
+
+use App\Models\Assinatura;
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class CheckStorageQuota
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        $user = $request->user();
+        $tenantId = $user?->tenant_id ?? (app()->bound('current_tenant_id') ? app('current_tenant_id') : null);
+
+        if ($tenantId && ($request->hasFile('file') || $request->hasFile('xml_file') || $request->hasFile('foto'))) {
+            $assinatura = Assinatura::withoutGlobalScopes()->where('tenant_id', $tenantId)->with('plano')->first();
+
+            if ($assinatura && $assinatura->plano && !empty($assinatura->plano->cota_storage_bytes)) {
+                $tamanhoUpload = 0;
+                foreach ($request->allFiles() as $arquivo) {
+                    $tamanhoUpload += is_array($arquivo) ? 0 : $arquivo->getSize();
+                }
+
+                $novoTotal = ($assinatura->storage_utilizado_bytes ?? 0) + $tamanhoUpload;
+
+                if ($novoTotal > $assinatura->plano->cota_storage_bytes) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'STORAGE_QUOTA_EXCEEDED',
+                            'message' => 'Limite de armazenamento do plano atingido (' . round($assinatura->plano->cota_storage_bytes / 1073741824, 1) . ' GB). Faça um upgrade para continuar.',
+                        ]
+                    ], Response::HTTP_PAYMENT_REQUIRED);
+                }
+            }
+        }
+
+        return $next($request);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\CheckSubscriptionStatus.php
+========================================
+<?php
+
+namespace App\Http\Middleware;
+
+use App\Models\Assinatura;
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class CheckSubscriptionStatus
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        $user = $request->user();
+
+        // 1. SaaS Owner Master ou usuários sem autenticação passam direto
+        if (!$user || $user->is_master) {
+            return $next($request);
+        }
+
+        $tenantId = $user->tenant_id ?? (app()->bound('current_tenant_id') ? app('current_tenant_id') : null);
+
+        if ($tenantId) {
+            $assinatura = Assinatura::withoutGlobalScopes()->where('tenant_id', $tenantId)->first();
+
+            if ($assinatura && !empty($assinatura->status)) {
+                $statusBloqueio = in_array(strtoupper($assinatura->status), ['SOFT_LOCK', 'SUSPENSO', 'INADIMPLENTE', 'CANCELADO']);
+                $isMutacao = in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE']);
+
+                // Rotas de exceção liberadas
+                $isRotaExcecao = $request->is('api/billing/*') 
+                              || $request->is('api/master/*') 
+                              || $request->is('api/empresas/trocar-contexto') 
+                              || $request->is('api/auth/*');
+
+                if ($statusBloqueio && $isMutacao && !$isRotaExcecao) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'ACCOUNT_SOFT_LOCKED',
+                            'message' => 'Sua conta está em modo Somente Leitura (Soft-Lock). Regularize sua assinatura para realizar novas operações.',
+                        ]
+                    ], Response::HTTP_PAYMENT_REQUIRED);
+                }
+            }
+        }
+
+        return $next($request);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\IdentifyEmpresa.php
+========================================
+<?php
+
+namespace App\Http\Middleware;
+
+use App\Models\Empresa;
+use Closure;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
+use Symfony\Component\HttpFoundation\Response;
+
+class IdentifyEmpresa
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        $user = $request->user();
+
+        if ($user) {
+            $tenantId = $user->tenant_id ?? (App::bound('current_tenant_id') ? App::make('current_tenant_id') : null);
+
+            // Permite header explícito X-Empresa-Id ou fallback para a empresa padrão do operador
+            $headerEmpresaId = $request->header('X-Empresa-Id');
+
+            $empresaId = null;
+            if (!empty($headerEmpresaId)) {
+                $existe = Empresa::withoutGlobalScopes()
+                    ->where('tenant_id', $tenantId)
+                    ->where('id', $headerEmpresaId)
+                    ->exists();
+
+                if ($existe) {
+                    $empresaId = $headerEmpresaId;
+                }
+            }
+
+            if (!$empresaId) {
+                $empresaId = $user->empresa_padrao_id
+                    ?? Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->orderByDesc('is_matriz')->value('id');
+            }
+
+            if ($empresaId) {
+                App::instance('current_empresa_id', $empresaId);
+            }
+        }
+
+        return $next($request);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Middleware\IdentifyTenant.php
+========================================
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
+use Symfony\Component\HttpFoundation\Response;
+
+class IdentifyTenant
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        $user = $request->user();
+
+        if ($user && !empty($user->tenant_id)) {
+            // Injeta o tenant_id ativo no container da aplicação para os Global Scopes
+            App::instance('current_tenant_id', $user->tenant_id);
+        }
+
+        return $next($request);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Interfaces\FiscalDriverInterface.php
+========================================
+<?php
+
+namespace App\Interfaces;
+
+use App\Models\DocumentoFiscal;
+
+interface FiscalDriverInterface
+{
+    /**
+     * Configura o driver dinamicamente com o certificado do Tenant atual.
+     */
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = ''): self;
+
+    public function emitir(array $dadosEmissao): DocumentoFiscal;
+    public function cancelar(string $chaveAcesso, string $justificativa): bool;
+    public function consultar(string $chaveAcesso): array;
+    public function corrigir(string $chaveAcesso, string $correcao): bool;
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Jobs\TransmitirDocumentoFiscalJob.php
+========================================
+<?php
+
+namespace App\Jobs;
+
+use App\Models\DocumentoFiscal;
+use App\Services\MotorFiscalService;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+class TransmitirDocumentoFiscalJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public $documentoId;
+
+    // Resiliência SEFAZ: Tenta 3 vezes antes de falhar
+    public $tries = 3;
+
+    // Espera 10s na primeira falha, 30s na segunda e 60s na terceira
+    public $backoff = [10, 30, 60];
+
+    public function __construct(string $documentoId)
+    {
+        $this->documentoId = $documentoId;
+    }
+
+    public function handle(): void
+    {
+        $documento = DocumentoFiscal::find($this->documentoId);
+
+        if (!$documento || $documento->status !== 'PROCESSANDO') {
+            return; // Aborta se não existir ou já tiver sido processado
+        }
+
+        try {
+            // Aciona o Motor para assinar o XML e enviar para a SEFAZ
+            MotorFiscalService::processarTransmissaoSefaz($documento);
+
+            Log::info("NF-e {$documento->id} transmitida com sucesso de forma assíncrona.");
+
+        } catch (Throwable $e) {
+            Log::warning("Falha temporária ao transmitir NF-e {$documento->id} - Tentativa: " . $this->attempts());
+            throw $e; // O throw faz o Laravel jogar de volta pra fila e respeitar o $backoff
+        }
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        // Se esgotar as 3 tentativas, marca como Falha Técnica para o usuário poder reenviar
+        $documento = DocumentoFiscal::find($this->documentoId);
+        if ($documento) {
+            $documento->update([
+                'status' => 'FALHA_COMUNICACAO',
+                'mensagem_sefaz' => 'Falha após múltiplas tentativas: ' . $exception->getMessage()
+            ]);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\AlcadaAprovacao.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class AlcadaAprovacao extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'sis_alcadas_aprovacoes';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'solicitante_id',
+        'aprovador_id',
+        'tipo_operacao',
+        'entidade_origem',
+        'registro_origem_id',
+        'valor_solicitado',
+        'percentual_solicitado',
+        'status',
+        'justificativa_solicitacao',
+        'justificativa_resposta',
+        'respondido_em',
+    ];
+
+    protected $casts = [
+        'valor_solicitado' => 'decimal:2',
+        'percentual_solicitado' => 'decimal:2',
+        'respondido_em' => 'datetime',
+    ];
+
+    public function solicitante(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'solicitante_id');
+    }
+
+    public function aprovador(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'aprovador_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Apontamento.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Apontamento extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'prj_apontamentos';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'tarefa_id', 'usuario_id',
+        'inicio', 'fim', 'descricao', 'is_faturavel'
+    ];
+
+    public function tarefa()
+    {
+        return $this->belongsTo(Tarefa::class, 'tarefa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Assinatura.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Assinatura extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'sis_assinaturas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'plano_id',
+        'status',
+        'data_inicio',
+        'data_proximo_vencimento',
+        'storage_utilizado_bytes',
+    ];
+
+    protected $casts = [
+        'data_inicio' => 'date',
+        'data_proximo_vencimento' => 'date',
+        'storage_utilizado_bytes' => 'integer',
+    ];
+
+    public function plano(): BelongsTo
+    {
+        return $this->belongsTo(Plano::class, 'plano_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\AuditoriaLog.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class AuditoriaLog extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'sis_auditoria_logs';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false; // Usa apenas created_at
+
+    protected $fillable = [
+        'id', 'tenant_id', 'usuario_id', 'acao', 'modulo',
+        'tabela_entidade', 'registro_id', 'valores_anteriores',
+        'valores_novos', 'ip', 'user_agent', 'created_at'
+    ];
+
+    protected $casts = [
+        'valores_anteriores' => 'array',
+        'valores_novos' => 'array',
+        'created_at' => 'datetime',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function usuario(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'usuario_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\AvaliacaoDesempenho.php
+========================================
+<?php
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class AvaliacaoDesempenho extends Model {
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+    protected $table = 'rh_avaliacoes_desempenho';
+    protected $fillable = ['tenant_id', 'empresa_id', 'colaborador_id', 'eixo_x_id', 'nota_x', 'eixo_y_id', 'nota_y', 'data_avaliacao', 'observacoes_gestor'];
+
+    public function pdis() {
+        return $this->hasMany(Pdi::class, 'avaliacao_id');
+    }
+    public function colaborador() {
+        return $this->belongsTo(Colaborador::class, 'colaborador_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Candidato.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Candidato extends Model
+{
+    use HasUuids, SoftDeletes, BelongsToTenant;
+
+    protected $table = 'rh_candidatos';
+
+    protected $fillable = [
+        'tenant_id', 'vaga_id', 'nome', 'email', 'telefone', 'etapa_kanban', 'observacoes'
+    ];
+
+    public function vaga(): BelongsTo
+    {
+        return $this->belongsTo(Vaga::class, 'vaga_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CentroCusto.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class CentroCusto extends Model
+{
+    use SoftDeletes, BelongsToTenant;
+
+    protected $table = 'fin_centros_custos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'parent_id',
+        'codigo', 'nome', 'is_sintetico'
+    ];
+
+    protected $casts = [
+        'is_sintetico' => 'boolean'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function children()
+    {
+        return $this->hasMany(CentroCusto::class, 'parent_id')
+                    ->with('children')
+                    ->orderBy('codigo');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CertificadoA1.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class CertificadoA1 extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'fis_certificados_a1';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'nome_arquivo_original',
+        'arquivo_binario_criptografado', 'senha_criptografada',
+        'cnpj_certificado', 'razao_social_certificado',
+        'valido_de', 'valido_ate', 'ambiente_emissao', 'is_ativo'
+    ];
+
+    protected $casts = [
+        'valido_de' => 'datetime',
+        'valido_ate' => 'datetime',
+        'is_ativo' => 'boolean'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Colaborador.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Colaborador extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'rh_colaboradores';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'usuario_id',
+        'pessoa_id',
+        'matricula',
+        'cargo',
+        'departamento',
+        'data_admissao',
+        'data_demissao',
+        'salario_base',
+        'tipo_contrato',
+        'status',
+    ];
+
+    protected $casts = [
+        'data_admissao' => 'date',
+        'data_demissao' => 'date',
+        'salario_base' => 'decimal:2',
+    ];
+
+    public function pessoa(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'pessoa_id');
+    }
+
+    public function usuario(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'usuario_id');
+    }
+
+    public function pontos(): HasMany
+    {
+        return $this->hasMany(PontoRegistro::class, 'colaborador_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Compra.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Compra extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'cmp_compras';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'fornecedor_id',
+        'deposito_destino_id',
+        'comprador_id',
+        'numero_nota',
+        'serie_nota',
+        'chave_acesso_nfe',
+        'status',
+        'data_emissao',
+        'data_entrada',
+        'valor_produtos',
+        'valor_frete',
+        'valor_seguro',
+        'valor_desconto',
+        'valor_outras_despesas',
+        'valor_total',
+        'observacoes',
+        'xml_conteudo',
+    ];
+
+    protected $casts = [
+        'data_emissao' => 'date',
+        'data_entrada' => 'date',
+        'valor_produtos' => 'decimal:2',
+        'valor_frete' => 'decimal:2',
+        'valor_seguro' => 'decimal:2',
+        'valor_desconto' => 'decimal:2',
+        'valor_outras_despesas' => 'decimal:2',
+        'valor_total' => 'decimal:2',
+    ];
+
+    public function fornecedor(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'fornecedor_id');
+    }
+
+    public function depositoDestino(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_destino_id');
+    }
+
+    public function itens(): HasMany
+    {
+        return $this->hasMany(CompraItem::class, 'compra_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CompraItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class CompraItem extends Model
+{
+    protected $table = 'cmp_compra_itens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'compra_id',
+        'item_id',
+        'codigo_fornecedor',
+        'descricao_fornecedor',
+        'unidade_fornecedor',
+        'fator_conversao',
+        'quantidade_comercial',
+        'quantidade_estoque',
+        'valor_unitario',
+        'valor_total_item',
+        'lote',
+        'data_validade',
+    ];
+
+    protected $casts = [
+        'fator_conversao' => 'decimal:4',
+        'quantidade_comercial' => 'decimal:4',
+        'quantidade_estoque' => 'decimal:4',
+        'valor_unitario' => 'decimal:4',
+        'valor_total_item' => 'decimal:2',
+        'data_validade' => 'date',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function compra(): BelongsTo
+    {
+        return $this->belongsTo(Compra::class, 'compra_id');
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\ContaFinanceira.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class ContaFinanceira extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'fin_contas_financeiras';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'nome',
+        'tipo_conta',
+        'codigo_banco',
+        'agencia',
+        'numero_conta',
+        'saldo_inicial',
+        'saldo_atual',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'saldo_inicial' => 'decimal:2',
+        'saldo_atual' => 'decimal:2',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+
+    public function movimentacoes(): HasMany
+    {
+        return $this->hasMany(MovimentacaoExtrato::class, 'conta_financeira_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CotacaoCompra.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class CotacaoCompra extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'cmp_cotacoes';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'solicitante_id',
+        'deposito_destino_id', 'titulo', 'status',
+        'data_limite_resposta', 'fornecedor_vencedor_id', 'observacoes'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function itens(): HasMany
+    {
+        return $this->hasMany(CotacaoCompraItem::class, 'cotacao_id');
+    }
+
+    public function propostas(): HasMany
+    {
+        return $this->hasMany(CotacaoProposta::class, 'cotacao_id')->with(['fornecedor', 'itens']);
+    }
+
+    public function deposito(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_destino_id');
+    }
+
+    public function fornecedorVencedor(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'fornecedor_vencedor_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CotacaoCompraItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class CotacaoCompraItem extends Model
+{
+    protected $table = 'cmp_cotacao_itens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = ['id', 'cotacao_id', 'item_id', 'quantidade'];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CotacaoProposta.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
+
+class CotacaoProposta extends Model
+{
+    protected $table = 'cmp_cotacao_propostas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'cotacao_id', 'fornecedor_id', 'valor_total', 
+        'valor_frete', 'prazo_entrega_dias', 'condicoes_pagamento', 
+        'is_vencedora', 'observacoes'
+    ];
+
+    protected $casts = [
+        'valor_total' => 'decimal:2',
+        'valor_frete' => 'decimal:2',
+        'is_vencedora' => 'boolean'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function fornecedor(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'fornecedor_id');
+    }
+
+    public function itens(): HasMany
+    {
+        return $this->hasMany(CotacaoPropostaItem::class, 'proposta_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CotacaoPropostaItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class CotacaoPropostaItem extends Model
+{
+    protected $table = 'cmp_cotacao_proposta_itens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = ['id', 'proposta_id', 'cotacao_item_id', 'valor_unitario', 'valor_total'];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CrmFunil.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class CrmFunil extends Model
+{
+    use HasFactory;
+
+    protected $table = 'crm_funis';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'nome',
+        'descricao',
+        'cor_hex',
+        'token_captacao',
+        'is_padrao',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'is_padrao' => 'boolean',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function etapas(): HasMany
+    {
+        return $this->hasMany(CrmFunilEtapa::class, 'funil_id')->orderBy('ordem_exibicao', 'asc');
+    }
+
+    public function oportunidades(): HasMany
+    {
+        return $this->hasMany(CrmOportunidade::class, 'funil_id');
+    }
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CrmFunilEtapa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\Auditable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
+
+class CrmFunilEtapa extends Model
+{
+    use Auditable; // Sem tenant_id aqui, pois herda o contexto do Funil
+
+    protected $table = 'crm_funil_etapas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = ['id', 'funil_id', 'nome', 'cor_hex', 'ordem_exibicao', 'exige_justificativa_perda'];
+    protected $casts = ['exige_justificativa_perda' => 'boolean', 'ordem_exibicao' => 'integer'];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function oportunidades(): HasMany
+    {
+        return $this->hasMany(CrmOportunidade::class, 'etapa_id')->orderByDesc('created_at');
+    }
+    public function funil()
+    {
+        return $this->belongsTo(CrmFunil::class, 'funil_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CrmOportunidade.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\Auditable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class CrmOportunidade extends Model
+{
+    use SoftDeletes, BelongsToTenant, Auditable, BelongsToEmpresa;
+
+    protected $table = 'crm_oportunidades';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'funil_id', 'etapa_id', 'vendedor_id', 'cliente_id',
+        'titulo', 'nome_contato', 'email_contato', 'telefone_contato',
+        'valor_estimado', 'data_fechamento_esperada', 'status', 'observacoes',
+        'origem_lead', 'motivo_perda_id', 'justificativa_perda', 'data_fechamento'
+    ];
+
+    protected $casts = [
+        'valor_estimado' => 'decimal:2',
+        'data_fechamento_esperada' => 'date',
+        'data_fechamento' => 'datetime',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function etapa(): BelongsTo
+    {
+        return $this->belongsTo(CrmFunilEtapa::class, 'etapa_id');
+    }
+
+    public function vendedor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'vendedor_id');
+    }
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    public function atividades(): HasMany
+    {
+        return $this->hasMany(CrmOportunidadeAtividade::class, 'oportunidade_id')->orderByDesc('created_at');
+    }
+
+    public function itens(): HasMany
+    {
+        return $this->hasMany(CrmOportunidadeItem::class, 'oportunidade_id');
+    }
+
+    public function motivoPerda(): BelongsTo
+    {
+        return $this->belongsTo(TabelaDominio::class, 'motivo_perda_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CrmOportunidadeAtividade.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\Auditable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class CrmOportunidadeAtividade extends Model
+{
+    use SoftDeletes, BelongsToTenant, Auditable, BelongsToEmpresa;
+
+    protected $table = 'crm_oportunidade_atividades';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'oportunidade_id', 'usuario_id',
+        'tipo', 'descricao', 'data_agendamento', 'is_concluida'
+    ];
+
+    protected $casts = [
+        'is_concluida' => 'boolean',
+        'data_agendamento' => 'datetime',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function oportunidade(): BelongsTo
+    {
+        return $this->belongsTo(CrmOportunidade::class, 'oportunidade_id');
+    }
+
+    public function usuario(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'usuario_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\CrmOportunidadeItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class CrmOportunidadeItem extends Model
+{
+    use HasFactory, BelongsToTenant;
+
+    protected $table = 'crm_oportunidade_itens';
+
+    public $incrementing = false;
+
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'oportunidade_id',
+        'produto_id',
+        'descricao',
+        'quantidade',
+        'valor_unitario',
+        'valor_total',
+    ];
+
+    protected $casts = [
+        'quantidade' => 'decimal:4',
+        'valor_unitario' => 'decimal:4',
+        'valor_total' => 'decimal:2',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function oportunidade(): BelongsTo
+    {
+        return $this->belongsTo(
+            CrmOportunidade::class,
+            'oportunidade_id',
+            'id'
+        );
+    }
+
+    public function produto(): BelongsTo
+    {
+        return $this->belongsTo(
+            Item::class,
+            'produto_id',
+            'id'
+        );
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Deposito.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Deposito extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'wms_depositos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'nome',
+        'codigo',
+        'descricao',
+        'is_padrao',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'is_padrao' => 'boolean',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+
+    public function saldos(): HasMany
+    {
+        return $this->hasMany(EstoqueDeposito::class, 'deposito_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\DocumentoFiscal.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class DocumentoFiscal extends Model
+{
+    use HasFactory;
+
+    protected $table = 'fis_documentos_fiscais';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'destinatario_id',
+        'modelo_documento',
+        'serie_documento',
+        'numero_documento',
+        'ambiente_emissao',
+        'status',
+        'data_emissao',
+        'valor_total',
+        'chave_acesso',
+        'protocolo_autorizacao',
+        'mensagem_sefaz'
+    ];
+
+    public function empresa()
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+
+    public function destinatario()
+    {
+        return $this->belongsTo(Pessoa::class, 'destinatario_id');
+    }
+
+    public function itens()
+    {
+        return $this->hasMany(DocumentoFiscalItem::class, 'documento_fiscal_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\DocumentoFiscalItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class DocumentoFiscalItem extends Model
+{
+    use HasFactory;
+
+    // Nome da tabela no banco (ajuste se a sua migration tiver um nome diferente, ex: fis_documento_itens)
+    protected $table = 'fis_documentos_fiscais_itens';
+
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id',
+        'documento_fiscal_id',
+        'tipo_item',
+        'cfop',
+        'valor_total',
+    ];
+
+    public function documento()
+    {
+        return $this->belongsTo(DocumentoFiscal::class, 'documento_fiscal_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Empresa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Empresa extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'sis_empresas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'nome_fantasia',
+        'razao_social',
+        'cnpj',
+        'inscricao_estadual',
+        'regime_tributario',
+        'is_matriz',
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Endereco.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Endereco extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pes_enderecos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'pessoa_id',
+        'tipo_endereco',
+        'cep',
+        'logradouro',
+        'numero',
+        'complemento',
+        'bairro',
+        'cidade',
+        'uf',
+        'codigo_ibge',
+    ];
+
+    public function pessoa(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'pessoa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\EnpsCampanha.php
+========================================
+<?php
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class EnpsCampanha extends Model {
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+    protected $table = 'rh_enps_campanhas';
+    protected $fillable = ['tenant_id', 'empresa_id', 'titulo', 'data_inicio', 'data_fim', 'status'];
+
+    public function respostas() {
+        return $this->hasMany(EnpsResposta::class, 'campanha_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\EnpsResposta.php
+========================================
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+
+class EnpsResposta extends Model {
+    use HasUuids;
+    protected $table = 'rh_enps_respostas';
+    // Sem Trait de Tenant/Empresa aqui para garantir o isolamento anonimizado na base
+    protected $fillable = ['campanha_id', 'nota', 'comentario'];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Entregavel.php
+========================================
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Entregavel extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'prj_entregaveis';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'projeto_id', 'titulo', 'descricao',
+        'data_prevista', 'data_entrega', 'valor_faturamento', 'status_id'
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\EscalaTrabalho.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class EscalaTrabalho extends Model
+{
+    use HasUuids, SoftDeletes;
+
+    protected $table = 'rh_escalas_trabalho';
+
+    protected $fillable = [
+        'tenant_id',
+        'nome',
+        'tipo_escala',
+        'horario_entrada',
+        'horario_saida',
+        'inicio_intervalo',
+        'fim_intervalo',
+        'tolerancia_minutos',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'is_ativo' => 'boolean',
+        'tolerancia_minutos' => 'integer',
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\EstoqueDeposito.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
+
+class EstoqueDeposito extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'wms_estoque_deposito';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'deposito_id',
+        'item_id',
+        'lote',
+        'data_validade',
+        'localizacao_rua',
+        'localizacao_predio',
+        'localizacao_nivel',
+        'localizacao_vao',
+        'quantidade_saldo',
+        'quantidade_reservada',
+    ];
+
+    protected $casts = [
+        'quantidade_saldo' => 'decimal:4',
+        'quantidade_reservada' => 'decimal:4',
+        'data_validade' => 'date',
+    ];
+
+    public function deposito(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_id');
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\EstruturaItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
+
+class EstruturaItem extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pcp_estrutura_itens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'produto_pai_id',
+        'insumo_filho_id',
+        'quantidade_necessaria',
+        'percentual_perda_estimada',
+    ];
+
+    protected $casts = [
+        'quantidade_necessaria' => 'decimal:4',
+        'percentual_perda_estimada' => 'decimal:2',
+    ];
+
+    public function insumo(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'insumo_filho_id');
+    }
+    public function produtoPai(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'produto_pai_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Etapa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Etapa extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'prj_etapas';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'projeto_id', 'nome', 'ordem', 'cor_hex'
+    ];
+
+    public function projeto()
+    {
+        return $this->belongsTo(Projeto::class, 'projeto_id');
+    }
+
+    public function tarefas()
+    {
+        return $this->hasMany(Tarefa::class, 'etapa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\FaturaBilling.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class FaturaBilling extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'sis_faturas_billing';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'assinatura_id',
+        'gateway_payment_id',
+        'status',
+        'valor',
+        'forma_pagamento',
+        'data_vencimento',
+        'data_pagamento',
+        'url_fatura_gateway',
+        'payload_webhook',
+    ];
+
+    protected $casts = [
+        'valor' => 'decimal:2',
+        'data_vencimento' => 'date',
+        'data_pagamento' => 'datetime',
+        'payload_webhook' => 'array',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function assinatura(): BelongsTo
+    {
+        return $this->belongsTo(Assinatura::class, 'assinatura_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\FrotaVeiculo.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Scopes\TenantScope;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class FrotaVeiculo extends Model
+{
+    use SoftDeletes;
+
+    protected $table = 'fro_veiculos';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'placa', 'chassi',
+        'marca', 'modelo', 'ano_fabricacao', 'ano_modelo',
+        'km_atual', 'tipo_combustivel_id', 'status_id', 'is_ativo'
+    ];
+
+    protected static function booted()
+    {
+        static::addGlobalScope(new TenantScope());
+
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    // Relações com Tabelas de Domínio (Evitando hardcoded)
+    public function status()
+    {
+        return $this->belongsTo(TabelaDominio::class, 'status_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\GedDocumento.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class GedDocumento extends Model
+{
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'ged_documentos';
+    protected $fillable = [
+        'tenant_id', 'empresa_id', 'pasta_id',
+        'entidade_vinculada_type', 'entidade_vinculada_id',
+        'nome_original', 'caminho_s3', 'mime_type', 'tamanho_bytes', 'usuario_upload_id'
+    ];
+
+    public function entidadeVinculada()
+    {
+        return $this->morphTo(__FUNCTION__, 'entidade_vinculada_type', 'entidade_vinculada_id');
+    }
+
+    public function pasta()
+    {
+        return $this->belongsTo(GedPasta::class, 'pasta_id');
+    }
+
+    public function uploader()
+    {
+        return $this->belongsTo(User::class, 'usuario_upload_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\GedPasta.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class GedPasta extends Model
+{
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'ged_pastas';
+    protected $fillable = ['tenant_id', 'empresa_id', 'pasta_pai_id', 'nome', 'is_sistema'];
+
+    public function subpastas()
+    {
+        return $this->hasMany(GedPasta::class, 'pasta_pai_id')->orderBy('nome');
+    }
+
+    public function documentos()
+    {
+        return $this->hasMany(GedDocumento::class, 'pasta_id')->orderBy('nome_original');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Holerite.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Holerite extends Model
+{
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'rh_holerites';
+
+    protected $fillable = [
+        'tenant_id', 'empresa_id', 'colaborador_id', 'competencia',
+        'data_emissao', 'salario_base', 'total_proventos', 'total_descontos',
+        'valor_liquido', 'status', 'observacoes'
+    ];
+
+    protected $casts = [
+        'data_emissao' => 'date',
+        'salario_base' => 'decimal:2',
+        'total_proventos' => 'decimal:2',
+        'total_descontos' => 'decimal:2',
+        'valor_liquido' => 'decimal:2',
+    ];
+
+    public function colaborador(): BelongsTo
+    {
+        return $this->belongsTo(Colaborador::class, 'colaborador_id');
+    }
+
+    public function itens(): HasMany
+    {
+        return $this->hasMany(HoleriteItem::class, 'holerite_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\HoleriteItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class HoleriteItem extends Model
+{
+    use HasUuids;
+
+    protected $table = 'rh_holerite_itens';
+
+    protected $fillable = [
+        'holerite_id', 'tipo', 'rubrica_id', 'descricao', 'referencia', 'valor'
+    ];
+
+    protected $casts = [
+        'valor' => 'decimal:2',
+    ];
+
+    public function holerite(): BelongsTo
+    {
+        return $this->belongsTo(Holerite::class, 'holerite_id');
+    }
+
+    public function rubrica(): BelongsTo
+    {
+        return $this->belongsTo(TabelaDominio::class, 'rubrica_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Item.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+
+class Item extends Model
+{
+    use SoftDeletes, BelongsToTenant;
+
+    protected $table = 'pro_itens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'tipo_item',
+        'codigo_sku',
+        'codigo_barras_ean',
+        'nome',
+        'descricao',
+        'unidade_medida',
+        'categoria_id',
+        'preco_venda',
+        'preco_custo',
+        'custo_medio',
+        'margem_lucro_markup',
+        'ncm',
+        'cest',
+        'cfop_padrao',
+        'origem_mercadoria',
+        'controla_estoque',
+        'estoque_minimo',
+        'estoque_maximo',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'preco_venda' => 'decimal:2',
+        'preco_custo' => 'decimal:2',
+        'custo_medio' => 'decimal:2',
+        'margem_lucro_markup' => 'decimal:2',
+        'estoque_minimo' => 'decimal:4',
+        'estoque_maximo' => 'decimal:4',
+        'controla_estoque' => 'boolean',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function categoria(): BelongsTo
+    {
+        return $this->belongsTo(TabelaDominio::class, 'categoria_id');
+    }
+    public function saldosPorDeposito(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(EstoqueDeposito::class, 'item_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\ManutencaoVeiculo.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
+
+class ManutencaoVeiculo extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'fro_manutencoes';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'veiculo_id',
+        'motorista_id',
+        'tipo_registro',
+        'km_registro',
+        'litros_combustivel',
+        'valor_total',
+        'data_registro',
+        'descricao_servico',
+    ];
+
+    protected $casts = [
+        'km_registro' => 'decimal:2',
+        'litros_combustivel' => 'decimal:3',
+        'valor_total' => 'decimal:2',
+        'data_registro' => 'date',
+    ];
+
+    public function veiculo(): BelongsTo
+    {
+        return $this->belongsTo(Veiculo::class, 'veiculo_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\MovimentacaoEstoque.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
+
+class MovimentacaoEstoque extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'wms_movimentacoes';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'deposito_id',
+        'item_id',
+        'usuario_id',
+        'tipo_movimento',
+        'quantidade',
+        'saldo_anterior',
+        'saldo_posterior',
+        'custo_unitario',
+        'documento_origem_tipo',
+        'documento_origem_id',
+        'motivo',
+        'created_at',
+    ];
+
+    protected $casts = [
+        'quantidade' => 'decimal:4',
+        'saldo_anterior' => 'decimal:4',
+        'saldo_posterior' => 'decimal:4',
+        'custo_unitario' => 'decimal:2',
+        'created_at' => 'datetime',
+    ];
+
+    public function deposito(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_id');
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\MovimentacaoExtrato.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
+
+class MovimentacaoExtrato extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'fin_movimentacoes_extrato';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'conta_financeira_id',
+        'titulo_id',
+        'usuario_id',
+        'tipo_movimento',
+        'valor',
+        'saldo_anterior',
+        'saldo_posterior',
+        'forma_pagamento',
+        'data_movimento',
+        'descricao',
+        'created_at',
+    ];
+
+    protected $casts = [
+        'valor' => 'decimal:2',
+        'saldo_anterior' => 'decimal:2',
+        'saldo_posterior' => 'decimal:2',
+        'data_movimento' => 'date',
+        'created_at' => 'datetime',
+    ];
+
+    public function conta(): BelongsTo
+    {
+        return $this->belongsTo(ContaFinanceira::class, 'conta_financeira_id');
+    }
+
+    public function titulo(): BelongsTo
+    {
+        return $this->belongsTo(TituloFinanceiro::class, 'titulo_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\NineboxEixo.php
+========================================
+<?php
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class NineboxEixo extends Model {
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+    protected $table = 'rh_ninebox_eixos';
+    protected $fillable = ['tenant_id', 'empresa_id', 'tipo', 'nome', 'descricao', 'is_ativo'];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\OrdemProducao.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class OrdemProducao extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pcp_ordens_producao';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'produto_id',
+        'deposito_origem_id',
+        'deposito_destino_id',
+        'responsavel_id',
+        'numero_op',
+        'status',
+        'quantidade_planejada',
+        'quantidade_produzida',
+        'custo_total_estimado',
+        'custo_total_real',
+        'data_inicio_prevista',
+        'data_fim_prevista',
+        'data_inicio_real',
+        'data_fim_real',
+        'observacoes',
+    ];
+
+    protected $casts = [
+        'quantidade_planejada' => 'decimal:4',
+        'quantidade_produzida' => 'decimal:4',
+        'custo_total_estimado' => 'decimal:2',
+        'custo_total_real' => 'decimal:2',
+        'data_inicio_prevista' => 'date',
+        'data_fim_prevista' => 'date',
+        'data_inicio_real' => 'datetime',
+        'data_fim_real' => 'datetime',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function produto(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'produto_id');
+    }
+
+    public function responsavel(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsavel_id');
+    }
+
+    public function depositoOrigem(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_origem_id');
+    }
+
+    public function depositoDestino(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_destino_id');
+    }
+    public function apontamentos(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PcpApontamento::class, 'ordem_producao_id')->orderByDesc('created_at');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\OrdemServico.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class OrdemServico extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'os_ordens_servico';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'cliente_id',
+        'tecnico_responsavel_id',
+        'deposito_saida_id',
+        'numero_os',
+        'status',
+        'prioridade',
+        'tipo_manutencao',
+        'equipamento_descricao',
+        'equipamento_marca_modelo',
+        'equipamento_numero_serie',
+        'defeito_reclamado',
+        'diagnostico_tecnico',
+        'servico_executado',
+        'data_abertura',
+        'prazo_sla_resposta',
+        'prazo_sla_resolucao',
+        'data_agendamento',
+        'data_inicio_execucao',
+        'data_conclusao',
+        'valor_servicos',
+        'valor_pecas',
+        'valor_desconto',
+        'valor_total',
+        'assinatura_cliente_base64',
+        'nome_responsavel_recebimento',
+        'documento_responsavel_recebimento',
+        'assinado_em',
+        'hash_assinatura_sha256',
+        'ip_assinatura',
+        'latitude_assinatura',
+        'longitude_assinatura',
+        'ativo_id'
+    ];
+
+    protected $casts = [
+        'data_abertura' => 'datetime',
+        'prazo_sla_resposta' => 'datetime',
+        'prazo_sla_resolucao' => 'datetime',
+        'data_agendamento' => 'datetime',
+        'data_inicio_execucao' => 'datetime',
+        'data_conclusao' => 'datetime',
+        'assinado_em' => 'datetime',
+        'valor_servicos' => 'decimal:2',
+        'valor_pecas' => 'decimal:2',
+        'valor_desconto' => 'decimal:2',
+        'valor_total' => 'decimal:2',
+        'latitude_assinatura' => 'decimal:8',
+        'longitude_assinatura' => 'decimal:8',
+
+    ];
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    public function tecnico(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'tecnico_responsavel_id');
+    }
+
+    public function deposito(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_saida_id');
+    }
+
+    public function itens(): HasMany
+    {
+        return $this->hasMany(OrdemServicoItem::class, 'ordem_servico_id');
+    }
+
+    public function fotos(): HasMany
+    {
+        return $this->hasMany(OrdemServicoFoto::class, 'ordem_servico_id');
+    }
+    public function ativo(): BelongsTo
+    {
+        return $this->belongsTo(PatrimonioBem::class, 'ativo_id');
+    }
+
+    public function apontamentos(): HasMany
+    {
+        return $this->hasMany(OsApontamentoHora::class, 'ordem_servico_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\OrdemServicoFoto.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class OrdemServicoFoto extends Model
+{
+    protected $table = 'os_fotos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'id',
+        'ordem_servico_id',
+        'tipo_etapa',
+        'url_arquivo',
+        'descricao',
+        'latitude',
+        'longitude',
+        'created_at',
+    ];
+
+    protected $casts = [
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
+        'created_at' => 'datetime',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function ordemServico(): BelongsTo
+    {
+        return $this->belongsTo(OrdemServico::class, 'ordem_servico_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\OrdemServicoItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class OrdemServicoItem extends Model
+{
+    protected $table = 'os_itens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'ordem_servico_id',
+        'item_id',
+        'tipo_item',
+        'quantidade',
+        'valor_unitario',
+        'valor_total',
+        'lote',
+        'status_requisicao', // <-- Liberado para gravação
+        'almoxarife_id',     // <-- Liberado para gravação
+        'atendido_em',       // <-- Liberado para gravação
+    ];
+
+    protected $casts = [
+        'quantidade' => 'decimal:4',
+        'valor_unitario' => 'decimal:4',
+        'valor_total' => 'decimal:2',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function ordemServico(): BelongsTo
+    {
+        return $this->belongsTo(OrdemServico::class, 'ordem_servico_id');
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\OsApontamentoHora.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class OsApontamentoHora extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'os_apontamentos_horas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'ordem_servico_id',
+        'tecnico_id',
+        'data_hora_inicio',
+        'data_hora_fim',
+        'total_horas',
+        'valor_hora',
+        'valor_total',
+        'descricao_atividades',
+    ];
+
+    protected $casts = [
+        'data_hora_inicio' => 'datetime',
+        'data_hora_fim' => 'datetime',
+        'total_horas' => 'decimal:2',
+        'valor_hora' => 'decimal:2',
+        'valor_total' => 'decimal:2',
+    ];
+
+    public function tecnico(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'tecnico_id');
+    }
+
+    public function ordemServico(): BelongsTo
+    {
+        return $this->belongsTo(OrdemServico::class, 'ordem_servico_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PatrimonioBem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class PatrimonioBem extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pat_bens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $attributes = [
+        'valor_aquisicao' => 0.00,
+        'status' => 'ATIVO',
+    ];
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'cliente_id',
+        'responsavel_atual_id',
+        'codigo_patrimonio',
+        'descricao',
+        'marca_modelo',
+        'numero_serie',
+        'qr_code_hash',
+        'data_aquisicao',
+        'valor_aquisicao',
+        'status',
+        'localizacao_fisica',
+    ];
+
+    protected $casts = [
+        'data_aquisicao' => 'date',
+        'valor_aquisicao' => 'decimal:2',
+    ];
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    public function responsavel(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsavel_atual_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PcpApontamento.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class PcpApontamento extends Model
+{
+    use BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pcp_apontamentos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'ordem_producao_id',
+        'operador_id',
+        'quantidade_produzida',
+        'quantidade_refugo',
+        'horas_mod',
+        'custo_hora_mod',
+        'custo_total_mod',
+        'horas_cif',
+        'custo_hora_cif',
+        'custo_total_cif',
+        'custo_insumos',
+        'custo_total_apontamento',
+        'observacoes',
+        'created_at',
+    ];
+
+    protected $casts = [
+        'quantidade_produzida' => 'decimal:4',
+        'quantidade_refugo' => 'decimal:4',
+        'horas_mod' => 'decimal:2',
+        'custo_hora_mod' => 'decimal:2',
+        'custo_total_mod' => 'decimal:2',
+        'horas_cif' => 'decimal:2',
+        'custo_hora_cif' => 'decimal:2',
+        'custo_total_cif' => 'decimal:2',
+        'custo_insumos' => 'decimal:2',
+        'custo_total_apontamento' => 'decimal:2',
+        'created_at' => 'datetime',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+            if (empty($model->created_at)) {
+                $model->created_at = now();
+            }
+        });
+    }
+
+    public function ordemProducao(): BelongsTo
+    {
+        return $this->belongsTo(OrdemProducao::class, 'ordem_producao_id');
+    }
+
+    public function operador(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'operador_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PcpLoteRastreabilidade.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class PcpLoteRastreabilidade extends Model
+{
+    use BelongsToTenant , BelongsToEmpresa;
+
+    protected $table = 'pcp_lotes_rastreabilidade';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'ordem_producao_id',
+        'insumo_id',
+        'lote_insumo',
+        'quantidade_consumida',
+        'lote_acabado_gerado',
+    ];
+
+    protected $casts = [
+        'quantidade_consumida' => 'decimal:4',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function ordemProducao(): BelongsTo
+    {
+        return $this->belongsTo(OrdemProducao::class, 'ordem_producao_id');
+    }
+
+    public function insumo(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'insumo_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Pdi.php
+========================================
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Pdi extends Model {
+    use HasUuids, SoftDeletes;
+    protected $table = 'rh_pdi';
+    protected $fillable = ['avaliacao_id', 'objetivo', 'plano_acao', 'prazo_conclusao', 'status'];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PdvCaixa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class PdvCaixa extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pdv_caixas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'usuario_id', 'data_abertura',
+        'data_fechamento', 'saldo_abertura', 'saldo_informado',
+        'saldo_calculado', 'quebra_caixa', 'status', 'observacoes'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function movimentacoes()
+    {
+        return $this->hasMany(PdvMovimentacao::class, 'caixa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PdvMovimentacao.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class PdvMovimentacao extends Model
+{
+    use BelongsToTenant;
+
+    protected $table = 'pdv_movimentacoes';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'caixa_id', 'tipo_movimento', 'valor',
+        'autorizador_id', 'forma_pagamento', 'observacoes'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PedidoVenda.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class PedidoVenda extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+    protected $table = 'ven_pedidos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'cliente_id',
+        'vendedor_id',
+        'deposito_saida_id',
+        'tipo_documento',
+        'numero_pedido',
+        'status',
+        'data_emissao',
+        'data_validade_orcamento',
+        'valor_subtotal_itens',
+        'valor_frete',
+        'valor_seguro',
+        'valor_outras_despesas',
+        'percentual_desconto',
+        'valor_desconto',
+        'valor_total_liquido',
+        'pdv_offline_uuid',
+        'sincronizado_em',
+        'observacoes',
+    ];
+
+    protected $casts = [
+        'data_emissao' => 'datetime',
+        'data_validade_orcamento' => 'date',
+        'valor_subtotal_itens' => 'decimal:2',
+        'valor_frete' => 'decimal:2',
+        'valor_seguro' => 'decimal:2',
+        'valor_outras_despesas' => 'decimal:2',
+        'percentual_desconto' => 'decimal:2',
+        'valor_desconto' => 'decimal:2',
+        'valor_total_liquido' => 'decimal:2',
+        'sincronizado_em' => 'datetime',
+    ];
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    public function vendedor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'vendedor_id');
+    }
+
+    public function deposito(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_saida_id');
+    }
+
+    public function itens(): HasMany
+    {
+        return $this->hasMany(PedidoVendaItem::class, 'pedido_id');
+    }
+
+    public function pagamentos(): HasMany
+    {
+        return $this->hasMany(PedidoVendaPagamento::class, 'pedido_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PedidoVendaItem.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class PedidoVendaItem extends Model
+{
+    protected $table = 'ven_pedido_itens';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'pedido_id',
+        'item_id',
+        'quantidade',
+        'preco_tabela_unitario',
+        'percentual_desconto',
+        'valor_desconto_unitario',
+        'preco_venda_unitario',
+        'valor_total_bruto',
+        'valor_total_liquido',
+        'lote',
+    ];
+
+    protected $casts = [
+        'quantidade' => 'decimal:4',
+        'preco_tabela_unitario' => 'decimal:4',
+        'percentual_desconto' => 'decimal:2',
+        'valor_desconto_unitario' => 'decimal:4',
+        'preco_venda_unitario' => 'decimal:4',
+        'valor_total_bruto' => 'decimal:2',
+        'valor_total_liquido' => 'decimal:2',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function pedido(): BelongsTo
+    {
+        return $this->belongsTo(PedidoVenda::class, 'pedido_id');
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PedidoVendaPagamento.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
+
+class PedidoVendaPagamento extends Model
+{
+    protected $table = 'ven_pedido_pagamentos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'pedido_id',
+        'forma_pagamento',
+        'parcelas',
+        'valor_pago',
+        'valor_troco',
+        'status',
+        'transacao_nsu_autorizacao',
+    ];
+
+    protected $casts = [
+        'parcelas' => 'integer',
+        'valor_pago' => 'decimal:2',
+        'valor_troco' => 'decimal:2',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function pedido(): BelongsTo
+    {
+        return $this->belongsTo(PedidoVenda::class, 'pedido_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Perfil.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Perfil extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'sis_perfis';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'nome',
+        'slug',
+        'descricao',
+        'is_admin',
+        'is_sistema',
+    ];
+
+    protected $casts = [
+        'is_admin' => 'boolean',
+        'is_sistema' => 'boolean',
+    ];
+
+    public function permissoes(): BelongsToMany
+    {
+        return $this->belongsToMany(Permissao::class, 'sis_perfil_permissao', 'perfil_id', 'permissao_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Permissao.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Str;
+
+class Permissao extends Model
+{
+    protected $table = 'sis_permissoes';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'modulo',
+        'slug',
+        'nome',
+        'descricao',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function perfis(): BelongsToMany
+    {
+        return $this->belongsToMany(Perfil::class, 'sis_perfil_permissao', 'permissao_id', 'perfil_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Pessoa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Pessoa extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'pes_pessoas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'tipo_pessoa',
+        'nome_razao_social',
+        'nome_fantasia_apelido',
+        'cpf_cnpj',
+        'rg_ie',
+        'inscricao_municipal',
+        'email_principal',
+        'telefone_principal',
+        'whatsapp',
+        'is_cliente',
+        'is_fornecedor',
+        'is_tecnico',
+        'is_transportadora',
+        'is_ativo',
+        'regime_tributario',
+        'limite_credito',
+        'observacoes',
+    ];
+
+    protected $casts = [
+        'is_cliente' => 'boolean',
+        'is_fornecedor' => 'boolean',
+        'is_tecnico' => 'boolean',
+        'is_transportadora' => 'boolean',
+        'is_ativo' => 'boolean',
+        'limite_credito' => 'decimal:2',
+    ];
+
+    public function enderecos(): HasMany
+    {
+        return $this->hasMany(Endereco::class, 'pessoa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Plano.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
+
+class Plano extends Model
+{
+    protected $table = 'sis_planos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'nome',
+        'slug',
+        'valor_mensal',
+        'limite_usuarios',
+        'limite_empresas',
+        'cota_storage_bytes',
+        'modulos_habilitados',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'valor_mensal' => 'decimal:2',
+        'cota_storage_bytes' => 'integer',
+        'modulos_habilitados' => 'array',
+        'is_ativo' => 'boolean',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function assinaturas(): HasMany
+    {
+        return $this->hasMany(Assinatura::class, 'plano_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PlanoConta.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class PlanoConta extends Model
+{
+    use SoftDeletes, BelongsToTenant;
+
+    protected $table = 'fin_planos_contas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'parent_id',
+        'codigo', 'nome', 'tipo', 'is_sintetico'
+    ];
+
+    protected $casts = [
+        'is_sintetico' => 'boolean'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    // MÁGICA: Carrega todos os "filhos" recursivamente para formar a árvore no Frontend
+    public function children()
+    {
+        return $this->hasMany(PlanoConta::class, 'parent_id')
+                    ->with('children')
+                    ->orderBy('codigo');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PlanoPreventivo.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class PlanoPreventivo extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+    protected $table = 'os_planos_preventivos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'cliente_id',
+        'ativo_id',
+        'tecnico_padrao_id',
+        'titulo_plano',
+        'frequencia',
+        'proxima_execucao',
+        'ultima_execucao',
+        'checklist_itens',
+        'instrucoes_tecnicas',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'proxima_execucao' => 'date',
+        'ultima_execucao' => 'date',
+        'checklist_itens' => 'array',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    public function ativo(): BelongsTo
+    {
+        return $this->belongsTo(PatrimonioBem::class, 'ativo_id');
+    }
+
+    public function tecnicoPadrao(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'tecnico_padrao_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PontoRegistro.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
+
+class PontoRegistro extends Model
+{
+    use BelongsToTenant; use BelongsToEmpresa;
+
+    protected $table = 'rh_pontos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'colaborador_id',
+        'data_hora_registro',
+        'tipo_registro',
+        'latitude',
+        'longitude',
+        'ip_origem',
+        'dispositivo_info',
+        'hash_registro',
+        'created_at',
+    ];
+
+    protected $casts = [
+        'data_hora_registro' => 'datetime',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
+        'created_at' => 'datetime',
+    ];
+
+    public function colaborador(): BelongsTo
+    {
+        return $this->belongsTo(Colaborador::class, 'colaborador_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PrjTarefaChecklist.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class PrjTarefaChecklist extends Model
+{
+    protected $table = 'prj_tarefa_checklists';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tarefa_id',
+        'descricao',
+        'concluido',
+    ];
+
+    protected $casts = [
+        'concluido' => 'boolean',
+    ];
+
+    /**
+     * Retorna a tarefa à qual este item de checklist pertence.
+     */
+    public function tarefa(): BelongsTo
+    {
+        return $this->belongsTo(Tarefa::class, 'tarefa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Projeto.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Projeto extends Model
+{
+    use HasFactory, HasUuids, SoftDeletes;
+
+    protected $table = 'prj_projetos';
+
+    protected $fillable = [
+        'tenant_id',
+        'nome',
+        'descricao',
+        'orcamento_previsto',
+        'custo_total_real',
+        'status',
+        'cliente_id',
+    ];
+
+    /**
+     * Relação com o Cliente (Módulo de Pessoas)
+     */
+    public function cliente()
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    /**
+     * Relação com as Etapas do Kanban
+     */
+    public function etapas()
+    {
+        return $this->hasMany(Etapa::class, 'projeto_id')->orderBy('ordem');
+    }
+
+    /**
+     * Relação de acesso direto a todas as tarefas do projeto
+     */
+    public function tarefas()
+    {
+        return $this->hasManyThrough(Tarefa::class, Etapa::class, 'projeto_id', 'etapa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\ProjetoCusto.php
+========================================
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class ProjetoCusto extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'prj_custos';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'projeto_id', 'tipo_custo_id',
+        'valor', 'data_custo', 'descricao', 'apontamento_id'
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\ProjetoEquipe.php
+========================================
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class ProjetoEquipe extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'prj_projeto_equipe';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'projeto_id', 'usuario_id', 'papel_id', 'custo_hora'
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\RecrutamentoEtapa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+
+class RecrutamentoEtapa extends Model
+{
+    use HasUuids, BelongsToTenant;
+
+    protected $table = 'rh_recrutamento_etapas';
+
+    protected $fillable = [
+        'tenant_id', 'nome', 'cor', 'ordem'
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\RegraComissao.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class RegraComissao extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'ven_regras_comissao';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'cargo_ou_perfil',
+        'categoria_id',
+        'faixa_valor_min',
+        'faixa_valor_max',
+        'percentual_comissao',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'faixa_valor_min' => 'decimal:2',
+        'faixa_valor_max' => 'decimal:2',
+        'percentual_comissao' => 'decimal:2',
+        'is_ativo' => 'boolean',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function categoria(): BelongsTo
+    {
+        return $this->belongsTo(TabelaDominio::class, 'categoria_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\RegraTributaria.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Be

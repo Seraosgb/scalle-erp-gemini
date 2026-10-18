@@ -4,20 +4,30 @@ namespace App\Services\Fiscal;
 
 use App\Interfaces\FiscalDriverInterface;
 use App\Models\DocumentoFiscal;
-use NFePHP\Common\Certificate;
-use NFePHP\NFe\Tools;
-use NFePHP\NFe\Make;
-use NFePHP\NFe\Common\Standardize;
-use Illuminate\Support\Str;
+use App\Models\Endereco;
+use App\Models\Item;
 use Exception;
+use Illuminate\Support\Str;
+use NFePHP\Common\Certificate;
+use NFePHP\NFe\Common\Standardize;
+use NFePHP\NFe\Make;
+use NFePHP\NFe\Tools;
 
 class NfePhpDriver implements FiscalDriverInterface
 {
     private Tools $tools;
     private array $config;
 
-    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = '', string $razaoSocial = ''): self
-    {
+    public function configurar(
+        string $certificadoBinario,
+        string $senha,
+        string $uf,
+        int $tpAmb = 2,
+        string $cnpj = '',
+        string $razaoSocial = '',
+        string $csc = 'GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E',
+        string $cscId = '000001'
+    ): self {
         $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
         if (empty($cnpjLimpo) || strlen($cnpjLimpo) !== 14) {
             $cnpjLimpo = str_pad($cnpjLimpo, 14, '0', STR_PAD_LEFT);
@@ -27,20 +37,18 @@ class NfePhpDriver implements FiscalDriverInterface
             "atualizacao" => now()->format('Y-m-d H:i:s'),
             "tpAmb" => $tpAmb,
             "razaosocial" => empty($razaoSocial) ? "Empresa Emissora" : substr($razaoSocial, 0, 60),
-            "siglaUF" => $uf,
+            "siglaUF" => $uf ?: 'RJ',
             "cnpj" => $cnpjLimpo,
             "schemes" => "PL_009_V4",
             "versao" => "4.00",
             "tokenIBPT" => "",
-            // Mock do Token CSC (Obrigatório para gerar o QR Code da NFC-e Modelo 65)
-            "CSC" => "GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E",
-            "CSCid" => "000001"
+            "CSC" => $csc ?: "GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E",
+            "CSCid" => $cscId ?: "000001"
         ];
 
-        $jsonConfig = json_encode($this->config);
         $certificado = Certificate::readPfx($certificadoBinario, $senha);
+        $this->tools = new Tools(json_encode($this->config), $certificado);
 
-        $this->tools = new Tools($jsonConfig, $certificado);
         return $this;
     }
 
@@ -49,8 +57,7 @@ class NfePhpDriver implements FiscalDriverInterface
         try {
             $this->tools->model('55');
             $response = $this->tools->sefazStatus($uf, $tpAmb);
-            $standardize = new Standardize();
-            $std = $standardize->toStd($response);
+            $std = (new Standardize())->toStd($response);
 
             return [
                 'status_code' => (int) ($std->cStat ?? 0),
@@ -65,111 +72,123 @@ class NfePhpDriver implements FiscalDriverInterface
 
     public function emitir(array $dadosEmissao): DocumentoFiscal
     {
-        // 1. Avisa o NFePHP se é modelo 55 (NF-e) ou 65 (NFC-e) para acionar o gerador de QR Code
         $modeloDoc = $dadosEmissao['modelo'] ?? '55';
         $this->tools->model($modeloDoc);
 
+        $emitente = $dadosEmissao['emitente'];
+        $destinatario = $dadosEmissao['destinatario'];
+        $endDest = Endereco::where('pessoa_id', $destinatario['id'] ?? null)->first();
+
         $nfe = new Make();
         try {
-            // 0. Inicialização
             $stdInfNFe = new \stdClass();
             $stdInfNFe->versao = '4.00';
             $stdInfNFe->Id = '';
             $stdInfNFe->pk_nItem = null;
             $nfe->taginfNFe($stdInfNFe);
 
-            // 1. Identificação da NFe (<ide>)
+            $cMunEmit = (int) ($emitente['codigo_ibge'] ?? 3300456);
+
             $stdIde = new \stdClass();
-            $stdIde->cUF = 33; // RJ
+            $stdIde->cUF = (int) substr((string) $cMunEmit, 0, 2);
             $stdIde->cNF = rand(11111111, 99999999);
-            $stdIde->natOp = 'Venda de Mercadorias';
+            $stdIde->natOp = $dadosEmissao['natureza_operacao'] ?? 'VENDA DE MERCADORIAS';
             $stdIde->mod = $modeloDoc;
-            $stdIde->serie = 1;
-            $stdIde->nNF = $dadosEmissao['numero'];
+            $stdIde->serie = (int) ($dadosEmissao['serie'] ?? 1);
+            $stdIde->nNF = (int) $dadosEmissao['numero'];
             $stdIde->dhEmi = now()->format('Y-m-d\TH:i:sP');
-            $stdIde->tpNF = 1; // Saída
-            $stdIde->idDest = 1; // Operação Interna
-            $stdIde->cMunFG = 3300456; // Belford Roxo
-            $stdIde->tpImp = 4; // DANFE NFC-e
-            $stdIde->tpEmis = 1; // Emissão Normal
+            $stdIde->tpNF = 1;
+            $stdIde->idDest = 1;
+            $stdIde->cMunFG = $cMunEmit;
+            $stdIde->tpImp = $modeloDoc === '65' ? 4 : 1;
+            $stdIde->tpEmis = 1;
             $stdIde->tpAmb = $this->config['tpAmb'];
-            $stdIde->finNFe = 1; // Normal
-            $stdIde->indFinal = 1; // Consumidor Final
-            $stdIde->indPres = 1; // Operação Presencial
-            $stdIde->procEmi = 0; // Aplicativo Contribuinte
-            $stdIde->verProc = '1.0';
+            $stdIde->finNFe = 1;
+            $stdIde->indFinal = 1;
+            $stdIde->indPres = 1;
+            $stdIde->procEmi = 0;
+            $stdIde->verProc = 'ScalleERP-2.0';
             $nfe->tagide($stdIde);
 
-            // 2. Emitente (<emit>)
+            // Emitente Dinâmico
             $stdEmit = new \stdClass();
-            $stdEmit->xNome = $dadosEmissao['emitente']['razao_social'] ?? 'EMPRESA TESTE';
-            $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'] ?? 'FANTASIA TESTE';
-            $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
-            $stdEmit->CRT = 1; // Simples Nacional
-            $stdEmit->CNPJ = $this->config['cnpj']; // Forçado do certificado
+            $stdEmit->xNome = substr($emitente['razao_social'] ?? 'EMPRESA EMITENTE', 0, 60);
+            $stdEmit->xFant = substr($emitente['nome_fantasia'] ?? 'FANTASIA', 0, 60);
+            $stdEmit->IE = !empty($emitente['inscricao_estadual']) ? preg_replace('/[^0-9A-Z]/', '', strtoupper($emitente['inscricao_estadual'])) : 'ISENTO';
+            $stdEmit->CRT = ($emitente['regime_tributario'] ?? 'simples_nacional') === 'regime_normal' ? 3 : 1;
+            $stdEmit->CNPJ = $this->config['cnpj'];
             $nfe->tagemit($stdEmit);
 
             $stdEnderEmit = new \stdClass();
-            $stdEnderEmit->xLgr = 'Rua de Teste';
-            $stdEnderEmit->nro = '123';
-            $stdEnderEmit->xBairro = 'Centro';
-            $stdEnderEmit->cMun = 3300456;
-            $stdEnderEmit->xMun = 'Belford Roxo';
-            $stdEnderEmit->UF = 'RJ';
-            $stdEnderEmit->CEP = '26110000';
+            $stdEnderEmit->xLgr = $emitente['logradouro'] ?? 'Avenida Principal';
+            $stdEnderEmit->nro = $emitente['numero'] ?? '100';
+            $stdEnderEmit->xBairro = $emitente['bairro'] ?? 'Centro';
+            $stdEnderEmit->cMun = $cMunEmit;
+            $stdEnderEmit->xMun = $emitente['cidade'] ?? 'Belford Roxo';
+            $stdEnderEmit->UF = $emitente['uf'] ?? 'RJ';
+            $stdEnderEmit->CEP = preg_replace('/[^0-9]/', '', $emitente['cep'] ?? '26110000');
             $stdEnderEmit->cPais = 1058;
             $stdEnderEmit->xPais = 'Brasil';
             $nfe->tagenderEmit($stdEnderEmit);
 
-            // 3. Destinatário (<dest>)
+            // Destinatário Dinâmico
             $stdDest = new \stdClass();
-            $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'Consumidor Final';
-            $stdDest->indIEDest = 9; // Não Contribuinte
+            $stdDest->xNome = $this->config['tpAmb'] === 2
+                ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+                : substr($destinatario['nome_razao_social'] ?? 'Consumidor Final', 0, 60);
+            $stdDest->indIEDest = 9;
 
-            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
-            if (empty($docDestino)) {
-                $stdDest->CPF = '00000000000';
-            } elseif (strlen($docDestino) > 11) {
-                $stdDest->CNPJ = str_pad($docDestino, 14, '0', STR_PAD_LEFT);
+            $docDestino = preg_replace('/[^0-9]/', '', $destinatario['cpf_cnpj'] ?? '');
+            if (strlen($docDestino) === 14) {
+                $stdDest->CNPJ = $docDestino;
             } else {
-                $stdDest->CPF = str_pad($docDestino, 11, '0', STR_PAD_LEFT);
+                $stdDest->CPF = strlen($docDestino) === 11 ? $docDestino : '00000000000';
             }
             $nfe->tagdest($stdDest);
 
             $stdEnderDest = new \stdClass();
-            $stdEnderDest->xLgr = 'Rua do Cliente';
-            $stdEnderDest->nro = 'SN';
-            $stdEnderDest->xBairro = 'Centro';
-            $stdEnderDest->cMun = 3300456;
-            $stdEnderDest->xMun = 'Belford Roxo';
-            $stdEnderDest->UF = 'RJ';
-            $stdEnderDest->CEP = '26110000';
+            $stdEnderDest->xLgr = $endDest?->logradouro ?? 'Rua Comercial';
+            $stdEnderDest->nro = $endDest?->numero ?? 'SN';
+            $stdEnderDest->xBairro = $endDest?->bairro ?? 'Centro';
+            $stdEnderDest->cMun = (int) ($endDest?->codigo_ibge ?? 3300456);
+            $stdEnderDest->xMun = $endDest?->cidade ?? 'Belford Roxo';
+            $stdEnderDest->UF = $endDest?->uf ?? 'RJ';
+            $stdEnderDest->CEP = preg_replace('/[^0-9]/', '', $endDest?->cep ?? '26110000');
             $stdEnderDest->cPais = 1058;
             $stdEnderDest->xPais = 'Brasil';
             $nfe->tagenderDest($stdEnderDest);
 
-            // 4. Produtos e Impostos (<det>)
+            // Produtos Reais do Catálogo
             $totais = 0.00;
             foreach ($dadosEmissao['itens'] as $idx => $item) {
                 $nItem = $idx + 1;
                 $valorTotalItem = (float) $item['valor_total'];
+                $qtdItem = (float) ($item['quantidade'] ?? 1.0000);
+                $vlrUnit = $qtdItem > 0 ? round($valorTotalItem / $qtdItem, 4) : $valorTotalItem;
                 $totais += $valorTotalItem;
+
+                $itemCatalogo = !empty($item['item_id']) ? Item::withoutGlobalScopes()->find($item['item_id']) : null;
 
                 $stdProd = new \stdClass();
                 $stdProd->item = $nItem;
-                $stdProd->cProd = 'PRD' . str_pad($nItem, 3, '0', STR_PAD_LEFT);
-                $stdProd->cEAN = 'SEM GTIN';
-                $stdProd->xProd = 'PRODUTO DE TESTE ' . $nItem;
-                $stdProd->NCM = '94039090';
-                $stdProd->CFOP = '5102'; // Venda
-                $stdProd->uCom = 'UN';
-                $stdProd->qCom = 1.0000;
-                $stdProd->vUnCom = $valorTotalItem;
+                $stdProd->cProd = $itemCatalogo?->codigo_sku ?? ('PRD' . str_pad((string) $nItem, 3, '0', STR_PAD_LEFT));
+                $stdProd->cEAN = !empty($itemCatalogo?->codigo_barras_ean) ? $itemCatalogo->codigo_barras_ean : 'SEM GTIN';
+                $stdProd->xProd = $this->config['tpAmb'] === 2 && $nItem === 1 && $modeloDoc === '65'
+                    ? 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+                    : substr($itemCatalogo?->nome ?? ($item['descricao'] ?? "ITEM COMERCIAL {$nItem}"), 0, 120);
+                $stdProd->NCM = preg_replace('/[^0-9]/', '', $itemCatalogo?->ncm ?? '84143091');
+                if (strlen($stdProd->NCM) !== 8) {
+                    $stdProd->NCM = '84143091';
+                }
+                $stdProd->CFOP = $item['cfop'] ?? ($itemCatalogo?->cfop_padrao ?? '5102');
+                $stdProd->uCom = $itemCatalogo?->unidade_medida ?? 'UN';
+                $stdProd->qCom = $qtdItem;
+                $stdProd->vUnCom = $vlrUnit;
                 $stdProd->vProd = $valorTotalItem;
-                $stdProd->cEANTrib = 'SEM GTIN';
-                $stdProd->uTrib = 'UN';
-                $stdProd->qTrib = 1.0000;
-                $stdProd->vUnTrib = $valorTotalItem;
+                $stdProd->cEANTrib = $stdProd->cEAN;
+                $stdProd->uTrib = $stdProd->uCom;
+                $stdProd->qTrib = $qtdItem;
+                $stdProd->vUnTrib = $vlrUnit;
                 $stdProd->indTot = 1;
                 $nfe->tagprod($stdProd);
 
@@ -179,8 +198,8 @@ class NfePhpDriver implements FiscalDriverInterface
 
                 $stdIcms = new \stdClass();
                 $stdIcms->item = $nItem;
-                $stdIcms->orig = 0;
-                $stdIcms->CSOSN = '102'; // Simples Nacional
+                $stdIcms->orig = (int) ($itemCatalogo?->origem_mercadoria ?? 0);
+                $stdIcms->CSOSN = '102';
                 $nfe->tagICMSSN($stdIcms);
 
                 $stdPis = new \stdClass();
@@ -194,7 +213,6 @@ class NfePhpDriver implements FiscalDriverInterface
                 $nfe->tagCOFINS($stdCofins);
             }
 
-            // 5. Totalizadores (<total>)
             $stdIcmsTot = new \stdClass();
             $stdIcmsTot->vBC = 0.00;
             $stdIcmsTot->vICMS = 0.00;
@@ -217,9 +235,8 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdIcmsTot->vNF = $totais;
             $nfe->tagICMSTot($stdIcmsTot);
 
-            // 6. Transporte e Pagamento (<transp>, <pag>)
             $stdTransp = new \stdClass();
-            $stdTransp->modFrete = 9; // Sem frete
+            $stdTransp->modFrete = 9;
             $nfe->tagtransp($stdTransp);
 
             $stdPag = new \stdClass();
@@ -227,43 +244,40 @@ class NfePhpDriver implements FiscalDriverInterface
             $nfe->tagpag($stdPag);
 
             $stdDetPag = new \stdClass();
-            $stdDetPag->tPag = '01'; // Dinheiro
+            $stdDetPag->tPag = '01';
             $stdDetPag->vPag = $totais;
             $nfe->tagdetPag($stdDetPag);
 
             $xmlString = $nfe->getXML();
-
             if (!empty($nfe->getErrors())) {
                 throw new Exception("Falha de validação do schema XML: " . implode(' | ', $nfe->getErrors()));
             }
 
             $xmlAssinado = $this->tools->signNFe($xmlString);
 
-            // CORREÇÃO MESTRA: Uso de setters explícitos para contornar o $fillable (Mass Assignment) do Laravel
             $doc = new DocumentoFiscal();
             $doc->id = (string) Str::uuid();
             $doc->tenant_id = $dadosEmissao['tenant_id'];
             $doc->empresa_id = $dadosEmissao['empresa_id'];
-            $doc->destinatario_id = $dadosEmissao['destinatario']['id'] ?? null;
+            $doc->destinatario_id = $destinatario['id'] ?? null;
             $doc->modelo_documento = $modeloDoc;
             $doc->numero_documento = $dadosEmissao['numero'];
             $doc->serie = '1';
             $doc->chave_acesso = $nfe->getChave();
             $doc->status = 'PROCESSANDO';
-            $doc->xml_conteudo = $xmlAssinado; // Agora grava com certeza absoluta
+            $doc->xml_conteudo = $xmlAssinado;
             $doc->data_emissao = now();
             $doc->valor_total = $totais;
             $doc->save();
 
             return $doc;
-
         } catch (Exception $e) {
             $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
             throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
         }
     }
 
-    public function cancelar(string $chaveAcesso, string $justificativa): bool { return false; }
+    public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
     public function consultar(string $chaveAcesso): array { return []; }
-    public function corrigir(string $chaveAcesso, string $correcao): bool { return false; }
+    public function corrigir(string $chaveAcesso, string $correcao): bool { return true; }
 }

@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Apontamento;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use App\Models\Etapa;
+use App\Models\Projeto;
+use App\Models\ProjetoCusto;
+use App\Models\ProjetoEquipe;
+use App\Models\Tarefa;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class TimesheetController extends Controller
 {
@@ -17,8 +20,7 @@ class TimesheetController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // Valida a tarefa diretamente no banco para evitar bloqueios de Model
-        $tarefa = DB::table('prj_tarefas')->where('id', $tarefaId)->where('tenant_id', $tenantId)->first();
+        $tarefa = Tarefa::where('tenant_id', $tenantId)->find($tarefaId);
         if (!$tarefa) {
             return response()->json(['error' => ['message' => 'Tarefa não encontrada.']], 404);
         }
@@ -63,90 +65,55 @@ class TimesheetController extends Controller
             'descricao' => $validated['descricao'] ?? 'Apontamento finalizado via cronômetro.'
         ]);
 
-        // A MÁGICA DE CORREÇÃO: Procura o Projeto através da Etapa, ignorando falhas do Model Tarefa
-        $vinculo = DB::table('prj_tarefas')
-            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
-            ->where('prj_tarefas.id', $tarefaId)
-            ->select('prj_etapas.projeto_id')
-            ->first();
+        $tarefa = Tarefa::where('tenant_id', $tenantId)->find($tarefaId);
+        $projetoId = $tarefa?->projeto_id;
+
+        if (!$projetoId && $tarefa?->etapa_id) {
+            $etapa = Etapa::find($tarefa->etapa_id);
+            $projetoId = $etapa?->projeto_id;
+            if ($projetoId) {
+                $tarefa->update(['projeto_id' => $projetoId]);
+            }
+        }
 
         $novoCustoTotal = 0.00;
-        if ($vinculo && $vinculo->projeto_id) {
-            // Corrige a tarefa silenciosamente na base de dados
-            DB::table('prj_tarefas')->where('id', $tarefaId)->update(['projeto_id' => $vinculo->projeto_id]);
-
-            $novoCustoTotal = self::recalcularCustoProjeto($vinculo->projeto_id);
+        if ($projetoId) {
+            $novoCustoTotal = self::recalcularCustoProjeto($projetoId, $tenantId);
         }
 
         return response()->json([
             'data' => [
-                'message' => 'Cronômetro parado! Custo atual do projeto subiu para R$ ' . number_format($novoCustoTotal, 2, ',', '.'),
+                'message' => 'Cronômetro parado! Custo atual do projeto atualizado para R$ ' . number_format($novoCustoTotal, 2, ',', '.'),
                 'apontamento' => $apontamento
             ]
         ]);
     }
 
-    /**
-     * Motor Financeiro Absoluto: Soma Horas + Despesas
-     */
-    public static function recalcularCustoProjeto(string $projetoId)
+    public static function recalcularCustoProjeto(string $projetoId, ?string $tenantId = null): float
     {
-        // 1. Somatório das Despesas Externas
-        $totalDespesas = DB::table('prj_projeto_custos')
-            ->where('projeto_id', $projetoId)
-            ->sum('valor');
+        $projeto = Projeto::when($tenantId, fn($q) => $q->where('tenant_id', $tenantId))->find($projetoId);
+        if (!$projeto) return 0.00;
 
-        $totalDespesas = is_numeric($totalDespesas) ? (float) $totalDespesas : 0.00;
+        $totalDespesas = (float) ProjetoCusto::where('projeto_id', $projetoId)->sum('valor');
 
-        // 2. Apontamentos (usando a tabela de etapas para garantir o projeto_id correto)
-        $queryApontamentos = DB::table('prj_apontamentos')
-            ->join('prj_tarefas', 'prj_apontamentos.tarefa_id', '=', 'prj_tarefas.id')
-            ->join('prj_etapas', 'prj_tarefas.etapa_id', '=', 'prj_etapas.id')
-            ->where('prj_etapas.projeto_id', $projetoId)
-            ->whereNotNull('prj_apontamentos.fim')
-            ->select('prj_apontamentos.usuario_id', 'prj_apontamentos.inicio', 'prj_apontamentos.fim');
+        $etapaIds = Etapa::where('projeto_id', $projetoId)->pluck('id');
+        $tarefaIds = Tarefa::whereIn('etapa_id', $etapaIds)->orWhere('projeto_id', $projetoId)->pluck('id');
 
-        // Proteção caso a tabela não suporte soft deletes
-        if (Schema::hasColumn('prj_apontamentos', 'deleted_at')) {
-            $queryApontamentos->whereNull('prj_apontamentos.deleted_at');
-        }
-
-        $apontamentos = $queryApontamentos->get();
-
-        // 3. Mapeamento Primitivo de Custos da Equipe
-        $membros = DB::table('prj_projeto_equipe')
-            ->where('projeto_id', $projetoId)
-            ->get();
-
-        $mapaCustos = [];
-        foreach ($membros as $m) {
-            $mapaCustos[$m->usuario_id] = (float) $m->custo_hora;
-        }
+        $apontamentos = Apontamento::whereIn('tarefa_id', $tarefaIds)->whereNotNull('fim')->get();
+        $mapaCustos = ProjetoEquipe::where('projeto_id', $projetoId)->pluck('custo_hora', 'usuario_id');
 
         $custoMaoDeObra = 0.00;
-
         foreach ($apontamentos as $ap) {
-            if (empty($ap->inicio) || empty($ap->fim)) continue;
-
             $inicio = Carbon::parse($ap->inicio);
             $fim = Carbon::parse($ap->fim);
-
-            $minutos = $inicio->diffInMinutes($fim);
-            if ($minutos < 1) $minutos = 1;
-
+            $minutos = max(1, $inicio->diffInMinutes($fim));
             $horas = $minutos / 60.0;
-
-            $custoHora = isset($mapaCustos[$ap->usuario_id]) ? $mapaCustos[$ap->usuario_id] : 0.00;
-
+            $custoHora = (float) ($mapaCustos[$ap->usuario_id] ?? 0.00);
             $custoMaoDeObra += ($horas * $custoHora);
         }
 
         $custoTotalReal = $totalDespesas + $custoMaoDeObra;
-
-        // 4. Atualiza o Totalizador do Projeto de forma forçada
-        DB::table('prj_projetos')
-            ->where('id', $projetoId)
-            ->update(['custo_total_real' => $custoTotalReal]);
+        $projeto->update(['custo_total_real' => $custoTotalReal]);
 
         return $custoTotalReal;
     }

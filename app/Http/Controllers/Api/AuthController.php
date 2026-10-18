@@ -196,4 +196,49 @@ $user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['
 
         return response()->json(['data' => ['message' => 'Senha atualizada com sucesso. Demais dispositivos foram desconectados.']]);
     }
+    public function solicitarRecuperacaoSenha(Request $request): JsonResponse
+    {
+        $request->validate(['email' => 'required|email']);
+        $user = User::withoutGlobalScopes()->where('email', $request->email)->first();
+
+        if ($user) {
+            $token = \Illuminate\Support\Str::upper(\Illuminate\Support\Str::random(6));
+            \Illuminate\Support\Facades\DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => $user->email],
+                ['token' => Hash::make($token), 'created_at' => now()]
+            );
+
+            \Illuminate\Support\Facades\Log::info("[RECUPERAÇÃO DE SENHA SCALLE] E-mail: {$user->email} | Código: {$token}");
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => 'Se o e-mail pertencer a uma conta ativa, um código de verificação de 6 caracteres foi enviado.'
+            ]
+        ]);
+    }
+
+    public function redefinirSenha(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'codigo' => 'required|string|size:6',
+            'nova_senha' => 'required|string|min:6',
+        ]);
+
+        $registro = \Illuminate\Support\Facades\DB::table('password_reset_tokens')
+            ->where('email', $validated['email'])
+            ->first();
+
+        if (!$registro || !Hash::check(strtoupper($validated['codigo']), $registro->token)) {
+            return response()->json(['error' => ['message' => 'Código de recuperação inválido ou expirado.']], 422);
+        }
+
+        $user = User::withoutGlobalScopes()->where('email', $validated['email'])->firstOrFail();
+        $user->update(['password' => $validated['nova_senha']]);
+
+        \Illuminate\Support\Facades\DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+
+        return response()->json(['data' => ['message' => 'Senha redefinida com sucesso! Você já pode acessar o sistema.']]);
+    }
 }

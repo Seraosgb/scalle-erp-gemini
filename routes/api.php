@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\PublicOnboardingController;
+use App\Http\Middleware\EnsureIdempotency;
 use App\Http\Controllers\Api\AtivoController;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
@@ -51,6 +53,18 @@ use App\Http\Controllers\Api\IotTelemetryController;
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
 // ==========================================
+
+Route::prefix('public')->group(function () {
+    Route::get('/planos', [PublicOnboardingController::class, 'listarPlanos']);
+    Route::get('/consultar-cnpj/{cnpj}', [PublicOnboardingController::class, 'consultarCnpjPublico']);
+    Route::post('/registrar-trial', [PublicOnboardingController::class, 'registrarTrial']);
+});
+
+Route::prefix('auth')->group(function () {
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/forgot-password', [AuthController::class, 'solicitarRecuperacaoSenha']);
+    Route::post('/reset-password', [AuthController::class, 'redefinirSenha']);
+});
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
@@ -61,6 +75,9 @@ Route::post('/crm/webhook/{token}', [CrmController::class, 'webhookCapturaLead']
 
 // Webhooks de Gateways (Asaas, etc)
 Route::post('/billing/webhook/asaas', [BillingWebhookController::class, 'handleAsaas']);
+Route::get('/billing/minha-assinatura', [TenantBillingController::class, 'minhaAssinatura']);
+Route::get('/billing/historico-faturas', [TenantBillingController::class, 'historicoFaturas']);
+Route::post('/billing/alterar-plano', [TenantBillingController::class, 'alterarPlano']);
 
 // Rota de Ingestão de Dados IoT (ESP32 / Arduino / CLP)
 Route::post('/iot/telemetry', [IotTelemetryController::class, 'receive']);

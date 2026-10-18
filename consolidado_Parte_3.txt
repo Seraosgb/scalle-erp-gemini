@@ -1,0 +1,3270 @@
+﻿     $valorTotalGeral += $valorTotal;
+
+            $saldoAtual = EstoqueDeposito::where('item_id', $item->id)->sum('quantidade_saldo') ?? 0;
+
+            $dadosAbc[] = [
+                'id' => $item->id,
+                'nome' => $item->nome,
+                'sku' => $item->codigo_sku,
+                'unidade' => $item->unidade_medida,
+                'quantidade_saidas_90d' => (float) $saidas,
+                'saldo_atual' => (float) $saldoAtual,
+                'estoque_minimo' => (float) ($item->estoque_minimo ?? 0),
+                'valor_movimentado_90d' => $valorTotal,
+                'status_reposicao' => $saldoAtual <= ($item->estoque_minimo ?? 0) ? 'CRITICO' : 'NORMAL',
+            ];
+        }
+
+        usort($dadosAbc, fn($a, $b) => $b['valor_movimentado_90d'] <=> $a['valor_movimentado_90d']);
+
+        $acumulado = 0.00;
+        foreach ($dadosAbc as &$d) {
+            $acumulado += $d['valor_movimentado_90d'];
+            $pctAcumulada = $valorTotalGeral > 0 ? ($acumulado / $valorTotalGeral) * 100 : 100;
+
+            if ($pctAcumulada <= 80) {
+                $d['classe_abc'] = 'A';
+            } elseif ($pctAcumulada <= 95) {
+                $d['classe_abc'] = 'B';
+            } else {
+                $d['classe_abc'] = 'C';
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'valor_total_saidas_90d' => $valorTotalGeral,
+                'itens' => $dadosAbc,
+            ]
+        ]);
+    }
+    public function inventarioLote(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'contagens' => 'required|array|min:1',
+            'contagens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'contagens.*.quantidade_contada' => 'required|numeric|min:0',
+            'contagens.*.lote' => 'nullable|string|max:50',
+            'motivo' => 'nullable|string|max:255',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $depositoId = $validated['deposito_id'];
+        $motivoGeral = $validated['motivo'] ?? 'Inventário Físico Periódico';
+        $usuarioId = $request->user()->id;
+
+        try {
+            DB::transaction(function () use ($validated, $tenantId, $depositoId, $motivoGeral, $usuarioId) {
+                foreach ($validated['contagens'] as $contagem) {
+                    $itemId = $contagem['item_id'];
+                    $qtdContada = (float) $contagem['quantidade_contada'];
+                    $lote = $contagem['lote'] ?? null;
+
+                    $saldoAtual = EstoqueDeposito::where('deposito_id', $depositoId)
+                        ->where('item_id', $itemId)
+                        ->when($lote, fn($q) => $q->where('lote', $lote))
+                        ->lockForUpdate()
+                        ->first();
+
+                    $qtdAnterior = $saldoAtual ? (float) $saldoAtual->quantidade_saldo : 0.00;
+                    $diferenca = $qtdContada - $qtdAnterior;
+
+                    if ($diferenca != 0) {
+                        if (!$saldoAtual) {
+                            $saldoAtual = EstoqueDeposito::create([
+                                'id' => (string) Str::uuid(),
+                                'tenant_id' => $tenantId,
+                                'deposito_id' => $depositoId,
+                                'item_id' => $itemId,
+                                'lote' => $lote,
+                                'quantidade_saldo' => $qtdContada,
+                                'quantidade_reservada' => 0.0000,
+                            ]);
+                        } else {
+                            $saldoAtual->update(['quantidade_saldo' => $qtdContada]);
+                        }
+
+                        MovimentacaoEstoque::create([
+                            'id' => (string) Str::uuid(),
+                            'tenant_id' => $tenantId,
+                            'deposito_id' => $depositoId,
+                            'item_id' => $itemId,
+                            'usuario_id' => $usuarioId,
+                            'tipo_movimento' => 'AJUSTE_INVENTARIO',
+                            'quantidade' => abs($diferenca),
+                            'saldo_anterior' => $qtdAnterior,
+                            'saldo_posterior' => $qtdContada,
+                            'custo_unitario' => 0.00,
+                            'documento_origem_tipo' => 'inventario_lote',
+                            'motivo' => "{$motivoGeral} (Divergência: " . ($diferenca > 0 ? "+{$diferenca}" : $diferenca) . ")",
+                            'created_at' => now(),
+                        ]);
+                    }
+                }
+            });
+
+            return response()->json(['data' => ['message' => 'Inventário em lote processado e saldos auditados com sucesso!']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\KanbanController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Projeto;
+use App\Models\Tarefa;
+use App\Models\Etapa;
+use App\Models\PrjTarefaChecklist;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class KanbanController extends Controller
+{
+    /**
+     * Retorna as prioridades configuradas para o Tenant
+     */
+    public function listarPrioridades(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $prioridades = DB::table('prj_prioridades_tarefas')
+            ->where('tenant_id', $tenantId)
+            ->orderBy('peso', 'desc')
+            ->get();
+
+        // Fallback robusto caso o tenant seja novo e não tenha prioridades cadastradas
+        if ($prioridades->isEmpty()) {
+            $basicos = [
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Crítica', 'peso' => 100, 'cor_hex' => '#ef4444'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Alta', 'peso' => 75, 'cor_hex' => '#f97316'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Média', 'peso' => 50, 'cor_hex' => '#3b82f6'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Baixa', 'peso' => 25, 'cor_hex' => '#64748b'],
+            ];
+            DB::table('prj_prioridades_tarefas')->insert($basicos);
+            $prioridades = collect($basicos);
+        }
+
+        return response()->json(['data' => $prioridades]);
+    }
+
+    /**
+     * Retorna o quadro completo com Etapas e Tarefas aninhadas.
+     */
+    public function board(Request $request, string $projetoId): JsonResponse
+    {
+        $user = $request->user();
+        $usuarioId = $user->id;
+
+        // O fallback na ordenação garante retrocompatibilidade com tarefas legadas que só têm 'prioridade' int
+        $projeto = Projeto::with(['etapas.tarefas' => function($query) {
+            $query->orderBy('prioridade', 'desc')->orderBy('created_at', 'desc');
+        }])->findOrFail($projetoId);
+
+        $tarefaIds = [];
+        foreach ($projeto->etapas as $etapa) {
+            foreach ($etapa->tarefas as $tarefa) {
+                $tarefaIds[] = $tarefa->id;
+            }
+        }
+
+        if (count($tarefaIds) > 0) {
+            $anexos = \App\Models\GedDocumento::where('tenant_id', $user->tenant_id)
+                ->where('entidade_vinculada_type', 'App\Models\Tarefa')
+                ->whereIn('entidade_vinculada_id', $tarefaIds)
+                ->get()
+                ->groupBy('entidade_vinculada_id');
+
+            $checklists = DB::table('prj_tarefa_checklists')
+                ->whereIn('tarefa_id', $tarefaIds)
+                ->get()
+                ->groupBy('tarefa_id');
+
+            $apontamentos = DB::table('prj_apontamentos')
+                ->whereIn('tarefa_id', $tarefaIds)
+                ->where('usuario_id', $usuarioId)
+                ->whereNull('fim')
+                ->whereNull('deleted_at')
+                ->get()
+                ->groupBy('tarefa_id');
+
+            $dependencias = DB::table('prj_tarefa_dependencias')
+                ->join('prj_tarefas', 'prj_tarefa_dependencias.depende_de_id', '=', 'prj_tarefas.id')
+                ->whereIn('prj_tarefa_dependencias.tarefa_id', $tarefaIds)
+                ->select('prj_tarefa_dependencias.tarefa_id', 'prj_tarefas.titulo', 'prj_tarefa_dependencias.depende_de_id as id')
+                ->get()
+                ->groupBy('tarefa_id');
+
+            // Busca dados ricos da prioridade dinâmica para colorir o card
+            $dictPrioridades = DB::table('prj_prioridades_tarefas')->where('tenant_id', $user->tenant_id)->get()->keyBy('id');
+
+            foreach ($projeto->etapas as $etapa) {
+                foreach ($etapa->tarefas as $tarefa) {
+                    $tarefa->anexos = $anexos->get($tarefa->id, []);
+                    $tarefa->checklists = $checklists->get($tarefa->id, []);
+                    $tarefa->apontamentos = $apontamentos->get($tarefa->id, []);
+                    $tarefa->dependencias = $dependencias->get($tarefa->id, []);
+
+                    // Acopla os metadados visuais da prioridade dinâmica
+                    if ($tarefa->prioridade_id && $dictPrioridades->has($tarefa->prioridade_id)) {
+                        $tarefa->prioridade_dinamica = $dictPrioridades[$tarefa->prioridade_id];
+                    }
+                }
+            }
+        }
+
+        return response()->json(['data' => $projeto]);
+    }
+
+    /**
+     * Move uma tarefa dinamicamente entre as etapas (Drag and Drop).
+     */
+    public function moverTarefa(Request $request, string $tarefaId): JsonResponse
+    {
+        $validated = $request->validate([
+            'nova_etapa_id' => 'required|uuid|exists:prj_etapas,id'
+        ]);
+
+        $tarefa = Tarefa::findOrFail($tarefaId);
+        $tarefa->update(['etapa_id' => $validated['nova_etapa_id']]);
+
+        return response()->json(['message' => 'Tarefa movida com sucesso!', 'tarefa' => $tarefa]);
+    }
+
+    /**
+     * Adiciona uma nova tarefa ao final da coluna do Kanban.
+     */
+    public function adicionarTarefa(Request $request, string $etapaId): JsonResponse
+    {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:200',
+            'prioridade_id' => 'nullable|uuid|exists:prj_prioridades_tarefas,id'
+        ]);
+
+        $etapa = Etapa::findOrFail($etapaId);
+
+        $tarefa = Tarefa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $request->user()->tenant_id,
+            'projeto_id' => $etapa->projeto_id,
+            'etapa_id' => $etapa->id,
+            'titulo' => $validated['titulo'],
+            'prioridade' => 2, // Legado de ordenação visual mantido para compatibilidade
+            'prioridade_id' => $validated['prioridade_id'] ?? null, // Nova tabela de domínio
+        ]);
+
+        return response()->json(['data' => $tarefa], 201);
+    }
+
+    /**
+     * ==========================================
+     * MICRO-GESTÃO DO CARD (Enterprise)
+     * ==========================================
+     */
+
+    public function adicionarChecklist(Request $request, string $tarefaId): JsonResponse
+    {
+        $validated = $request->validate(['descricao' => 'required|string|max:255']);
+
+        $item = PrjTarefaChecklist::create([
+            'id' => (string) Str::uuid(),
+            'tarefa_id' => $tarefaId,
+            'descricao' => $validated['descricao'],
+            'concluido' => false,
+        ]);
+
+        return response()->json(['data' => $item], 201);
+    }
+
+    public function toggleChecklist(Request $request, string $checklistId): JsonResponse
+    {
+        $item = PrjTarefaChecklist::findOrFail($checklistId);
+        $item->concluido = !$item->concluido;
+        $item->save();
+
+        return response()->json(['data' => $item]);
+    }
+
+    public function adicionarDependencia(Request $request, string $tarefaId): JsonResponse
+    {
+        $validated = $request->validate(['depende_de_id' => 'required|uuid|exists:prj_tarefas,id']);
+        $tarefa = Tarefa::findOrFail($tarefaId);
+        $tarefa->dependencias()->syncWithoutDetaching([$validated['depende_de_id']]);
+
+        return response()->json(['message' => 'Dependência adicionada com sucesso.']);
+    }
+
+    public function removerDependencia(Request $request, string $tarefaId, string $dependeDeId): JsonResponse
+    {
+        $tarefa = Tarefa::findOrFail($tarefaId);
+        $tarefa->dependencias()->detach($dependeDeId);
+
+        return response()->json(['message' => 'Dependência removida com sucesso.']);
+    }
+
+    public function alterarPrioridade(Request $request, $tarefaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'prioridade_id' => 'required|uuid|exists:prj_prioridades_tarefas,id'
+        ]);
+
+        $tarefa = Tarefa::where('tenant_id', $tenantId)->findOrFail($tarefaId);
+        $tarefa->update(['prioridade_id' => $validated['prioridade_id']]);
+
+        return response()->json(['message' => 'Prioridade atualizada com sucesso!']);
+    }
+
+    public function criarEtapa(Request $request, $projetoId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7'
+        ]);
+
+        $ordem = Etapa::where('projeto_id', $projetoId)->max('ordem') + 1;
+
+        $etapa = Etapa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $projetoId,
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'] ?? '#3b82f6',
+            'ordem' => $ordem
+        ]);
+
+        return response()->json(['message' => 'Etapa criada com sucesso!', 'data' => $etapa], 201);
+    }
+
+    public function renomearEtapa(Request $request, $etapaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7'
+        ]);
+
+        $etapa = Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
+        $etapa->update([
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'] ?? $etapa->cor_hex
+        ]);
+
+        return response()->json(['message' => 'Etapa atualizada com sucesso!']);
+    }
+
+    public function excluirEtapa(Request $request, $etapaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $etapa = Etapa::where('tenant_id', $tenantId)->findOrFail($etapaId);
+
+        if ($etapa->tarefas()->count() > 0) {
+            return response()->json(['message' => 'Não é possível excluir uma etapa com tarefas. Mova ou apague as tarefas primeiro.'], 400);
+        }
+
+        $etapa->delete();
+        return response()->json(['message' => 'Etapa excluída com sucesso!']);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\MasterController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Plano;
+use App\Models\Tenant;
+use App\Models\User;
+use App\Services\TenantProvisioningService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
+
+
+class MasterController extends Controller
+{
+    public function metricas(): JsonResponse
+    {
+        $totalTenants = Tenant::count();
+        $totalUsuarios = User::withoutGlobalScopes()->where('is_master', false)->count();
+        $tenantsAtivos = Tenant::where('status', 'ativo')->count();
+        $totalAssinaturas = Assinatura::withoutGlobalScopes()->where('status', 'ATIVO')->count();
+
+        return response()->json([
+            'data' => [
+                'total_tenants' => $totalTenants,
+                'total_usuarios' => $totalUsuarios,
+                'tenants_ativos' => $tenantsAtivos,
+                'total_assinaturas' => $totalAssinaturas,
+            ]
+        ]);
+    }
+
+    public function tenants(Request $request): JsonResponse
+    {
+        $query = Tenant::withoutGlobalScopes()->with([
+            'empresas' => fn($q) => $q->withoutGlobalScopes(),
+            'users' => fn($q) => $q->withoutGlobalScopes(),
+            'assinaturas.plano' => fn($q) => $q->withoutGlobalScopes()
+        ]);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome_fantasia', 'ILIKE', "%{$search}%")
+                  ->orWhere('razao_social', 'ILIKE', "%{$search}%")
+                  ->orWhere('documento', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $tenants = $query->orderByDesc('created_at')->paginate(15);
+        $planos = Plano::where('is_ativo', true)->get();
+
+        return response()->json([
+            'data' => [
+                'tenants' => $tenants,
+                'planos' => $planos,
+            ]
+        ]);
+    }
+
+    public function storeTenant(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tenant_nome_fantasia' => 'required|string|max:150',
+            'tenant_razao_social' => 'required|string|max:200',
+            'tenant_documento' => 'required|string|max:20|unique:sis_tenants,documento',
+            'plano_slug' => 'required|string|exists:sis_planos,slug',
+            'admin_name' => 'required|string|max:150',
+            'admin_email' => 'required|email|unique:users,email',
+            'admin_password' => 'required|string|min:6',
+            'admin_telefone' => 'nullable|string|max:30',
+        ]);
+
+        try {
+            $resultado = TenantProvisioningService::provisionar($validated);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Novo Tenant e Superadmin provisionados com sucesso!',
+                    'detalhes' => $resultado,
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PROVISIONING_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
+    }
+
+    public function alterarStatusTenant(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => 'required|string',
+        ]);
+
+        $statusNormalizado = strtolower(trim($validated['status']));
+
+        $tenant = Tenant::withoutGlobalScopes()->findOrFail($id);
+        $tenant->update(['status' => $statusNormalizado]);
+
+        $assinatura = Assinatura::withoutGlobalScopes()->where('tenant_id', $tenant->id)->first();
+        if ($assinatura) {
+            $statusAssinatura = match ($statusNormalizado) {
+                'ativo' => 'ATIVO',
+                'suspenso' => 'SUSPENSO',
+                'soft_lock', 'soft-lock' => 'SOFT_LOCK',
+                'cancelado' => 'CANCELADO',
+                default => 'TRIAL',
+            };
+            $assinatura->update(['status' => $statusAssinatura]);
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => "Status do tenant alterado para {$statusNormalizado}.",
+                'tenant' => $tenant,
+            ]
+        ]);
+    }
+    public function ultimaAuditoria(): \Symfony\Component\HttpFoundation\BinaryFileResponse|\Illuminate\Http\JsonResponse
+    {
+        $arquivos = \Illuminate\Support\Facades\File::glob(storage_path('app/auditorias/*.html'));
+        if (empty($arquivos)) {
+            return response()->json(['error' => 'Nenhum laudo de auditoria gerado até o momento.'], 404);
+        }
+
+        // Pega o laudo mais recente
+        rsort($arquivos);
+        return response()->file($arquivos[0]);
+    }
+    public function executarAuditoria(): JsonResponse
+    {
+        try {
+            // Aumenta limites temporários para a suíte de testes
+            set_time_limit(120);
+            ini_set('memory_limit', '512M');
+
+            $diretorio = storage_path('app/auditorias');
+            if (!File::exists($diretorio)) {
+                File::makeDirectory($diretorio, 0775, true);
+            }
+
+            // Executa o comando isoladamente
+            \Illuminate\Support\Facades\Artisan::call('scalle:audit-e2e', ['--export' => 'html']);
+            $saidaTexto = \Illuminate\Support\Facades\Artisan::output();
+
+            // Localiza o último arquivo JSON gerado
+            $arquivosJson = File::glob("{$diretorio}/*.json");
+            $dadosRelatorio = null;
+
+            if (!empty($arquivosJson)) {
+                rsort($arquivosJson);
+                $conteudo = @file_get_contents($arquivosJson[0]);
+                if ($conteudo) {
+                    $dadosRelatorio = json_decode($conteudo, true);
+                }
+            }
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Auditoria E2E executada com sucesso!',
+                    'output_console' => $saidaTexto,
+                    'laudo' => $dadosRelatorio,
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Erro na execução da Auditoria E2E: " . $e->getMessage(), [
+                'linha' => $e->getLine(),
+                'arquivo' => $e->getFile(),
+            ]);
+
+            return response()->json([
+                'error' => [
+                    'code' => 'AUDIT_EXECUTION_ERROR',
+                    'message' => $e->getMessage(),
+                    'file' => basename($e->getFile()),
+                    'line' => $e->getLine(),
+                ]
+            ], 500);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\OrdemServicoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Empresa;
+use App\Models\OrdemServico;
+use App\Models\OrdemServicoFoto;
+use App\Services\OrdemServicoService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+class OrdemServicoController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->get('status'));
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('equipamento_descricao', 'ILIKE', "%{$search}%")
+                  ->orWhere('equipamento_marca_modelo', 'ILIKE', "%{$search}%")
+                  ->orWhere('numero_os', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('cliente', fn($c) => $c->where('nome_razao_social', 'ILIKE', "%{$search}%"));
+            });
+        }
+
+        $ordens = $query->orderByDesc('created_at')->paginate(15);
+
+        return response()->json($ordens);
+    }
+
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'cliente_id' => 'required|uuid|exists:pes_pessoas,id',
+            'tecnico_responsavel_id' => 'nullable|uuid|exists:users,id',
+            'deposito_saida_id' => 'nullable|uuid|exists:wms_depositos,id',
+            'equipamento_descricao' => 'required|string|max:200',
+            'equipamento_marca_modelo' => 'nullable|string|max:150',
+            'equipamento_numero_serie' => 'nullable|string|max:100',
+            'defeito_reclamado' => 'required|string',
+            'prioridade' => 'required|string|in:BAIXA,NORMAL,ALTA,URGENTE',
+            'tipo_manutencao' => 'required|string|in:CORRETIVA,PREVENTIVA,INSTALACAO,PREDITIVA',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
+                  ?? Empresa::first()->id;
+
+        $ultimoNumero = OrdemServico::where('empresa_id', $empresaId)->max('numero_os') ?? 1000;
+        $prazosSla = OrdemServicoService::calcularSla($validated['prioridade']);
+
+        $os = OrdemServico::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'empresa_id' => $empresaId,
+            'cliente_id' => $validated['cliente_id'],
+            'tecnico_responsavel_id' => $validated['tecnico_responsavel_id'] ?? $request->user()->id,
+            'deposito_saida_id' => $validated['deposito_saida_id'],
+            'numero_os' => $ultimoNumero + 1,
+            'status' => 'ABERTA',
+            'prioridade' => $validated['prioridade'],
+            'tipo_manutencao' => $validated['tipo_manutencao'],
+            'equipamento_descricao' => $validated['equipamento_descricao'],
+            'equipamento_marca_modelo' => $validated['equipamento_marca_modelo'] ?? null,
+            'equipamento_numero_serie' => $validated['equipamento_numero_serie'] ?? null,
+            'defeito_reclamado' => $validated['defeito_reclamado'],
+            'data_abertura' => now(),
+            'prazo_sla_resposta' => $prazosSla['resposta'],
+            'prazo_sla_resolucao' => $prazosSla['resolucao'],
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => "Ordem de Serviço #{$os->numero_os} aberta com sucesso!",
+                'os' => $os->load('cliente', 'tecnico'),
+            ]
+        ], 201);
+    }
+
+    public function uploadFoto(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $request->validate([
+            'foto' => 'required|image|max:10240', // Max 10MB
+            'tipo_etapa' => 'required|string|in:ANTES,DEPOIS',
+            'descricao' => 'nullable|string|max:255',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+        ]);
+
+        $caminho = $request->file('foto')->store("os/{$os->id}", 'public');
+        $urlPublica = Storage::disk('public')->url($caminho);
+
+        $foto = OrdemServicoFoto::create([
+            'id' => (string) Str::uuid(),
+            'ordem_servico_id' => $os->id,
+            'tipo_etapa' => $request->tipo_etapa,
+            'url_arquivo' => $urlPublica,
+            'descricao' => $request->descricao ?? "Evidência ({$request->tipo_etapa})",
+            'latitude' => $request->latitude,
+            'longitude' => $request->longitude,
+            'created_at' => now(),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Evidência fotográfica anexada com sucesso!',
+                'foto' => $foto,
+            ]
+        ], 201);
+    }
+
+    public function concluir(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'laudo_tecnico' => 'required|string',
+            'nome_responsavel' => 'required|string|max:150',
+            'documento_responsavel' => 'nullable|string|max:30',
+            'assinatura_base64' => 'required|string',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+            'itens' => 'nullable|array',
+            'itens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'itens.*.tipo_item' => 'required|string|in:PRODUTO,SERVICO',
+            'itens.*.quantidade' => 'required|numeric|min:0.0001',
+            'itens.*.valor_unitario' => 'required|numeric|min:0',
+            'itens.*.lote' => 'nullable|string|max:50',
+        ]);
+
+        try {
+            $osConcluida = OrdemServicoService::concluirOrdemServico(
+                $os,
+                $validated['itens'] ?? [],
+                $validated['laudo_tecnico'],
+                $validated['assinatura_base64'],
+                $validated['nome_responsavel'],
+                $validated['documento_responsavel'] ?? null,
+                $request->user(),
+                $validated['latitude'] ?? null,
+                $validated['longitude'] ?? null,
+                $request->ip()
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => "OS #{$osConcluida->numero_os} finalizada, estoque baixado e fatura gerada!",
+                    'os' => $osConcluida->load('itens.item', 'fotos'),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'OS_CONCLUDE_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
+    }
+    public function metricasCmms(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // 1. Ordens concluídas
+        $concluidas = OrdemServico::where('tenant_id', $tenantId)
+            ->where('status', 'CONCLUIDA')
+            ->whereNotNull('data_abertura')
+            ->whereNotNull('data_conclusao')
+            ->get();
+
+        $totalConcluidas = $concluidas->count();
+        $totalHorasReparo = 0;
+
+        foreach ($concluidas as $os) {
+            $abertura = \Carbon\Carbon::parse($os->data_abertura);
+            $conclusao = \Carbon\Carbon::parse($os->data_conclusao);
+            $totalHorasReparo += max(0.5, $conclusao->diffInMinutes($abertura) / 60);
+        }
+
+        // MTTR (Mean Time to Repair em Horas)
+        $mttr = $totalConcluidas > 0 ? round($totalHorasReparo / $totalConcluidas, 1) : 0;
+
+        // 2. MTBF (Mean Time Between Failures em Dias)
+        $corretivas = OrdemServico::where('tenant_id', $tenantId)
+            ->where('tipo_manutencao', 'CORRETIVA')
+            ->count();
+
+        $diasPeriodo = 30;
+        $mtbf = $corretivas > 0 ? round($diasPeriodo / $corretivas, 1) : $diasPeriodo;
+
+        // 3. Taxa de Conformidade Real com SLA (Atrasos reduzem o percentual)
+        $dentroDoPrazo = $concluidas->filter(function ($os) {
+            return $os->prazo_sla_resolucao && $os->data_conclusao <= $os->prazo_sla_resolucao;
+        })->count();
+
+        $slaConformidade = $totalConcluidas > 0 ? round(($dentroDoPrazo / $totalConcluidas) * 100, 1) : 100;
+
+        return response()->json([
+            'data' => [
+                'mttr_horas' => $mttr,
+                'mtbf_dias' => $mtbf,
+                'sla_conformidade_percent' => $slaConformidade,
+                'total_concluidas' => $totalConcluidas,
+                'total_corretivas' => $corretivas,
+            ]
+        ]);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'empresa', 'ativo', 'apontamentos.tecnico'])
+            ->findOrFail($id);
+
+        return response()->json(['data' => $os]);
+    }
+
+    public function atualizarStatus(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'status' => 'required|string|in:ABERTA,EM_EXECUCAO,AGUARDANDO_PECA,MATERIAL_DISPONIVEL,CONCLUIDA,CANCELADA',
+            'diagnostico_tecnico' => 'nullable|string',
+            'tecnico_responsavel_id' => 'nullable|uuid|exists:users,id',
+        ]);
+
+        $novoStatus = $validated['status'];
+        $statusAnterior = $os->status;
+        $userId = $request->user()->id;
+
+        // 1. Fechar apontamento aberto de mão de obra se estiver saindo de EM_EXECUCAO
+        if ($statusAnterior === 'EM_EXECUCAO' && $novoStatus !== 'EM_EXECUCAO') {
+            $apontamentoAberto = \App\Models\OsApontamentoHora::where('ordem_servico_id', $os->id)
+                ->whereNull('data_hora_fim')
+                ->latest()
+                ->first();
+
+            if ($apontamentoAberto) {
+                $agora = now();
+                $inicio = \Carbon\Carbon::parse($apontamentoAberto->data_hora_inicio);
+                $minutos = max(1, $agora->diffInMinutes($inicio));
+                $horas = round($minutos / 60, 2);
+                $valorTotal = $horas * (float)$apontamentoAberto->valor_hora;
+
+                $apontamentoAberto->update([
+                    'data_hora_fim' => $agora,
+                    'total_horas' => $horas,
+                    'valor_total' => $valorTotal,
+                ]);
+
+                // Recalcular valor total de serviços da OS
+                $totalServicos = \App\Models\OsApontamentoHora::where('ordem_servico_id', $os->id)->sum('valor_total');
+                $os->update([
+                    'valor_servicos' => $totalServicos,
+                    'valor_total' => ((float)$totalServicos + (float)$os->valor_pecas) - (float)$os->valor_desconto,
+                ]);
+            }
+        }
+
+        // 2. Abrir novo apontamento de mão de obra ao entrar em EM_EXECUCAO
+        if ($novoStatus === 'EM_EXECUCAO') {
+            \App\Models\OsApontamentoHora::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'ordem_servico_id' => $os->id,
+                'tecnico_id' => $validated['tecnico_responsavel_id'] ?? $os->tecnico_responsavel_id ?? $userId,
+                'data_hora_inicio' => now(),
+                'valor_hora' => 60.00, // Valor padrão de hora técnica
+                'descricao_atividades' => 'Execução técnica em andamento.',
+            ]);
+
+            if (empty($os->data_inicio_execucao)) {
+                $os->data_inicio_execucao = now();
+            }
+        }
+
+        $dadosUpdate = ['status' => $novoStatus];
+        if (isset($validated['diagnostico_tecnico'])) {
+            $dadosUpdate['diagnostico_tecnico'] = $validated['diagnostico_tecnico'];
+        }
+        if (isset($validated['tecnico_responsavel_id'])) {
+            $dadosUpdate['tecnico_responsavel_id'] = $validated['tecnico_responsavel_id'];
+        }
+
+        $os->update($dadosUpdate);
+
+        return response()->json([
+            'data' => [
+                'message' => "OS #{$os->numero_os} transitada para {$novoStatus}!",
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ]
+        ]);
+    }
+
+    public function adicionarPeca(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'item_id' => 'required|uuid|exists:pro_itens,id',
+            'quantidade' => 'required|numeric|min:0.0001',
+            'valor_unitario' => 'required|numeric|min:0',
+        ]);
+
+        $item = \App\Models\OrdemServicoItem::create([
+            'id' => (string) Str::uuid(),
+            'ordem_servico_id' => $os->id,
+            'item_id' => $validated['item_id'],
+            'tipo_item' => 'PRODUTO',
+            'quantidade' => $validated['quantidade'],
+            'valor_unitario' => $validated['valor_unitario'],
+            'valor_total' => (float)$validated['quantidade'] * (float)$validated['valor_unitario'],
+            'status_requisicao' => 'SOLICITADO',
+        ]);
+
+        $totalPecas = \App\Models\OrdemServicoItem::where('ordem_servico_id', $os->id)->sum('valor_total');
+        $os->update([
+            'valor_pecas' => $totalPecas,
+            'valor_total' => ((float)$os->valor_servicos + (float)$totalPecas) - (float)$os->valor_desconto,
+            'status' => 'AGUARDANDO_PECA',
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Material solicitado ao almoxarifado com sucesso!',
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ]
+        ], 201);
+    }
+
+    public function tratarPecaAlmoxarifado(Request $request, string $osId, string $itemId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($osId);
+        $itemOs = \App\Models\OrdemServicoItem::where('ordem_servico_id', $os->id)->findOrFail($itemId);
+
+        $validated = $request->validate([
+            'status_requisicao' => 'required|string|in:DISPONIVEL,RETIRADO',
+        ]);
+
+        $novoStatusReq = $validated['status_requisicao'];
+        $user = $request->user();
+
+        if ($novoStatusReq === 'RETIRADO' && $itemOs->status_requisicao !== 'RETIRADO') {
+            // Efetua a baixa física atômica no WMS
+            if (!empty($os->deposito_saida_id)) {
+                \App\Services\EstoqueService::movimentar(
+                    $os->deposito_saida_id,
+                    $itemOs->item_id,
+                    (float) $itemOs->quantidade,
+                    'SAIDA_OS',
+                    $user->id,
+                    'os',
+                    $os->id,
+                    null,
+                    (float) $itemOs->valor_unitario
+                );
+            }
+        }
+
+        $itemOs->update([
+            'status_requisicao' => $novoStatusReq,
+            'almoxarife_id' => $user->id,
+            'atendido_em' => now(),
+        ]);
+
+        // Se todas as peças foram atendidas/disponíveis, sugere MATERIAL_DISPONIVEL
+        $pendentes = \App\Models\OrdemServicoItem::where('ordem_servico_id', $os->id)
+            ->where('status_requisicao', 'SOLICITADO')
+            ->count();
+
+        if ($pendentes === 0 && $novoStatusReq === 'DISPONIVEL') {
+            $os->update(['status' => 'MATERIAL_DISPONIVEL']);
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => "Material marcado como {$novoStatusReq}!",
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ]
+        ]);
+    }
+    public function bootstrapData(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+        $search = trim((string) $request->get('search'));
+
+        // 1. Query com filtro por busca
+        $query = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente:id,nome_razao_social', 'tecnico:id,name', 'deposito:id,nome']);
+
+        if (!empty($search)) {
+            $apenasNumero = preg_replace('/[^0-9]/', '', $search);
+
+            $query->where(function ($q) use ($search, $apenasNumero) {
+                if (!empty($apenasNumero)) {
+                    $q->where('numero_os', (int) $apenasNumero);
+                }
+                $q->orWhere('equipamento_descricao', 'ILIKE', "%{$search}%")
+                  ->orWhere('equipamento_marca_modelo', 'ILIKE', "%{$search}%")
+                  ->orWhere('defeito_reclamado', 'ILIKE', "%{$search}%")
+                  ->orWhereHas('cliente', fn($c) => $c->where('nome_razao_social', 'ILIKE', "%{$search}%"))
+                  ->orWhereHas('tecnico', fn($t) => $t->where('name', 'ILIKE', "%{$search}%"));
+            });
+        }
+
+        $ordens = $query->orderByDesc('created_at')->limit(50)->get();
+
+        // 2. Cálculo real de MTTR, MTBF e Conformidade SLA
+        $concluidas = OrdemServico::where('tenant_id', $tenantId)
+            ->where('status', 'CONCLUIDA')
+            ->whereNotNull('data_conclusao')
+            ->get();
+
+        $totalConcluidas = $concluidas->count();
+        $totalHorasReparo = 0;
+
+        foreach ($concluidas as $os) {
+            $abertura = \Carbon\Carbon::parse($os->data_abertura ?? $os->created_at);
+            $conclusao = \Carbon\Carbon::parse($os->data_conclusao);
+            $totalHorasReparo += max(0.5, $conclusao->diffInMinutes($abertura) / 60);
+        }
+
+        $mttr = $totalConcluidas > 0 ? round($totalHorasReparo / $totalConcluidas, 1) : 0;
+
+        $corretivasCount = OrdemServico::where('tenant_id', $tenantId)
+            ->where('tipo_manutencao', 'CORRETIVA')
+            ->count();
+
+        $dentroDoPrazo = $concluidas->filter(function ($os) {
+            return $os->prazo_sla_resolucao && $os->data_conclusao <= $os->prazo_sla_resolucao;
+        })->count();
+
+        $slaConformidade = $totalConcluidas > 0 ? round(($dentroDoPrazo / $totalConcluidas) * 100, 1) : 100;
+
+        $metricas = [
+            'mttr_horas' => $mttr,
+            'mtbf_dias' => $corretivasCount > 0 ? round(30 / $corretivasCount, 1) : 30,
+            'sla_conformidade_percent' => $slaConformidade,
+            'total_concluidas' => $totalConcluidas,
+            'total_corretivas' => $corretivasCount,
+        ];
+
+        // 3. Prioridades
+        $prioridades = \App\Models\TabelaDominio::where('tenant_id', $tenantId)
+            ->where('tipo_lista', 'PRIORIDADE_OS')
+            ->orderBy('ordem_exibicao')
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'ordens' => $ordens,
+                'metricas' => $metricas,
+                'prioridades' => $prioridades,
+            ]
+        ]);
+    }
+    public function atualizarDadosTecnicos(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'tecnico_responsavel_id' => 'nullable|uuid|exists:users,id',
+            'diagnostico_tecnico' => 'nullable|string',
+            'prioridade' => 'nullable|string|in:BAIXA,NORMAL,ALTA,URGENTE',
+            'prazo_sla_resolucao' => 'nullable|date',
+            'recalcular_sla' => 'nullable|boolean',
+        ]);
+
+        $dadosUpdate = [];
+
+        if (array_key_exists('tecnico_responsavel_id', $validated)) {
+            $dadosUpdate['tecnico_responsavel_id'] = $validated['tecnico_responsavel_id'];
+        }
+
+        // MÁGICA AQUI: Transforma o diagnóstico em um Diário de Bordo (Append Log)
+        if (!empty($validated['diagnostico_tecnico'])) {
+            $novoRegistro = "[" . now()->format('d/m/Y H:i') . " | " . $request->user()->name . "] " . $validated['diagnostico_tecnico'];
+
+            // Coloca o registro mais novo no topo
+            $dadosUpdate['diagnostico_tecnico'] = empty($os->diagnostico_tecnico)
+                ? $novoRegistro
+                : $novoRegistro . "\n" . $os->diagnostico_tecnico;
+        }
+
+        if (!empty($validated['prioridade'])) {
+            $dadosUpdate['prioridade'] = $validated['prioridade'];
+
+            if (!empty($validated['recalcular_sla'])) {
+                $abertura = \Carbon\Carbon::parse($os->data_abertura ?? now());
+                $horasSla = match ($validated['prioridade']) {
+                    'URGENTE' => 6,
+                    'ALTA' => 12,
+                    'BAIXA' => 72,
+                    default => 24, // NORMAL
+                };
+                $dadosUpdate['prazo_sla_resolucao'] = $abertura->copy()->addHours($horasSla);
+            }
+        }
+
+        if (!empty($validated['prazo_sla_resolucao']) && empty($validated['recalcular_sla'])) {
+            $dadosUpdate['prazo_sla_resolucao'] = $validated['prazo_sla_resolucao'];
+        }
+
+        $os->update($dadosUpdate);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Parâmetros e histórico atualizados com sucesso!',
+                'os' => $os->fresh(['cliente', 'tecnico', 'deposito', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ]
+        ]);
+    }
+    public function gerarPdf(Request $request, string $id)
+    {
+        $tenantId = $request->user()->tenant_id;
+        $os = OrdemServico::where('tenant_id', $tenantId)
+            ->with(['cliente', 'empresa', 'tecnico', 'itens.item', 'fotos', 'ativo', 'apontamentos.tecnico'])
+            ->findOrFail($id);
+
+        // Habilita carregamento de imagens externas (fotos do S3/Hostoo) e base64 (assinatura)
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.os', ['os' => $os])
+            ->setPaper('a4', 'portrait')
+            ->setOption(['isRemoteEnabled' => true]);
+
+        return $pdf->download("Laudo_Tecnico_OS_{$os->numero_os}.pdf");
+    }
+    }
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PcpController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Empresa;
+use App\Models\EstruturaItem;
+use App\Models\Item;
+use App\Models\OrdemProducao;
+use App\Services\ProducaoPcpService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class PcpController extends Controller
+{
+    public function ordensProducao(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $search = trim((string) $request->get('search'));
+
+        $query = OrdemProducao::where('tenant_id', $tenantId)
+            ->with(['produto', 'responsavel', 'depositoOrigem', 'depositoDestino']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->get('status'));
+        }
+
+        if (!empty($search)) {
+            // Extrai apenas dígitos caso o usuário pesquise por "OP-1001" ou "1001"
+            $apenasNumero = preg_replace('/[^0-9]/', '', $search);
+
+            $query->where(function ($q) use ($search, $apenasNumero) {
+                if (!empty($apenasNumero)) {
+                    $q->where('numero_op', (int) $apenasNumero);
+                }
+                $q->orWhereHas('produto', function ($sub) use ($search) {
+                    $sub->where('nome', 'ILIKE', "%{$search}%")
+                        ->orWhere('codigo_sku', 'ILIKE', "%{$search}%");
+                });
+            });
+        }
+
+        $ops = $query->orderByDesc('created_at')->paginate(15);
+        return response()->json($ops);
+    }
+
+    public function storeOrdemProducao(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'produto_id' => 'required|uuid|exists:pro_itens,id',
+            'deposito_origem_id' => 'required|uuid|exists:wms_depositos,id',
+            'deposito_destino_id' => 'required|uuid|exists:wms_depositos,id',
+            'quantidade_planejada' => 'required|numeric|min:0.0001',
+            'data_inicio_prevista' => 'nullable|date',
+            'data_fim_prevista' => 'nullable|date',
+            'observacoes' => 'nullable|string|max:255',
+        ]);
+
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+        $empresaId = $user->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()?->id;
+
+        try {
+            $op = DB::transaction(function () use ($validated, $tenantId, $empresaId, $user) {
+                $ultimoNumero = OrdemProducao::withoutGlobalScopes()
+                    ->where('empresa_id', $empresaId)
+                    ->max('numero_op') ?? 1000;
+
+                $novaOp = OrdemProducao::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'empresa_id' => $empresaId,
+                    'produto_id' => $validated['produto_id'],
+                    'deposito_origem_id' => $validated['deposito_origem_id'],
+                    'deposito_destino_id' => $validated['deposito_destino_id'],
+                    'responsavel_id' => $user->id,
+                    'numero_op' => $ultimoNumero + 1,
+                    'status' => 'PLANEJADA',
+                    'quantidade_planejada' => (float) $validated['quantidade_planejada'],
+                    'quantidade_produzida' => 0.0000,
+                    'custo_total_estimado' => 0.00,
+                    'custo_total_real' => 0.00,
+                    'data_inicio_prevista' => $validated['data_inicio_prevista'] ?? now()->toDateString(),
+                    'data_fim_prevista' => $validated['data_fim_prevista'] ?? now()->addDays(2)->toDateString(),
+                    'observacoes' => $validated['observacoes'] ?? null,
+                ]);
+
+                // Reserva atômica no WMS
+                ProducaoPcpService::reservarInsumos($novaOp);
+
+                return $novaOp;
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => "Ordem de Produção OP-{$op->numero_op} criada e insumos reservados!",
+                    'op' => $op->load(['produto', 'responsavel']),
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function updateOrdemProducao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($op->status === 'CONCLUIDA' || $op->status === 'CANCELADA') {
+            return response()->json(['error' => ['message' => "Não é permitido editar uma OP com status {$op->status}."]], 422);
+        }
+
+        $validated = $request->validate([
+            'deposito_origem_id' => 'required|uuid|exists:wms_depositos,id',
+            'deposito_destino_id' => 'required|uuid|exists:wms_depositos,id',
+            'quantidade_planejada' => 'required|numeric|min:0.0001',
+            'data_inicio_prevista' => 'nullable|date',
+            'data_fim_prevista' => 'nullable|date',
+            'observacoes' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            DB::transaction(function () use ($op, $validated) {
+                // Estorna reserva antiga e reaplica nova
+                ProducaoPcpService::estornarReservaInsumos($op);
+
+                $op->update([
+                    'deposito_origem_id' => $validated['deposito_origem_id'],
+                    'deposito_destino_id' => $validated['deposito_destino_id'],
+                    'quantidade_planejada' => (float) $validated['quantidade_planejada'],
+                    'data_inicio_prevista' => $validated['data_inicio_prevista'] ?? $op->data_inicio_prevista,
+                    'data_fim_prevista' => $validated['data_fim_prevista'] ?? $op->data_fim_prevista,
+                    'observacoes' => $validated['observacoes'] ?? $op->observacoes,
+                ]);
+
+                ProducaoPcpService::reservarInsumos($op);
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => "OP-{$op->numero_op} atualizada com sucesso!",
+                    'op' => $op->fresh(['produto', 'responsavel']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function cancelarOrdemProducao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($op->status === 'CONCLUIDA') {
+            return response()->json(['error' => ['message' => 'Uma OP já finalizada não pode ser cancelada.']], 422);
+        }
+
+        if ($op->status === 'CANCELADA') {
+            return response()->json(['error' => ['message' => 'Esta OP já se encontra cancelada.']], 422);
+        }
+
+        $validated = $request->validate([
+            'motivo' => 'required|string|max:255',
+        ]);
+
+        try {
+            DB::transaction(function () use ($op, $validated) {
+                ProducaoPcpService::estornarReservaInsumos($op);
+
+                $op->update([
+                    'status' => 'CANCELADA',
+                    'observacoes' => ($op->observacoes ? $op->observacoes . ' | ' : '') . "Cancelada: {$validated['motivo']}",
+                ]);
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => "OP-{$op->numero_op} cancelada e reservas estornadas com sucesso!",
+                    'op' => $op->fresh(['produto', 'responsavel']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function destroyOrdemProducao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($op->status === 'CONCLUIDA') {
+            return response()->json(['error' => ['message' => 'Não é permitido excluir uma Ordem de Produção concluída com impacto contábil/fiscal.']], 422);
+        }
+
+        try {
+            DB::transaction(function () use ($op) {
+                if ($op->status !== 'CANCELADA') {
+                    ProducaoPcpService::estornarReservaInsumos($op);
+                }
+                // Soft Delete
+                $op->delete();
+            });
+
+            return response()->json(['data' => ['message' => "OP-{$op->numero_op} removida do planejamento com sucesso."]]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function finalizarOrdemProducao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($op->status === 'CONCLUIDA') {
+            return response()->json(['error' => ['message' => 'Esta Ordem de Produção já foi finalizada.']], 422);
+        }
+
+        if ($op->status === 'CANCELADA') {
+            return response()->json(['error' => ['message' => 'Não é possível finalizar uma OP cancelada.']], 422);
+        }
+
+        $validated = $request->validate([
+            'quantidade_produzida' => 'required|numeric|min:0',
+            'quantidade_refugo' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $opFinalizada = ProducaoPcpService::finalizarProducao(
+                $op,
+                (float) $validated['quantidade_produzida'],
+                (float) ($validated['quantidade_refugo'] ?? 0.00),
+                $request->user()
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => "OP-{$opFinalizada->numero_op} finalizada com sucesso! Insumos consumidos e produto acabado disponibilizado no estoque.",
+                    'op' => $opFinalizada->load(['produto', 'responsavel']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function estruturas(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $search = trim((string) $request->get('search'));
+
+        $query = EstruturaItem::where('tenant_id', $tenantId)
+            ->with(['insumo', 'produtoPai']);
+
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('insumo', function ($sub) use ($search) {
+                    $sub->where('nome', 'ILIKE', "%{$search}%")
+                        ->orWhere('codigo_sku', 'ILIKE', "%{$search}%");
+                })->orWhereHas('produtoPai', function ($sub) use ($search) {
+                    $sub->where('nome', 'ILIKE', "%{$search}%")
+                        ->orWhere('codigo_sku', 'ILIKE', "%{$search}%");
+                });
+            });
+        }
+
+        $estruturas = $query->get()->groupBy('produto_pai_id');
+
+        $resultado = [];
+        foreach ($estruturas as $produtoPaiId => $insumos) {
+            $produtoPai = Item::find($produtoPaiId);
+            if ($produtoPai) {
+                $resultado[] = [
+                    'produto_pai' => $produtoPai,
+                    'insumos' => $insumos,
+                ];
+            }
+        }
+
+        return response()->json(['data' => $resultado]);
+    }
+
+    public function storeEstrutura(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'produto_pai_id' => 'required|uuid|exists:pro_itens,id',
+            'insumo_filho_id' => 'required|uuid|exists:pro_itens,id|different:produto_pai_id',
+            'quantidade_necessaria' => 'required|numeric|min:0.0001',
+            'percentual_perda_estimada' => 'nullable|numeric|min:0|max:100',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+
+        $estrutura = EstruturaItem::updateOrCreate(
+            [
+                'tenant_id' => $tenantId,
+                'produto_pai_id' => $validated['produto_pai_id'],
+                'insumo_filho_id' => $validated['insumo_filho_id'],
+            ],
+            [
+                'id' => (string) Str::uuid(),
+                'quantidade_necessaria' => (float) $validated['quantidade_necessaria'],
+                'percentual_perda_estimada' => (float) ($validated['percentual_perda_estimada'] ?? 0.00),
+            ]
+        );
+
+        return response()->json(['data' => $estrutura->load('insumo')], 201);
+    }
+
+    public function destroyEstruturaItem(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $est = EstruturaItem::where('tenant_id', $tenantId)->findOrFail($id);
+        $est->delete();
+
+        return response()->json(['data' => ['message' => 'Insumo desvinculado da Ficha Técnica.']]);
+    }
+
+    public function metricasKpi(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $totalOps = OrdemProducao::where('tenant_id', $tenantId)->count();
+        $opsConcluidas = OrdemProducao::where('tenant_id', $tenantId)->where('status', 'CONCLUIDA')->count();
+        $opsPlanejadas = OrdemProducao::where('tenant_id', $tenantId)->where('status', 'PLANEJADA')->count();
+        $opsCanceladas = OrdemProducao::where('tenant_id', $tenantId)->where('status', 'CANCELADA')->count();
+
+        $custoTotalProducao = OrdemProducao::where('tenant_id', $tenantId)->where('status', 'CONCLUIDA')->sum('custo_total_real') ?? 0.00;
+        $totalPecasProduzidas = OrdemProducao::where('tenant_id', $tenantId)->where('status', 'CONCLUIDA')->sum('quantidade_produzida') ?? 0;
+
+        return response()->json([
+            'data' => [
+                'total_ops' => (int) $totalOps,
+                'ops_concluidas' => (int) $opsConcluidas,
+                'ops_planejadas' => (int) $opsPlanejadas,
+                'ops_canceladas' => (int) $opsCanceladas,
+                'custo_total_producao' => (float) $custoTotalProducao,
+                'total_pecas_produzidas' => (float) $totalPecasProduzidas,
+            ]
+        ]);
+    }
+    public function apontarOrdemProducao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'quantidade_produzida' => 'required|numeric|min:0',
+            'quantidade_refugo' => 'nullable|numeric|min:0',
+            'horas_mod' => 'nullable|numeric|min:0',
+            'custo_hora_mod' => 'nullable|numeric|min:0',
+            'horas_cif' => 'nullable|numeric|min:0',
+            'custo_hora_cif' => 'nullable|numeric|min:0',
+            'observacoes' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            $apontamento = ProducaoPcpService::apontarProducao(
+                $op,
+                (float) $validated['quantidade_produzida'],
+                (float) ($validated['quantidade_refugo'] ?? 0.00),
+                (float) ($validated['horas_mod'] ?? 0.00),
+                (float) ($validated['custo_hora_mod'] ?? 45.00),
+                (float) ($validated['horas_cif'] ?? 0.00),
+                (float) ($validated['custo_hora_cif'] ?? 25.00),
+                $validated['observacoes'] ?? null,
+                $request->user()
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => "Apontamento de {$validated['quantidade_produzida']} UN registrado com sucesso!",
+                    'apontamento' => $apontamento,
+                    'op' => $op->fresh(['produto', 'responsavel', 'apontamentos.operador']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function showOrdemProducao(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $op = OrdemProducao::where('tenant_id', $tenantId)
+            ->with(['produto', 'responsavel', 'depositoOrigem', 'depositoDestino', 'apontamentos.operador'])
+            ->findOrFail($id);
+
+        return response()->json(['data' => $op]);
+    }
+    public function analiseMrp(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $empresaId = $user->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $user->tenant_id)->first()?->id;
+
+        $sugestoes = \App\Services\ProducaoPcpService::executarCalculoMrp($user->tenant_id, $empresaId, $user->id);
+
+        return response()->json(['data' => $sugestoes]);
+    }
+
+    public function gerarCotacaoMrp(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+        $empresaId = $user->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'itens' => 'required|array|min:1',
+            'itens.*.item_id' => 'required|uuid|exists:pro_itens,id',
+            'itens.*.quantidade' => 'required|numeric|min:0.0001',
+        ]);
+
+        $cotacao = \DB::transaction(function () use ($validated, $tenantId, $empresaId, $user) {
+            $cot = \App\Models\CotacaoCompra::create([
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'solicitante_id' => $user->id,
+                'deposito_destino_id' => $validated['deposito_id'],
+                'titulo' => 'Cotação Automática MRP (Demanda de Produção) - ' . date('d/m/Y H:i'),
+                'status' => 'ABERTA',
+            ]);
+
+            foreach ($validated['itens'] as $i) {
+                \App\Models\CotacaoCompraItem::create([
+                    'cotacao_id' => $cot->id,
+                    'item_id' => $i['item_id'],
+                    'quantidade' => (float) $i['quantidade'],
+                ]);
+            }
+
+            return $cot;
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => 'Cotação de compras gerada pelo motor MRP com sucesso!',
+                'cotacao' => $cotacao->load('itens.item')
+            ]
+        ], 201);
+    }
+
+    public function genealogiaLote(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $rastreamento = \App\Models\PcpLoteRastreabilidade::where('tenant_id', $tenantId)
+            ->where('ordem_producao_id', $id)
+            ->with(['insumo'])
+            ->get();
+
+        return response()->json(['data' => $rastreamento]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PdvController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Empresa;
+use App\Models\PdvCaixa;
+use App\Models\PdvMovimentacao;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Exception;
+
+class PdvController extends Controller
+{
+    public function status(Request $request): JsonResponse
+    {
+        $caixa = PdvCaixa::where('usuario_id', $request->user()->id)
+            ->where('status', 'ABERTO')
+            ->first();
+
+        return response()->json(['data' => ['caixa_aberto' => (bool)$caixa, 'caixa' => $caixa]]);
+    }
+
+    public function abrir(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'saldo_abertura' => 'required|numeric|min:0',
+        ]);
+
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+        $empresaId = $user->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        if (PdvCaixa::where('usuario_id', $user->id)->where('status', 'ABERTO')->exists()) {
+            return response()->json(['error' => ['message' => 'Você já possui um caixa aberto.']], 422);
+        }
+
+        $caixa = DB::transaction(function () use ($validated, $tenantId, $empresaId, $user) {
+            $novoCaixa = PdvCaixa::create([
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'usuario_id' => $user->id,
+                'data_abertura' => now(),
+                'saldo_abertura' => (float) $validated['saldo_abertura'],
+                'status' => 'ABERTO',
+            ]);
+
+            if ($novoCaixa->saldo_abertura > 0) {
+                PdvMovimentacao::create([
+                    'tenant_id' => $tenantId,
+                    'caixa_id' => $novoCaixa->id,
+                    'tipo_movimento' => 'SUPRIMENTO',
+                    'valor' => $novoCaixa->saldo_abertura,
+                    'observacoes' => 'Fundo de troco inicial',
+                ]);
+            }
+
+            return $novoCaixa;
+        });
+
+        return response()->json(['data' => ['message' => 'Caixa aberto com sucesso!', 'caixa' => $caixa]], 201);
+    }
+
+    public function movimentar(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tipo_movimento' => 'required|string|in:SANGRIA,SUPRIMENTO',
+            'valor' => 'required|numeric|min:0.01',
+            'observacoes' => 'required|string|max:255',
+            'email_supervisor' => 'nullable|email',
+            'senha_supervisor' => 'nullable|string',
+        ]);
+
+        $user = $request->user();
+        $caixa = PdvCaixa::where('usuario_id', $user->id)->where('status', 'ABERTO')->firstOrFail();
+
+        $autorizadorId = null;
+
+        // Regra RBAC: Se for Sangria e o usuário não for Gestor/Admin, exige senha de supervisor
+        if ($validated['tipo_movimento'] === 'SANGRIA' && !$user->is_master && !str_contains(strtoupper($user->perfil->nome ?? ''), 'ADMIN')) {
+            if (empty($validated['email_supervisor']) || empty($validated['senha_supervisor'])) {
+                return response()->json(['error' => ['message' => 'Autorização de supervisor obrigatória para sangrias.']], 403);
+            }
+
+            $supervisor = User::where('tenant_id', $user->tenant_id)->where('email', $validated['email_supervisor'])->first();
+
+            if (!$supervisor || !Hash::check($validated['senha_supervisor'], $supervisor->password) || (!str_contains(strtoupper($supervisor->perfil->nome ?? ''), 'ADMIN') && !$supervisor->is_master)) {
+                return response()->json(['error' => ['message' => 'Credenciais de supervisor inválidas ou sem privilégios.']], 403);
+            }
+            $autorizadorId = $supervisor->id;
+        }
+
+        $movimentacao = PdvMovimentacao::create([
+            'tenant_id' => $user->tenant_id,
+            'caixa_id' => $caixa->id,
+            'tipo_movimento' => $validated['tipo_movimento'],
+            'valor' => (float) $validated['valor'],
+            'autorizador_id' => $autorizadorId,
+            'observacoes' => $validated['observacoes'],
+        ]);
+
+        return response()->json(['data' => ['message' => "{$validated['tipo_movimento']} registrada com sucesso!", 'movimentacao' => $movimentacao]]);
+    }
+
+    public function fechar(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'saldo_informado' => 'required|numeric|min:0',
+        ]);
+
+        $caixa = PdvCaixa::where('usuario_id', $request->user()->id)->where('status', 'ABERTO')->firstOrFail();
+
+        // Cálculo dinâmico do saldo do gaveta
+        $entradas = PdvMovimentacao::where('caixa_id', $caixa->id)
+            ->whereIn('tipo_movimento', ['SUPRIMENTO', 'VENDA_DINHEIRO'])
+            ->sum('valor');
+
+        $saidas = PdvMovimentacao::where('caixa_id', $caixa->id)
+            ->where('tipo_movimento', 'SANGRIA')
+            ->sum('valor');
+
+        $saldoCalculado = $entradas - $saidas;
+        $saldoInformado = (float) $validated['saldo_informado'];
+        $quebra = $saldoInformado - $saldoCalculado;
+
+        $caixa->update([
+            'data_fechamento' => now(),
+            'saldo_informado' => $saldoInformado,
+            'saldo_calculado' => $saldoCalculado,
+            'quebra_caixa' => $quebra,
+            'status' => 'FECHADO',
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Caixa fechado com sucesso!',
+                'resumo' => [
+                    'saldo_calculado' => $saldoCalculado,
+                    'saldo_informado' => $saldoInformado,
+                    'quebra_caixa' => $quebra,
+                ]
+            ]
+        ]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PerfilController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Perfil;
+use App\Models\Permissao;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+
+class PerfilController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        
+        $query = Perfil::where('tenant_id', $tenantId)->with('permissoes');
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where('nome', 'ILIKE', "%{$search}%");
+        }
+
+        $perfis = $query->orderBy('nome')->get();
+        $todasPermissoes = Permissao::orderBy('modulo')->orderBy('nome')->get();
+
+        return response()->json([
+            'data' => [
+                'perfis' => $perfis,
+                'permissoes' => $todasPermissoes,
+            ]
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'descricao' => 'nullable|string|max:255',
+            'is_admin' => 'boolean',
+            'permissoes' => 'nullable|array',
+            'permissoes.*' => 'uuid|exists:sis_permissoes,id',
+        ]);
+
+        $perfil = Perfil::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'nome' => $validated['nome'],
+            'slug' => Str::slug($validated['nome']) . '-' . substr((string) Str::uuid(), 0, 4),
+            'descricao' => $validated['descricao'] ?? null,
+            'is_admin' => $validated['is_admin'] ?? false,
+        ]);
+
+        if (!empty($validated['permissoes']) && !$perfil->is_admin) {
+            $perfil->permissoes()->sync($validated['permissoes']);
+        }
+
+        return response()->json(['data' => $perfil->load('permissoes')], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $perfil = Perfil::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'descricao' => 'nullable|string|max:255',
+            'is_admin' => 'boolean',
+            'permissoes' => 'nullable|array',
+            'permissoes.*' => 'uuid|exists:sis_permissoes,id',
+        ]);
+
+        $perfil->update([
+            'nome' => $validated['nome'],
+            'descricao' => $validated['descricao'] ?? null,
+            'is_admin' => $validated['is_admin'] ?? false,
+        ]);
+
+        if ($perfil->is_admin) {
+            $perfil->permissoes()->detach();
+        } else {
+            $perfil->permissoes()->sync($validated['permissoes'] ?? []);
+        }
+
+        return response()->json(['data' => $perfil->load('permissoes')]);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $perfil = Perfil::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($perfil->is_sistema) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SYSTEM_ROLE_PROTECTED',
+                    'message' => 'Perfis protegidos do sistema não podem ser excluídos.',
+                ]
+            ], 422);
+        }
+
+        $perfil->delete();
+
+        return response()->json(['data' => ['message' => 'Perfil de acesso removido.']]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PessoaController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Endereco;
+use App\Models\Pessoa;
+use App\Services\DocumentoService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class PessoaController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = Pessoa::where('tenant_id', $tenantId)->with('enderecos');
+
+        if ($request->filled('tipo')) {
+            $tipo = strtoupper($request->get('tipo'));
+            if ($tipo === 'FORNECEDOR') $query->where('is_fornecedor', true);
+            elseif ($tipo === 'CLIENTE') $query->where('is_cliente', true);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome_razao_social', 'ILIKE', "%{$search}%")
+                  ->orWhere('nome_fantasia_apelido', 'ILIKE', "%{$search}%")
+                  ->orWhere('cpf_cnpj', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $pessoas = $query->orderBy('nome_razao_social')->paginate(20);
+        return response()->json($pessoas);
+    }
+
+    public function consultarCnpj(Request $request, string $cnpj): JsonResponse
+    {
+        $dados = DocumentoService::consultarCnpjReceitaWs($cnpj);
+
+        if (!$dados) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CNPJ_CONSULTA_FALHOU',
+                    'message' => 'CNPJ inválido ou serviço da Receita Federal indisponível no momento.',
+                ]
+            ], 404);
+        }
+
+        return response()->json(['data' => $dados]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'tipo_pessoa' => 'required|string|in:PF,PJ',
+            'nome_razao_social' => 'required|string|max:200',
+            'nome_fantasia_apelido' => 'nullable|string|max:200',
+            'cpf_cnpj' => 'required|string|max:20',
+            'email_principal' => 'nullable|email|max:150',
+            'telefone_principal' => 'nullable|string|max:30',
+            'is_cliente' => 'nullable|boolean',
+            'is_fornecedor' => 'nullable|boolean',
+            'is_tecnico' => 'nullable|boolean',
+            'is_transportadora' => 'nullable|boolean',
+            'enderecos' => 'nullable|array',
+            'enderecos.*.cep' => 'nullable|string|max:10',
+            'enderecos.*.logradouro' => 'nullable|string|max:150',
+            'enderecos.*.numero' => 'nullable|string|max:20',
+            'enderecos.*.bairro' => 'nullable|string|max:100',
+            'enderecos.*.cidade' => 'nullable|string|max:100',
+            'enderecos.*.uf' => 'nullable|string|size:2',
+        ]);
+
+        $cpfCnpjLimpo = preg_replace('/[^0-9]/', '', $validated['cpf_cnpj']);
+
+        // Validação Matemática Estrita (Padrão Gemini)
+        if (!DocumentoService::validarCpfCnpj($cpfCnpjLimpo)) {
+            return response()->json(['error' => ['message' => 'CPF ou CNPJ informado é matematicamente inválido.']], 422);
+        }
+
+        $tenantId = $request->user()->tenant_id;
+
+        // Evita duplicidade no mesmo tenant
+        if (Pessoa::where('tenant_id', $tenantId)->where('cpf_cnpj', $cpfCnpjLimpo)->exists()) {
+            return response()->json(['error' => ['message' => 'Este documento já está cadastrado em sua base.']], 422);
+        }
+
+        $pessoa = DB::transaction(function () use ($validated, $cpfCnpjLimpo, $tenantId) {
+            $p = Pessoa::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'tipo_pessoa' => $validated['tipo_pessoa'],
+                'nome_razao_social' => $validated['nome_razao_social'],
+                'nome_fantasia_apelido' => $validated['nome_fantasia_apelido'] ?? null,
+                'cpf_cnpj' => $cpfCnpjLimpo,
+                'email_principal' => $validated['email_principal'] ?? null,
+                'telefone_principal' => $validated['telefone_principal'] ?? null,
+                'is_cliente' => $validated['is_cliente'] ?? false,
+                'is_fornecedor' => $validated['is_fornecedor'] ?? false,
+                'is_tecnico' => $validated['is_tecnico'] ?? false,
+                'is_transportadora' => $validated['is_transportadora'] ?? false,
+                'is_ativo' => true,
+            ]);
+
+            if (!empty($validated['enderecos'])) {
+                foreach ($validated['enderecos'] as $end) {
+                    Endereco::create(array_merge($end, [
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => $tenantId,
+                        'pessoa_id' => $p->id,
+                        'tipo_endereco' => 'PRINCIPAL',
+                    ]));
+                }
+            }
+
+            return $p;
+        });
+
+        return response()->json(['data' => $pessoa->load('enderecos')], 201);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $pessoa = Pessoa::where('tenant_id', $tenantId)->with('enderecos')->findOrFail($id);
+        return response()->json(['data' => $pessoa]);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pessoa = Pessoa::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome_razao_social' => 'required|string|max:200',
+            'nome_fantasia_apelido' => 'nullable|string|max:200',
+            'email_principal' => 'nullable|email|max:150',
+            'telefone_principal' => 'nullable|string|max:30',
+            'is_cliente' => 'nullable|boolean',
+            'is_fornecedor' => 'nullable|boolean',
+            'is_tecnico' => 'nullable|boolean',
+            'is_transportadora' => 'nullable|boolean',
+            'is_ativo' => 'nullable|boolean',
+            'enderecos' => 'nullable|array',
+        ]);
+
+        DB::transaction(function () use ($validated, $pessoa, $tenantId) {
+            $pessoa->update([
+                'nome_razao_social' => $validated['nome_razao_social'],
+                'nome_fantasia_apelido' => $validated['nome_fantasia_apelido'] ?? $pessoa->nome_fantasia_apelido,
+                'email_principal' => $validated['email_principal'] ?? $pessoa->email_principal,
+                'telefone_principal' => $validated['telefone_principal'] ?? $pessoa->telefone_principal,
+                'is_cliente' => $validated['is_cliente'] ?? $pessoa->is_cliente,
+                'is_fornecedor' => $validated['is_fornecedor'] ?? $pessoa->is_fornecedor,
+                'is_tecnico' => $validated['is_tecnico'] ?? $pessoa->is_tecnico,
+                'is_transportadora' => $validated['is_transportadora'] ?? $pessoa->is_transportadora,
+                'is_ativo' => $validated['is_ativo'] ?? $pessoa->is_ativo,
+            ]);
+
+            if (isset($validated['enderecos'])) {
+                Endereco::where('tenant_id', $tenantId)->where('pessoa_id', $pessoa->id)->delete();
+                foreach ($validated['enderecos'] as $end) {
+                    Endereco::create(array_merge($end, [
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => $tenantId,
+                        'pessoa_id' => $pessoa->id,
+                        'tipo_endereco' => 'PRINCIPAL',
+                    ]));
+                }
+            }
+        });
+
+        return response()->json(['data' => $pessoa->fresh('enderecos')]);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pessoa = Pessoa::where('tenant_id', $tenantId)->findOrFail($id);
+
+        // O Soft Delete preserva a integridade de OS, Vendas e Compras históricas (Blindagem Arquitetural)
+        $pessoa->delete();
+
+        return response()->json(['data' => ['message' => 'Cadastro removido com sucesso (Soft Delete).']]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PmoConfigController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class PmoConfigController extends Controller
+{
+    // Mapa seguro que traduz a rota para a tabela correta no banco
+    private array $tabelas = [
+        'status' => 'prj_status_projetos',
+        'prioridades' => 'prj_prioridades_tarefas',
+        'tipos' => 'prj_tipos_projetos',
+        'departamentos' => 'prj_departamentos',
+        'categorias_custos' => 'prj_categorias_custos',
+    ];
+
+    private function getTabela(string $dominio): ?string
+    {
+        return $this->tabelas[$dominio] ?? null;
+    }
+
+    public function index(Request $request, string $dominio): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        $tenantId = $request->user()->tenant_id;
+        $dados = DB::table($tabela)->where('tenant_id', $tenantId)->orderBy('nome')->get();
+
+        return response()->json(['data' => $dados]);
+    }
+
+    public function store(Request $request, string $dominio): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        $payload = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7',
+            'peso' => 'nullable|integer'
+        ]);
+
+        $payload['id'] = (string) Str::uuid();
+        $payload['tenant_id'] = $request->user()->tenant_id;
+        $payload['created_at'] = now();
+        $payload['updated_at'] = now();
+
+        DB::table($tabela)->insert($payload);
+
+        return response()->json(['message' => 'Registro criado com sucesso!', 'data' => $payload], 201);
+    }
+
+    public function update(Request $request, string $dominio, string $id): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        $payload = $request->validate([
+            'nome' => 'required|string|max:100',
+            'cor_hex' => 'nullable|string|max:7',
+            'peso' => 'nullable|integer'
+        ]);
+        $payload['updated_at'] = now();
+
+        DB::table($tabela)->where('tenant_id', $request->user()->tenant_id)->where('id', $id)->update($payload);
+
+        return response()->json(['message' => 'Registro atualizado com sucesso!']);
+    }
+
+    public function destroy(Request $request, string $dominio, string $id): JsonResponse
+    {
+        $tabela = $this->getTabela($dominio);
+        if (!$tabela) return response()->json(['message' => 'Domínio inválido'], 400);
+
+        DB::table($tabela)->where('tenant_id', $request->user()->tenant_id)->where('id', $id)->delete();
+        return response()->json(['message' => 'Registro excluído!']);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PontoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Colaborador;
+use App\Models\PontoRegistro;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+
+class PontoController extends Controller
+{
+    public function registrar(Request $request): JsonResponse
+    {
+        // Exige GPS nativo do HTML5
+        $validated = $request->validate([
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+        ]);
+
+        $user = $request->user();
+        $tenantId = $user->tenant_id;
+
+        // Encontra a ficha de colaborador vinculada ao usuário logado
+        $colaborador = Colaborador::where('tenant_id', $tenantId)
+            ->where('usuario_id', $user->id)
+            ->first();
+
+        if (!$colaborador) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COLABORADOR_NAO_ENCONTRADO',
+                    'message' => 'Seu usuário não está vinculado a uma ficha de colaborador no RH. Solicite ao gestor.',
+                ]
+            ], 422);
+        }
+
+        $hoje = now()->toDateString();
+        $agora = now();
+
+        // Descobre o tipo de batida baseado nas marcações de hoje
+        $batidasHoje = PontoRegistro::where('colaborador_id', $colaborador->id)
+            ->whereDate('data_hora_registro', $hoje)
+            ->orderBy('data_hora_registro')
+            ->get();
+
+        $tipoRegistro = match ($batidasHoje->count()) {
+            0 => 'ENTRADA',
+            1 => 'SAIDA_INTERVALO',
+            2 => 'RETORNO_INTERVALO',
+            3 => 'SAIDA',
+            default => ($batidasHoje->count() % 2 === 0) ? 'ENTRADA_EXTRA' : 'SAIDA_EXTRA',
+        };
+
+        $ip = $request->ip();
+        $userAgent = $request->userAgent();
+
+        // Blindagem Portaria MTP 671/2021: Hash SHA-256 Atômico
+        $dadosParaHash = "{$tenantId}|{$colaborador->id}|{$agora->toDateTimeString()}|{$validated['latitude']}|{$validated['longitude']}|{$ip}|{$userAgent}";
+        $hashRegistro = hash('sha256', $dadosParaHash);
+
+        try {
+            $registro = PontoRegistro::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'colaborador_id' => $colaborador->id,
+                'data_hora_registro' => $agora,
+                'tipo_registro' => $tipoRegistro,
+                'latitude' => $validated['latitude'],
+                'longitude' => $validated['longitude'],
+                'ip_origem' => $ip,
+                'dispositivo_info' => substr($userAgent, 0, 255),
+                'hash_registro' => $hashRegistro,
+                'created_at' => clone $agora,
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'message' => "Ponto registrado com sucesso ({$tipoRegistro})!",
+                    'registro' => $registro,
+                ]
+            ], 201);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ERRO_REGISTRO_PONTO',
+                    'message' => 'Falha ao registrar ponto: ' . $e->getMessage(),
+                ]
+            ], 500);
+        }
+    }
+
+    public function historicoHoje(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $colaborador = Colaborador::where('tenant_id', $user->tenant_id)
+            ->where('usuario_id', $user->id)
+            ->first();
+
+        if (!$colaborador) {
+            return response()->json(['data' => []]);
+        }
+
+        $batidas = PontoRegistro::where('colaborador_id', $colaborador->id)
+            ->whereDate('data_hora_registro', now()->toDateString())
+            ->orderBy('data_hora_registro')
+            ->get();
+
+        return response()->json(['data' => $batidas]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PortalClienteController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\OrdemServico;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App; // <-- Novo Import
+
+class PortalClienteController extends Controller
+{
+    public function consultarOs(string $token): JsonResponse
+    {
+        try {
+            // 1. Busca APENAS a OS usando o token, sem puxar os relacionamentos ainda
+            $os = OrdemServico::withoutGlobalScopes()
+                ->where('id', $token)
+                ->firstOrFail();
+
+            // 2. MÁGICA: Injeta o tenant_id da OS na aplicação.
+            // Isso engana a blindagem arquitetural e permite ler dados com segurança na rota pública.
+            App::instance('current_tenant_id', $os->tenant_id);
+
+            // 3. Agora sim, carrega os relacionamentos blindados
+            $os->load(['cliente', 'empresa', 'itens.item', 'fotos', 'tecnico', 'apontamentos.tecnico', 'ativo']);
+
+            // Fallbacks de segurança para evitar erro 500 se faltar dado da Empresa
+            $chavePix = $os->empresa->cnpj ?? '00000000000191';
+            $chavePixLimpa = preg_replace('/[^0-9]/', '', $chavePix);
+            $nomeEmpresa = strtoupper(substr($os->empresa->nome_fantasia ?? 'SCALLE ERP', 0, 25));
+            $cidadeEmpresa = 'BELFORD ROXO';
+            $valorTotalFormatado = number_format((float) ($os->valor_total ?? 0), 2, '.', '');
+
+            try {
+                $payloadPix = self::gerarPayloadPix($chavePixLimpa, $nomeEmpresa, $cidadeEmpresa, $valorTotalFormatado, "OS{$os->numero_os}");
+            } catch (\Throwable $th) {
+                $payloadPix = "PIX_INDISPONIVEL";
+            }
+
+            return response()->json([
+                'data' => [
+                    'id' => $os->id,
+                    'numero_os' => $os->numero_os,
+                    'status' => $os->status,
+                    'prioridade' => $os->prioridade,
+                    'tipo_manutencao' => $os->tipo_manutencao,
+                    'equipamento' => $os->equipamento_descricao,
+                    'marca_modelo' => $os->equipamento_marca_modelo,
+                    'numero_serie' => $os->equipamento_numero_serie,
+                    'defeito_reclamado' => $os->defeito_reclamado,
+                    'diagnostico_tecnico' => $os->diagnostico_tecnico,
+                    'servico_executado' => $os->servico_executado,
+                    'valor_servicos' => (float) $os->valor_servicos,
+                    'valor_pecas' => (float) $os->valor_pecas,
+                    'valor_desconto' => (float) $os->valor_desconto,
+                    'valor_total' => (float) $os->valor_total,
+                    'nome_responsavel_recebimento' => $os->nome_responsavel_recebimento,
+                    'documento_responsavel_recebimento' => $os->documento_responsavel_recebimento,
+                    'assinado_em' => $os->assinado_em,
+                    'hash_assinatura_sha256' => $os->hash_assinatura_sha256,
+                    'assinatura_cliente_base64' => $os->assinatura_cliente_base64,
+                    'data_abertura' => $os->data_abertura,
+                    'data_conclusao' => $os->data_conclusao,
+                    'itens' => $os->itens,
+                    'fotos' => $os->fotos,
+                    'apontamentos' => $os->apontamentos,
+                    'ativo' => $os->ativo,
+                    'empresa' => [
+                        'nome' => $os->empresa->nome_fantasia ?? 'Scalle Enterprise',
+                        'razao_social' => $os->empresa->razao_social ?? '',
+                        'documento' => $os->empresa->cnpj ?? '',
+                    ],
+                    'pix' => [
+                        'chave' => $chavePixLimpa,
+                        'payload_copia_cola' => $payloadPix,
+                        'qr_code_url' => $payloadPix !== "PIX_INDISPONIVEL"
+                            ? 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($payloadPix)
+                            : null,
+                    ]
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => ['message' => 'Erro crítico ao carregar portal: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function aprovarOrcamento(Request $request, string $token): JsonResponse
+    {
+        $os = OrdemServico::withoutGlobalScopes()->where('id', $token)->firstOrFail();
+
+        if ($os->status === 'CONCLUIDA' || $os->status === 'CANCELADA') {
+            return response()->json(['error' => ['message' => 'Esta OS já se encontra finalizada.']], 422);
+        }
+
+        $os->update([
+            'status' => 'EM_EXECUCAO',
+            'observacoes' => ($os->observacoes ? $os->observacoes . ' | ' : '') . 'Orçamento aprovado pelo cliente no Portal em ' . now()->format('d/m/Y H:i'),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Orçamento aprovado com sucesso! A equipe técnica foi notificada para início dos trabalhos.',
+                'status' => $os->status
+            ]
+        ]);
+    }
+
+    public function assinarLaudoCliente(Request $request, string $token): JsonResponse
+    {
+        $os = OrdemServico::withoutGlobalScopes()->where('id', $token)->firstOrFail();
+
+        $validated = $request->validate([
+            'nome_responsavel' => 'required|string|max:150',
+            'documento_responsavel' => 'nullable|string|max:30',
+            'assinatura_base64' => 'required|string',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+        ]);
+
+        $ip = $request->ip();
+        $agora = now();
+
+        $dadosParaHash = "OS:{$os->numero_os}|NOME:{$validated['nome_responsavel']}|DOC:{$validated['documento_responsavel']}|DATA:{$agora}|IP:{$ip}|LAT:{$validated['latitude']}|LNG:{$validated['longitude']}";
+        $hashSha256 = hash('sha256', $dadosParaHash);
+
+        $os->update([
+            'nome_responsavel_recebimento' => $validated['nome_responsavel'],
+            'documento_responsavel_recebimento' => $validated['documento_responsavel'] ?? null,
+            'assinatura_cliente_base64' => $validated['assinatura_base64'],
+            'assinado_em' => $agora,
+            'hash_assinatura_sha256' => $hashSha256,
+            'ip_assinatura' => $ip,
+            'latitude_assinatura' => $validated['latitude'] ?? null,
+            'longitude_assinatura' => $validated['longitude'] ?? null,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Laudo assinado digitalmente com validade jurídica confirmada!',
+                'hash_sha256' => $hashSha256,
+                'assinado_em' => $agora->format('d/m/Y H:i:s'),
+            ]
+        ]);
+    }
+
+    private static function gerarPayloadPix(string $chave, string $nome, string $cidade, string $valor, string $txid): string
+    {
+        $payload = "00020126" . sprintf("%02d", strlen("0014BR.GOV.BCB.PIX01" . sprintf("%02d", strlen($chave)) . $chave)) . "0014BR.GOV.BCB.PIX01" . sprintf("%02d", strlen($chave)) . $chave;
+        $payload .= "52040000530398654" . sprintf("%02d", strlen($valor)) . $valor;
+        $payload .= "5802BR59" . sprintf("%02d", strlen($nome)) . $nome;
+        $payload .= "60" . sprintf("%02d", strlen($cidade)) . $cidade;
+        $payload .= "62" . sprintf("%02d", strlen("05" . sprintf("%02d", strlen($txid)) . $txid)) . "05" . sprintf("%02d", strlen($txid)) . $txid;
+        $payload .= "6304";
+
+        $crc = 0xFFFF;
+        for ($i = 0; $i < strlen($payload); $i++) {
+            $crc ^= (ord($payload[$i]) << 8);
+            for ($j = 0; $j < 8; $j++) {
+                if ($crc & 0x8000) {
+                    $crc = (($crc << 1) ^ 0x1021) & 0xFFFF;
+                } else {
+                    $crc = ($crc << 1) & 0xFFFF;
+                }
+            }
+        }
+        return $payload . strtoupper(sprintf('%04X', $crc));
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ProjetoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Projeto;
+use App\Models\Etapa;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class ProjetoController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $projetos = Projeto::where('tenant_id', $tenantId)
+            ->withCount('tarefas')
+            ->with('etapas')
+            ->orderByDesc('created_at')
+            ->paginate(15);
+
+        return response()->json($projetos);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:200',
+            'descricao' => 'nullable|string',
+            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id',
+            'orcamento_previsto' => 'nullable|numeric|min:0'
+        ]);
+
+        $projeto = DB::transaction(function () use ($validated, $tenantId) {
+            $proj = Projeto::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'nome' => $validated['nome'],
+                'descricao' => $validated['descricao'] ?? null,
+                'cliente_id' => $validated['cliente_id'] ?? null,
+                'orcamento_previsto' => $validated['orcamento_previsto'] ?? 0.00,
+            ]);
+
+            // Scaffolding dinâmico do Kanban
+            $etapasPadrao = [
+                ['nome' => 'Backlog', 'cor_hex' => '#64748b'],
+                ['nome' => 'A Fazer', 'cor_hex' => '#e2e8f0'],
+                ['nome' => 'Em Andamento', 'cor_hex' => '#3b82f6'],
+                ['nome' => 'Revisão', 'cor_hex' => '#f59e0b'],
+                ['nome' => 'Concluído', 'cor_hex' => '#10b981'],
+            ];
+
+            foreach ($etapasPadrao as $index => $e) {
+                Etapa::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'projeto_id' => $proj->id,
+                    'nome' => $e['nome'],
+                    'ordem' => $index + 1,
+                    'cor_hex' => $e['cor_hex'],
+                ]);
+            }
+
+            return $proj;
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => 'Projeto criado com pipeline Kanban gerado com sucesso!',
+                'projeto' => $projeto->load('etapas')
+            ]
+        ], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:200',
+            'descricao' => 'nullable|string',
+            'cliente_id' => 'nullable|uuid|exists:pes_pessoas,id'
+        ]);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+        $projeto->update($validated);
+
+        return response()->json(['message' => 'Projeto atualizado com sucesso!']);
+    }
+
+    public function alterarStatus(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // MÁGICA DA COMPATIBILIDADE RETROATIVA
+        // Aceita 'status' legado ou o novo 'status_projeto_id' dinâmico
+        $validated = $request->validate([
+            'status_projeto_id' => 'nullable|uuid|exists:prj_status_projetos,id',
+            'status' => 'nullable|string|max:50'
+        ]);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if (!empty($validated['status_projeto_id'])) {
+            $projeto->update(['status_projeto_id' => $validated['status_projeto_id']]);
+        } elseif (!empty($validated['status'])) {
+            $projeto->update(['status' => $validated['status']]);
+        } else {
+            return response()->json(['error' => 'O campo status_projeto_id é obrigatório.'], 422);
+        }
+
+        return response()->json(['message' => 'Status do projeto atualizado com sucesso!']);
+    }
+
+    public function atualizarOrcamento(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'orcamento_previsto' => 'required|numeric|min:0'
+        ]);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+        $projeto->update(['orcamento_previsto' => $validated['orcamento_previsto']]);
+
+        return response()->json(['message' => 'Orçamento do projeto atualizado com sucesso!']);
+    }
+
+    public function listarStatus(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $status = DB::table('prj_status_projetos')
+            ->where('tenant_id', $tenantId)
+            ->orderBy('nome')
+            ->get();
+
+        if ($status->isEmpty()) {
+            $basicos = [
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Ativo', 'cor_hex' => '#4f46e5'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Concluído', 'cor_hex' => '#10b981'],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Pausado', 'cor_hex' => '#f59e0b']
+            ];
+            DB::table('prj_status_projetos')->insert($basicos);
+            $status = collect($basicos);
+        }
+
+        return response()->json(['data' => $status]);
+    }
+
+    // ==========================================
+    // INTEGRAÇÃO FINANCEIRA: CUSTOS & DESPESAS
+    // ==========================================
+    public function custos(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $custos = DB::table('prj_custos')
+            ->where('tenant_id', $tenantId)
+            ->where('projeto_id', $id)
+            ->orderByDesc('data_custo')
+            ->get();
+
+        return response()->json(['data' => $custos]);
+    }
+
+    public function storeCusto(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'descricao' => 'required|string|max:255',
+            'valor' => 'required|numeric|min:0.01',
+            'data_custo' => 'required|date'
+        ]);
+
+        DB::transaction(function() use ($validated, $id, $tenantId, $empresaId, $projeto) {
+            $custoId = (string) Str::uuid();
+
+            // 1. Grava no Diário do Projeto
+            DB::table('prj_custos')->insert([
+                'id' => $custoId,
+                'tenant_id' => $tenantId,
+                'projeto_id' => $id,
+                'descricao' => $validated['descricao'],
+                'valor' => $validated['valor'],
+                'data_custo' => $validated['data_custo'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // 2. Integração Transparente com Contas a Pagar
+            \App\Models\TituloFinanceiro::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => null, // Despesa genérica do projeto (sem fornecedor fixo no MVP)
+                'natureza' => 'PAGAR',
+                'documento_numero' => 'PRJ-CST-' . substr($custoId, 0, 6),
+                'parcela_numero' => 1,
+                'total_parcelas' => 1,
+                'origem_tipo' => 'projetos_custo',
+                'origem_id' => $id,
+                'data_emissao' => now()->toDateString(),
+                'data_vencimento' => $validated['data_custo'],
+                'valor_original' => $validated['valor'],
+                'valor_saldo_aberto' => $validated['valor'],
+                'valor_pago_acumulado' => 0.00,
+                'status' => 'ABERTO',
+                'historico' => "Custo de Projeto [{$projeto->nome}]: {$validated['descricao']}",
+            ]);
+
+            // 3. Incrementa o custo real do projeto para o Dashboard
+            if (\Illuminate\Support\Facades\Schema::hasColumn('prj_projetos', 'custo_total_real')) {
+                $projeto->increment('custo_total_real', $validated['valor']);
+            }
+        });
+
+        return response()->json(['data' => ['message' => 'Custo lançado e Contas a Pagar gerado com sucesso!']]);
+    }
+
+    // ==========================================
+    // INTEGRAÇÃO FINANCEIRA: FATURAMENTO (MILESTONES)
+    // ==========================================
+    public function entregaveis(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $entregaveis = DB::table('prj_entregaveis')
+            ->where('tenant_id', $tenantId)
+            ->where('projeto_id', $id)
+            ->orderBy('data_prevista')
+            ->get();
+
+        return response()->json(['data' => $entregaveis]);
+    }
+
+    public function storeEntregavel(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:255',
+            'valor_faturamento' => 'required|numeric|min:0.01',
+            'data_prevista' => 'nullable|date'
+        ]);
+
+        DB::table('prj_entregaveis')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $id,
+            'titulo' => $validated['titulo'],
+            'valor_faturamento' => $validated['valor_faturamento'],
+            'data_prevista' => $validated['data_prevista'],
+            'status' => 'PENDENTE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['data' => ['message' => 'Marco de faturamento planejado com sucesso.']]);
+    }
+
+    public function faturarEntregavel(Request $request, string $entregavelId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+
+        $entregavel = DB::table('prj_entregaveis')->where('tenant_id', $tenantId)->where('id', $entregavelId)->first();
+
+        if (!$entregavel) return response()->json(['error' => 'Entregável não encontrado.'], 404);
+        if ($entregavel->status === 'FATURADO') return response()->json(['error' => 'Este marco já foi faturado.'], 422);
+
+        $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($entregavel->projeto_id);
+
+        if (!$projeto->cliente_id) {
+            return response()->json(['error' => 'O projeto não possui um cliente vinculado para emitir a cobrança.'], 422);
+        }
+
+        DB::transaction(function() use ($entregavel, $projeto, $tenantId, $empresaId) {
+            // 1. Marca o Entregável como faturado
+            DB::table('prj_entregaveis')->where('id', $entregavel->id)->update(['status' => 'FATURADO', 'updated_at' => now()]);
+
+            // 2. Integração Transparente com Contas a Receber
+            \App\Models\TituloFinanceiro::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => $projeto->cliente_id,
+                'natureza' => 'RECEBER',
+                'documento_numero' => 'PRJ-FAT-' . substr($entregavel->id, 0, 6),
+                'parcela_numero' => 1,
+                'total_parcelas' => 1,
+                'origem_tipo' => 'projetos_faturamento',
+                'origem_id' => $projeto->id,
+                'data_emissao' => now()->toDateString(),
+                'data_vencimento' => now()->addDays(15)->toDateString(), // Prazo comercial de 15 dias
+                'valor_original' => $entregavel->valor_faturamento,
+                'valor_saldo_aberto' => $entregavel->valor_faturamento,
+                'valor_pago_acumulado' => 0.00,
+                'status' => 'ABERTO',
+                'historico' => "Faturamento do Projeto [{$projeto->nome}]: Marco {$entregavel->titulo}",
+            ]);
+        });
+
+        return response()->json(['data' => ['message' => 'Fatura gerada com sucesso e injetada no Contas a Receber!']]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ProjetoGestaoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class ProjetoGestaoController extends Controller
+{
+    // ==========================================
+    // ABA: ALOCAÇÃO DE EQUIPA
+    // ==========================================
+    public function listarEquipe(Request $request, string $projetoId): JsonResponse
+    {
+        $equipe = DB::table('prj_projeto_equipe')
+            ->join('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
+            ->where('prj_projeto_equipe.projeto_id', $projetoId)
+            ->whereNull('prj_projeto_equipe.deleted_at')
+            ->select('prj_projeto_equipe.*', 'users.name as nome_usuario')
+            ->get();
+
+        return response()->json(['data' => $equipe]);
+    }
+
+    public function adicionarEquipe(Request $request, string $projetoId): JsonResponse
+    {
+        $validated = $request->validate([
+            'usuario_id' => 'required|uuid',
+            'custo_hora' => 'required|numeric|min:0'
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+
+        DB::table('prj_projeto_equipe')->updateOrInsert(
+            ['projeto_id' => $projetoId, 'usuario_id' => $validated['usuario_id']],
+            [
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'custo_hora' => $validated['custo_hora'],
+                'created_at' => now(),
+                'updated_at' => now(),
+                'deleted_at' => null
+            ]
+        );
+
+        return response()->json(['data' => ['message' => 'Membro alocado ao projeto com sucesso!']]);
+    }
+
+    // ==========================================
+    // ABA: CUSTOS E DESPESAS EXTERNAS
+    // ==========================================
+    public function listarCustos(Request $request, string $projetoId): JsonResponse
+    {
+        $custos = DB::table('prj_projeto_custos')
+            ->where('projeto_id', $projetoId)
+            ->whereNull('deleted_at')
+            ->orderByDesc('data_custo')
+            ->get();
+
+        return response()->json(['data' => $custos]);
+    }
+
+    public function adicionarCusto(Request $request, string $projetoId): JsonResponse
+    {
+        $validated = $request->validate([
+            'descricao' => 'required|string|max:255',
+            'valor' => 'required|numeric|min:0',
+            'data_custo' => 'required|date'
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+
+        DB::table('prj_projeto_custos')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $projetoId,
+            'descricao' => $validated['descricao'],
+            'valor' => $validated['valor'],
+            'data_custo' => $validated['data_custo'],
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \App\Http\Controllers\Api\TimesheetController::recalcularCustoProjeto($projetoId);
+
+        return response()->json(['data' => ['message' => 'Despesa externa lançada com sucesso!']]);
+    }
+
+    // ==========================================
+    // ABA: ENTREGÁVEIS / MARCOS DE FATURAMENTO
+    // ==========================================
+    public function listarEntregaveis(Request $request, string $projetoId): JsonResponse
+    {
+        $entregaveis = DB::table('prj_projeto_entregaveis')
+            ->where('projeto_id', $projetoId)
+            ->whereNull('deleted_at')
+            ->orderBy('data_prevista')
+            ->get();
+
+        return response()->json(['data' => $entregaveis]);
+    }
+
+    public function adicionarEntregavel(Request $request, string $projetoId): JsonResponse
+    {
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:255',
+            'valor_faturamento' => 'required|numeric|min:0',
+            'data_prevista' => 'nullable|date'
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+
+        DB::table('prj_projeto_entregaveis')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'projeto_id' => $projetoId,
+            'titulo' => $validated['titulo'],
+            'valor_faturamento' => $validated['valor_faturamento'],
+            'data_prevista' => $validated['data_prevista'],
+            'status' => 'PENDENTE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['data' => ['message' => 'Marco de faturamento mapeado com sucesso!']]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\RecrutamentoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Candidato;
+use App\Models\Vaga;
+use App\Models\RecrutamentoEtapa;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\App;
+use Exception;
+
+class RecrutamentoController extends Controller
+{
+    public function indexVagas(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+
+            $vagas = Vaga::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(function ($vaga) {
+                    $vaga->candidatos_count = Candidato::withoutGlobalScopes()
+                        ->where('vaga_id', $vaga->id)
+                        ->count();
+                    return $vaga;
+                });
+
+            return response()->json(['data' => $vagas]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao listar vagas: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function storeVaga(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+
+            $empresaId = $request->user()->empresa_padrao_id
+                      ?? \App\Models\Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->first()?->id
+                      ?? \App\Models\Empresa::withoutGlobalScopes()->first()?->id;
+
+            App::instance('current_tenant_id', $tenantId);
+            if ($empresaId) {
+                App::instance('current_empresa_id', $empresaId);
+            }
+
+            $validated = $request->validate([
+                'titulo' => 'required|string|max:150',
+                'departamento' => 'required|string|max:100',
+                'descricao' => 'nullable|string',
+            ]);
+
+            $vaga = Vaga::withoutGlobalScopes()->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'titulo' => $validated['titulo'],
+                'departamento' => $validated['departamento'],
+                'status' => 'ABERTA',
+                'descricao' => $validated['descricao'] ?? null,
+            ]);
+
+            return response()->json(['data' => $vaga], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Vaga: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function indexEtapas(Request $request): JsonResponse
+    {
+        try {
+            $etapas = RecrutamentoEtapa::withoutGlobalScopes()
+                ->where('tenant_id', $request->user()->tenant_id)
+                ->orderBy('ordem')
+                ->get();
+
+            return response()->json(['data' => $etapas]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao listar etapas: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function storeEtapa(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $empresaId = $request->user()->empresa_padrao_id
+                      ?? \App\Models\Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->first()?->id;
+
+            App::instance('current_tenant_id', $tenantId);
+            if ($empresaId) {
+                App::instance('current_empresa_id', $empresaId);
+            }
+
+            $validated = $request->validate([
+                'nome' => 'required|string|max:100',
+                'cor' => 'required|string|max:50',
+                'ordem' => 'required|integer',
+            ]);
+
+            $etapa = RecrutamentoEtapa::withoutGlobalScopes()->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'nome' => $validated['nome'],
+                'cor' => $validated['cor'],
+                'ordem' => $validated['ordem'],
+            ]);
+
+            return response()->json(['data' => $etapa], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Etapa: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function destroyEtapa(Request $request, string $id): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $etapa = RecrutamentoEtapa::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->findOrFail($id);
+
+            $etapa->delete();
+            return response()->json(['data' => ['message' => 'Etapa removida com sucesso.']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao remover etapa: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function boardKanban(Request $request, string $vagaId): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+
+            $vaga = Vaga::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($vagaId);
+            $etapas = RecrutamentoEtapa::withoutGlobalScopes()->where('tenant_id', $tenantId)->orderBy('ordem')->get();
+
+            $candidatos = Candidato::withoutGlobalScopes()
+                ->where('vaga_id', $vaga->id)
+                ->orderByDesc('created_at')
+                ->get()
+                ->groupBy('etapa_id');
+
+            return response()->json([
+                'data' => [
+                    'vaga' => $vaga,
+                    'etapas' => $etapas,
+                    'kanban' => $candidatos
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao carregar Kanban: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function storeCandidato(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            App::instance('current_tenant_id', $tenantId);
+
+            $validated = $request->validate([
+                'vaga_id' => 'required|uuid|exists:rh_vagas,id',
+                'nome' => 'required|string|max:150',
+                'email' => 'nullable|email|max:150',
+                'telefone' => 'nullable|string|max:30',
+            ]);
+
+            $primeiraEtapa = RecrutamentoEtapa::withoutGlobalScopes()->where('tenant_id', $tenantId)->orderBy('ordem')->first();
+
+            $candidato = Candidato::withoutGlobalScopes()->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'vaga_id' => $validated['vaga_id'],
+                'nome' => $validated['nome'],
+                'email' => $validated['email'] ?? null,
+                'telefone' => $validated['telefone'] ?? null,
+                'etapa_id' => $primeiraEtapa ? $primeiraEtapa->id : null,
+            ]);
+
+            return response()->json(['data' => $candidato], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Candidato: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function moverCandidato(Request $request, string $id): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            App::instance('current_tenant_id', $tenantId);
+
+            $candidato = Candidato::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($id);
+
+            $validated = $request->validate([
+                'nova_etapa_id' => 'required|uuid|exists:rh_recrutamento_etapas,id',
+            ]);
+
+            $candidato->update(['etapa_id' => $validated['nova_etapa_id']]);
+
+            return response()->json(['data' => ['message' => 'Candidato movido com sucesso!']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Mover: ' . $e->getMessage()]], 500);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\SessaoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class SessaoController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tokens = $request->user()->tokens()->orderByDesc('last_used_at')->get();
+        return response()->json(['data' => $tokens]);
+    }
+
+    public function revogar(Request $request, string $id): JsonResponse
+    {
+        $token = $request->user()->tokens()->where('id', $id)->firstOrFail();
+        $token->delete();
+        
+        return response()->json(['data' => ['message' => 'Sessão desconectada com sucesso.']]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\TenantBillingController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\FaturaBilling;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class TenantBillingController extends Controller
+{
+    private function autorizarFinanceiro(Request $request): void
+    {
+        $usuario = $request->user();
+
+        // 1. Libera imediatamente se for Master SaaS ou Admin do Tenant
+        if ($usuario->is_master || ($usuario->perfil && $usuario->perfil->is_admin)) {
+            return;
+        }
+
+        // 2. Normaliza o nome ou slug do perfil e verifica permissões permitidas
+        $perfilNome = strtoupper(trim($usuario->perfil->nome ?? ''));
+        $perfilSlug = strtoupper(trim($usuario->perfil->slug ?? ''));
+        $role = strtoupper(trim($usuario->role ?? ''));
+
+        $cargosPermitidos = ['ADMIN', 'ADMINISTRADOR', 'FINANCEIRO', 'GESTOR', 'GERENTE', 'DIRETOR', 'MASTER'];
+
+        $autorizado = false;
+        foreach ($cargosPermitidos as $cargo) {
+            if (
+                str_contains($perfilNome, $cargo) ||
+                str_contains($perfilSlug, $cargo) ||
+                str_contains($role, $cargo)
+            ) {
+                $autorizado = true;
+                break;
+            }
+        }
+
+        if (!$autorizado) {
+            abort(403, 'Acesso restrito ao gestor financeiro ou administrador da conta.');
+        }
+    }
+
+    public function minhaAssinatura(Request $request): JsonResponse
+    {
+        $this->autorizarFinanceiro($request);
+        $tenantId = $request->user()->tenant_id;
+
+        $assinatura = Assinatura::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('plano')
+            ->first();
+
+        if (!$assinatura) {
+            return response()->json(['error' => 'Nenhuma assinatura localizada para este tenant.'], 404);
+        }
+
+        // Recupera a fatura atual em aberto para exibir o botão "Pagar Agora"
+        $faturaAberta = FaturaBilling::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->whereIn('status', ['PENDING', 'OVERDUE'])
+            ->orderBy('data_vencimento')
+            ->first();
+
+        return response()->json([
+            'data' => [
+                'assinatura' => $assinatura,
+                'fatura_aberta' => $faturaAberta ? [
+                    'id' => $faturaAberta->id,
+                    'valor' => (float) $faturaAberta->valor,
+                    'vencimento' => $faturaAberta->data_vencimento,
+                    'status' => $faturaAberta->status,
+                    'link_pagamento' => $faturaAberta->url_fatura_gateway,
+                ] : null,
+                'metricas_uso' => [
+                    'storage_utilizado_gb' => round(($assinatura->storage_utilizado_bytes ?? 0) / 1073741824, 2),
+                    'storage_limite_gb' => round(($assinatura->plano->cota_storage_bytes ?? 0) / 1073741824, 2),
+                ]
+            ]
+        ]);
+    }
+
+    public function historicoFaturas(Request $request): JsonResponse
+    {
+        $this->autorizarFinanceiro($request);
+
+        $faturas = FaturaBilling::withoutGlobalScopes()
+            ->where('tenant_id', $request->user()->tenant_id)
+            ->orderByDesc('data_vencimento')
+            ->paginate(12);
+
+        return response()->json($faturas);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\TimesheetController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Apontamento;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Carbon\Carbon;
+
+class TimesheetController extends Controller
+{
+    public function play(Request $request, string $tarefaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        // Valida a tarefa diretamente no banco para evitar bloqueios de Model
+        $tarefa = DB::table('prj_tarefas')->where('id', $tarefaId)->where('tenant_id', $tenantId)->first();
+        if (!$tarefa) {
+            return response()->json(['error' => ['message' => 'Tarefa não encontrada.']], 404);
+        }
+
+        $aberto = Apontamento::where('tarefa_id', $tarefaId)
+            ->where('usuario_id', $request->user()->id)
+            ->whereNull('fim')
+            ->first();
+
+        if ($aberto) {
+            return response()->json(['error' => ['messa

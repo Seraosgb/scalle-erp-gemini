@@ -2,50 +2,44 @@
 
 namespace App\Services\Frota;
 
+use App\Models\FrotaAbastecimento;
 use App\Models\FrotaVeiculo;
+use App\Models\OrdemServico;
+use App\Services\FinanceiroService;
+use App\Services\OrdemServicoService;
+use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Exception;
 
 class FrotaOperacaoService
 {
-    /**
-     * Registra o abastecimento, gera despesa e audita manutenções
-     */
-    public static function registrarAbastecimento(array $dados, string $tenantId, string $empresaId)
+    public static function registrarAbastecimento(array $dados, string $tenantId, string $empresaId): string
     {
         return DB::transaction(function () use ($dados, $tenantId, $empresaId) {
             $veiculo = FrotaVeiculo::where('tenant_id', $tenantId)->findOrFail($dados['veiculo_id']);
 
-            // 1. Blindagem de KM
             if ($dados['km_marcador'] <= $veiculo->km_atual) {
                 throw new Exception("Erro de Hodômetro: O KM informado ({$dados['km_marcador']}) deve ser maior que o KM atual do veículo ({$veiculo->km_atual}).");
             }
 
-            // 2. Atualiza a KM da frota
-            $veiculo->km_atual = $dados['km_marcador'];
-            $veiculo->save();
+            $veiculo->update(['km_atual' => $dados['km_marcador']]);
 
-            // 3. Integração Financeira: Cria Título a Pagar
-            $tituloId = (string) Str::uuid();
-            DB::table('fin_titulos_financeiros')->insert([
-                'id' => $tituloId,
+            // Integração via Contrato de Serviço com o Módulo Financeiro (Zero SQL direto)
+            $titulo = FinanceiroService::registrarTitulo([
                 'tenant_id' => $tenantId,
                 'empresa_id' => $empresaId,
-                'pessoa_id' => $dados['posto_id'], // Fornecedor
-                'tipo_titulo' => 'DESPESA',
-                'descricao' => "Abastecimento - Veículo {$veiculo->placa}",
-                'valor_original' => $dados['valor_total'],
+                'pessoa_id' => $dados['posto_id'],
+                'natureza' => 'PAGAR',
+                'documento_numero' => 'ABAST-' . $veiculo->placa,
+                'origem_tipo' => 'frota_abastecimento',
+                'origem_id' => $veiculo->id,
                 'data_vencimento' => $dados['data_abastecimento'],
-                'is_pago' => false,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'valor_original' => (float) $dados['valor_total'],
+                'historico' => "Abastecimento - Veículo {$veiculo->placa} ({$dados['litros']}L)",
             ]);
 
-            // 4. Registra o Abastecimento
-            $abastecimentoId = (string) Str::uuid();
-            DB::table('fro_abastecimentos')->insert([
-                'id' => $abastecimentoId,
+            $abastecimento = FrotaAbastecimento::create([
+                'id' => (string) Str::uuid(),
                 'tenant_id' => $tenantId,
                 'empresa_id' => $empresaId,
                 'veiculo_id' => $veiculo->id,
@@ -56,31 +50,36 @@ class FrotaOperacaoService
                 'litros' => $dados['litros'],
                 'valor_total' => $dados['valor_total'],
                 'tipo_combustivel_id' => $dados['tipo_combustivel_id'] ?? null,
-                'titulo_financeiro_id' => $tituloId,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'titulo_financeiro_id' => $titulo->id,
             ]);
 
-            // 5. Integração CMMS: Alerta de Manutenção (Ex: Troca de óleo a cada 10k KM)
-            // Se o resto da divisão por 10.000 for menor que a quilometragem desse abastecimento, acende o alerta.
-            if ($veiculo->km_atual % 10000 < 500) {
-                self::gerarOsPreventiva($veiculo, $tenantId, $empresaId);
+            if (((int) $veiculo->km_atual % 10000) < 500) {
+                self::acionarOsPreventivaFrota($veiculo, $tenantId, $empresaId, $dados['posto_id']);
             }
 
-            return $abastecimentoId;
+            return $abastecimento->id;
         });
     }
 
-    private static function gerarOsPreventiva(FrotaVeiculo $veiculo, string $tenantId, string $empresaId)
+    private static function acionarOsPreventivaFrota(FrotaVeiculo $veiculo, string $tenantId, string $empresaId, string $clienteRefId): void
     {
-        DB::table('os_ordens_servico')->insert([
+        $sla = OrdemServicoService::calcularSla('NORMAL');
+        $ultimoNumero = OrdemServico::where('tenant_id', $tenantId)->where('empresa_id', $empresaId)->max('numero_os') ?? 1000;
+
+        OrdemServico::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresaId,
-            'descricao' => "Revisão Preventiva Automática (Troca de Óleo) - KM Atual: {$veiculo->km_atual}",
-            // Como as etapas/status são dinâmicos (sis_tabelas_dominio), deixamos o status inicial nulo para o trigger do banco assumir o padrão
-            'created_at' => now(),
-            'updated_at' => now(),
+            'cliente_id' => $clienteRefId,
+            'numero_os' => $ultimoNumero + 1,
+            'status' => 'ABERTA',
+            'prioridade' => 'NORMAL',
+            'tipo_manutencao' => 'PREVENTIVA',
+            'equipamento_descricao' => "Veículo {$veiculo->placa} - {$veiculo->marca} {$veiculo->modelo}",
+            'defeito_reclamado' => "Revisão Preventiva Automática (Troca de Óleo/Filtros) - KM Atual: {$veiculo->km_atual}",
+            'data_abertura' => now(),
+            'prazo_sla_resposta' => $sla['resposta'],
+            'prazo_sla_resolucao' => $sla['resolucao'],
         ]);
     }
 }

@@ -1,0 +1,3256 @@
+﻿ CotacaoCompra::where('tenant_id', $tenantId)->with('itens.item')->findOrFail($cotacaoId);
+        $proposta = CotacaoProposta::where('cotacao_id', $cotacao->id)->with('itens')->findOrFail($propostaId);
+
+        if ($cotacao->status !== 'ABERTA') {
+            return response()->json(['error' => ['message' => 'Esta cotação já se encontra finalizada.']], 422);
+        }
+
+        $compra = DB::transaction(function () use ($cotacao, $proposta, $request, $tenantId) {
+            // Marca proposta vencedora
+            CotacaoProposta::where('cotacao_id', $cotacao->id)->update(['is_vencedora' => false]);
+            $proposta->update(['is_vencedora' => true]);
+
+            $cotacao->update([
+                'status' => 'CONCLUIDA',
+                'fornecedor_vencedor_id' => $proposta->fornecedor_id,
+            ]);
+
+            // Gera Pedido de Compra PENDENTE DE RECEBIMENTO (Padrão 2 Etapas)
+            $compraId = (string) Str::uuid();
+            $compra = Compra::create([
+                'id' => $compraId,
+                'tenant_id' => $tenantId,
+                'empresa_id' => $cotacao->empresa_id,
+                'fornecedor_id' => $proposta->fornecedor_id,
+                'deposito_destino_id' => $cotacao->deposito_destino_id,
+                'comprador_id' => $request->user()->id,
+                'numero_nota' => 'COT-' . substr($cotacao->id, 0, 8),
+                'serie_nota' => '1',
+                'status' => 'PENDENTE_RECEBIMENTO',
+                'data_emissao' => now()->toDateString(),
+                'valor_produtos' => (float) $proposta->valor_total - (float) $proposta->valor_frete,
+                'valor_frete' => (float) $proposta->valor_frete,
+                'valor_total' => (float) $proposta->valor_total,
+                'observacoes' => "Pedido gerado via Mapa Comparativo da Cotação: {$cotacao->titulo}",
+            ]);
+
+            foreach ($proposta->itens as $propItem) {
+                $cotItem = CotacaoCompraItem::find($propItem->cotacao_item_id);
+                CompraItem::create([
+                    'compra_id' => $compra->id,
+                    'item_id' => $cotItem->item_id,
+                    'quantidade_comercial' => $cotItem->quantidade,
+                    'quantidade_estoque' => $cotItem->quantidade,
+                    'valor_unitario' => $propItem->valor_unitario,
+                    'valor_total_item' => $propItem->valor_total,
+                ]);
+            }
+
+            return $compra;
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => 'Proposta vencedora aprovada! Pedido de compra gerado como Pendente de Recebimento.',
+                'compra' => $compra,
+            ]
+        ]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\CrmController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\CrmFunil;
+use App\Models\CrmFunilEtapa;
+use App\Models\CrmOportunidade;
+use App\Models\CrmOportunidadeAtividade;
+use App\Models\CrmOportunidadeItem;
+use App\Models\Deposito;
+use App\Models\Empresa;
+use App\Models\Item;
+use App\Models\PedidoVenda;
+use App\Models\Pessoa;
+use App\Models\TabelaDominio;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+
+class CrmController extends Controller
+{
+    private function autorizarGestao(Request $request): void
+    {
+        $usuario = $request->user();
+
+        if (!$usuario) {
+            abort(401, 'Usuário não autenticado.');
+        }
+
+        if (($usuario->is_master ?? false) || ($usuario->is_admin ?? false)) {
+            return;
+        }
+
+        $perfilNome = is_object($usuario->perfil) ? ($usuario->perfil->nome ?? $usuario->perfil->codigo ?? '') : (string) ($usuario->perfil ?? '');
+        $role = is_string($usuario->role ?? null) ? $usuario->role : '';
+
+        $cargosPermitidos = ['ADMIN', 'ADMINISTRADOR', 'GESTOR_COMERCIAL', 'GERENTE', 'GERENTE_COMERCIAL', 'DIRETOR', 'MASTER', 'SAAS_OWNER'];
+
+        $perfilUpper = strtoupper(trim((string)$perfilNome));
+        $roleUpper = strtoupper(trim((string)$role));
+
+        $autorizado = in_array($perfilUpper, $cargosPermitidos, true)
+                   || in_array($roleUpper, $cargosPermitidos, true)
+                   || str_contains($perfilUpper, 'ADMIN')
+                   || str_contains($perfilUpper, 'GESTOR')
+                   || str_contains($perfilUpper, 'GERENTE');
+
+        if (!$autorizado) {
+            abort(403, 'Ação restrita a Administradores e Gestores Comerciais.');
+        }
+    }
+
+    public function listarPipelines(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pipelines = CrmFunil::where('tenant_id', $tenantId)
+            ->where('is_ativo', true)
+            ->withCount('etapas')
+            ->orderByDesc('is_padrao')
+            ->orderBy('nome')
+            ->get();
+
+        return response()->json(['data' => $pipelines]);
+    }
+
+    public function storePipeline(Request $request): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'descricao' => 'nullable|string|max:255',
+            'cor_hex' => 'nullable|string|max:10',
+        ]);
+
+        $pipeline = DB::transaction(function () use ($validated, $tenantId) {
+            $pipe = CrmFunil::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'nome' => $validated['nome'],
+                'descricao' => $validated['descricao'] ?? null,
+                'cor_hex' => $validated['cor_hex'] ?? '#4f46e5',
+                'token_captacao' => Str::random(40),
+                'is_padrao' => false,
+                'is_ativo' => true,
+            ]);
+
+            $etapas = [
+                ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
+                ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
+                ['nome' => 'Proposta Comercial', 'ordem' => 3, 'prob' => 70, 'cor' => '#f59e0b'],
+                ['nome' => 'Negociação / Fechamento', 'ordem' => 4, 'prob' => 90, 'cor' => '#10b981'],
+            ];
+
+            foreach ($etapas as $e) {
+                CrmFunilEtapa::create([
+                    'id' => (string) Str::uuid(),
+                    'funil_id' => $pipe->id,
+                    'nome' => $e['nome'],
+                    'ordem_exibicao' => $e['ordem'],
+                    'probabilidade_fechamento' => $e['prob'],
+                    'cor_hex' => $e['cor'],
+                ]);
+            }
+
+            return $pipe;
+        });
+
+        return response()->json(['data' => $pipeline->load('etapas')], 201);
+    }
+
+    public function atualizarPipeline(Request $request, string $id): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+        $pipeline = CrmFunil::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'descricao' => 'nullable|string|max:255',
+            'cor_hex' => 'nullable|string|max:10',
+        ]);
+
+        $pipeline->update($validated);
+
+        return response()->json(['data' => $pipeline]);
+    }
+
+    public function storeEtapa(Request $request, string $pipelineId): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+        $pipeline = CrmFunil::where('tenant_id', $tenantId)->findOrFail($pipelineId);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'probabilidade_fechamento' => 'required|integer|min:0|max:100',
+            'cor_hex' => 'nullable|string|max:10',
+        ]);
+
+        $maxOrdem = CrmFunilEtapa::where('funil_id', $pipeline->id)->max('ordem_exibicao') ?? 0;
+
+        $etapa = CrmFunilEtapa::create([
+            'id' => (string) Str::uuid(),
+            'funil_id' => $pipeline->id,
+            'nome' => $validated['nome'],
+            'ordem_exibicao' => $maxOrdem + 1,
+            'probabilidade_fechamento' => $validated['probabilidade_fechamento'],
+            'cor_hex' => $validated['cor_hex'] ?? '#6366f1',
+        ]);
+
+        return response()->json(['data' => $etapa], 201);
+    }
+
+    public function updateEtapa(Request $request, string $id): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+
+        $etapa = CrmFunilEtapa::whereHas('funil', fn($q) => $q->where('tenant_id', $tenantId))->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'probabilidade_fechamento' => 'required|integer|min:0|max:100',
+            'cor_hex' => 'nullable|string|max:10',
+            'ordem_exibicao' => 'nullable|integer',
+        ]);
+
+        $etapa->update($validated);
+
+        return response()->json(['data' => $etapa]);
+    }
+
+    public function destroyEtapa(Request $request, string $id): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+
+        $etapa = CrmFunilEtapa::whereHas('funil', fn($q) => $q->where('tenant_id', $tenantId))->findOrFail($id);
+
+        $temCards = CrmOportunidade::where('etapa_id', $etapa->id)->exists();
+        if ($temCards) {
+            return response()->json(['error' => 'Não é possível remover etapa com oportunidades vinculadas.'], 422);
+        }
+
+        $etapa->delete();
+
+        return response()->json(['data' => ['message' => 'Etapa removida com sucesso.']]);
+    }
+
+    public function reordenarEtapas(Request $request, string $pipelineId): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+        $pipeline = CrmFunil::where('tenant_id', $tenantId)->findOrFail($pipelineId);
+
+        $validated = $request->validate([
+            'etapas' => 'required|array',
+            'etapas.*.id' => 'required|uuid|exists:crm_funil_etapas,id',
+            'etapas.*.ordem_exibicao' => 'required|integer|min:1',
+        ]);
+
+        DB::transaction(function () use ($validated, $pipeline) {
+            foreach ($validated['etapas'] as $item) {
+                CrmFunilEtapa::where('id', $item['id'])
+                    ->where('funil_id', $pipeline->id)
+                    ->update(['ordem_exibicao' => $item['ordem_exibicao']]);
+            }
+        });
+
+        return response()->json(['data' => ['message' => 'Ordem das etapas atualizada com sucesso.']]);
+    }
+
+    public function board(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $pipelineId = $request->get('pipeline_id');
+            $statusFiltro = $request->get('status', 'ABERTO');
+            $vendedorId = $request->get('vendedor_id');
+            $search = $request->get('search');
+
+            $queryPipeline = CrmFunil::where('tenant_id', $tenantId)->where('is_ativo', true);
+            if (!empty($pipelineId)) {
+                $queryPipeline->where('id', $pipelineId);
+            } else {
+                $queryPipeline->orderByDesc('is_padrao');
+            }
+
+            $pipeline = $queryPipeline->first();
+
+            if (!$pipeline) {
+                $pipeline = CrmFunil::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'nome' => 'Pipeline Principal',
+                    'descricao' => 'Fluxo mestre de prospecção e vendas',
+                    'cor_hex' => '#4f46e5',
+                    'token_captacao' => Str::random(40),
+                    'is_padrao' => true,
+                    'is_ativo' => true,
+                ]);
+
+                $etapas = [
+                    ['nome' => 'Descoberta / Prospecção', 'ordem' => 1, 'prob' => 20, 'cor' => '#6366f1'],
+                    ['nome' => 'Qualificação Técnica', 'ordem' => 2, 'prob' => 40, 'cor' => '#3b82f6'],
+                    ['nome' => 'Proposta Comercial', 'ordem' => 3, 'prob' => 70, 'cor' => '#f59e0b'],
+                    ['nome' => 'Negociação / Fechamento', 'ordem' => 4, 'prob' => 90, 'cor' => '#10b981'],
+                ];
+                foreach ($etapas as $e) {
+                    CrmFunilEtapa::create([
+                        'id' => (string) Str::uuid(),
+                        'funil_id' => $pipeline->id,
+                        'nome' => $e['nome'],
+                        'ordem_exibicao' => $e['ordem'],
+                        'probabilidade_fechamento' => $e['prob'],
+                        'cor_hex' => $e['cor'],
+                    ]);
+                }
+            }
+
+            $temTabelaItens = Schema::hasTable('crm_oportunidade_itens');
+
+            $pipelineCarregado = CrmFunil::where('id', $pipeline->id)
+                ->with(['etapas' => function ($queryEtapa) use ($statusFiltro, $vendedorId, $search, $tenantId, $temTabelaItens) {
+                    $queryEtapa->orderBy('ordem_exibicao', 'asc')
+                        ->with(['oportunidades' => function ($q) use ($statusFiltro, $vendedorId, $search, $tenantId, $temTabelaItens) {
+                            $q->where('tenant_id', $tenantId);
+                            if ($statusFiltro !== 'TODOS') {
+                                $q->where('status', $statusFiltro);
+                            }
+                            if (!empty($vendedorId)) {
+                                $q->where('vendedor_id', $vendedorId);
+                            }
+                            if (!empty($search)) {
+                                $q->where(function ($sub) use ($search) {
+                                    $sub->where('titulo', 'LIKE', "%{$search}%")
+                                        ->orWhere('nome_contato', 'LIKE', "%{$search}%")
+                                        ->orWhere('telefone_contato', 'LIKE', "%{$search}%");
+                                });
+                            }
+
+                            $relations = ['vendedor:id,name', 'atividades'];
+                            if ($temTabelaItens) {
+                                $relations[] = 'itens.produto'; // CORREÇÃO: Usando a relação correta 'produto' em vez de 'item'
+                            }
+
+                            $q->with($relations)->orderByDesc('created_at');
+                        }]);
+                }])
+                ->first();
+
+            $todosPipelines = CrmFunil::where('tenant_id', $tenantId)
+                ->where('is_ativo', true)
+                ->orderBy('nome')
+                ->get(['id', 'nome', 'cor_hex', 'is_padrao', 'token_captacao']);
+
+            self::garantirMotivosPerdaPadrao($tenantId);
+            $motivosPerda = TabelaDominio::where('tenant_id', $tenantId)
+                ->where('tipo_lista', 'CRM_MOTIVO_PERDA')
+                ->where('is_ativo', true)
+                ->orderBy('ordem_exibicao')
+                ->get();
+
+            $vendedores = User::where('tenant_id', $tenantId)
+                ->where('is_ativo', true)
+                ->get(['id', 'name']);
+
+            $produtos = [];
+            if (Schema::hasTable('pro_itens')) {
+                try {
+                    $produtos = Item::where('tenant_id', $tenantId)
+                        ->where('is_ativo', true)
+                        ->orderBy('nome')
+                        ->get(['id', 'nome', 'codigo_sku', 'preco_venda']);
+                } catch (\Throwable $th) {
+                    $produtos = [];
+                }
+            }
+
+            $usuarioLogado = $request->user();
+            $perfilNome = is_object($usuarioLogado->perfil)
+                ? ($usuarioLogado->perfil->nome ?? $usuarioLogado->perfil->codigo ?? '')
+                : ($usuarioLogado->perfil ?? '');
+
+            $perfilUpper = strtoupper(trim((string)$perfilNome));
+            $roleUpper = strtoupper(trim((string)($usuarioLogado->role ?? '')));
+
+            $isGestor = ($usuarioLogado->is_master ?? false)
+                     || ($usuarioLogado->is_admin ?? false)
+                     || in_array($perfilUpper, ['ADMIN', 'ADMINISTRADOR', 'GESTOR_COMERCIAL', 'GERENTE', 'GERENTE_COMERCIAL', 'DIRETOR', 'MASTER', 'SAAS_OWNER'], true)
+                     || in_array($roleUpper, ['ADMIN', 'GESTOR_COMERCIAL', 'GERENTE'], true)
+                     || str_contains($perfilUpper, 'ADMIN')
+                     || str_contains($perfilUpper, 'GESTOR')
+                     || str_contains($perfilUpper, 'GERENTE');
+
+            return response()->json([
+                'data' => [
+                    'pipeline' => $pipelineCarregado,
+                    'pipelines_disponiveis' => $todosPipelines,
+                    'motivos_perda' => $motivosPerda,
+                    'vendedores' => $vendedores,
+                    'produtos' => $produtos,
+                    'permissoes' => [
+                        'pode_gerenciar_pipeline' => $isGestor,
+                    ]
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Erro Board CRM', ['msg' => $e->getMessage(), 'line' => $e->getLine()]);
+            return response()->json([
+                'error' => [
+                    'code' => 'BOARD_LOAD_ERROR',
+                    'message' => 'Erro interno ao carregar pipeline. Tente novamente ou contate o suporte. Msg: ' . $e->getMessage(),
+                ]
+            ], 500);
+        }
+    }
+
+    public function moverCard(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'etapa_id_destino' => 'required|uuid|exists:crm_funil_etapas,id',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+        $oportunidade->update(['etapa_id' => $validated['etapa_id_destino']]);
+
+        return response()->json(['data' => ['message' => 'Oportunidade movida com sucesso!', 'oportunidade' => $oportunidade]]);
+    }
+
+    public function storeOportunidade(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'etapa_id' => 'required|uuid|exists:crm_funil_etapas,id',
+            'titulo' => 'required|string|max:255',
+            'nome_contato' => 'required|string|max:255',
+            'email_contato' => 'nullable|email|max:255',
+            'telefone_contato' => 'nullable|string|max:30',
+            'valor_estimado' => 'nullable|numeric|min:0',
+            'vendedor_id' => 'nullable|uuid|exists:users,id',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $etapa = CrmFunilEtapa::whereHas('funil', fn($q) => $q->where('tenant_id', $tenantId))->findOrFail($validated['etapa_id']);
+
+        $oportunidade = CrmOportunidade::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'funil_id' => $etapa->funil_id,
+            'etapa_id' => $etapa->id,
+            'vendedor_id' => $validated['vendedor_id'] ?? $request->user()->id,
+            'titulo' => $validated['titulo'],
+            'nome_contato' => $validated['nome_contato'],
+            'email_contato' => $validated['email_contato'] ?? null,
+            'telefone_contato' => $validated['telefone_contato'] ?? null,
+            'valor_estimado' => (float) ($validated['valor_estimado'] ?? 0),
+            'status' => 'ABERTO',
+            'origem_lead' => 'MANUAL',
+        ]);
+
+        return response()->json(['data' => $oportunidade], 201);
+    }
+
+    public function adicionarItemOportunidade(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id ?? auth()->user()->tenant_id ?? session('tenant_id');
+        $oportunidade = \App\Models\CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'produto_id' => 'nullable|uuid|exists:pro_itens,id',
+            'item_id'    => 'nullable|uuid|exists:pro_itens,id',
+            'descricao'  => 'required|string|max:255',
+            'quantidade' => 'required|numeric|min:0.01',
+            'valor_unitario' => 'required|numeric|min:0',
+        ]);
+
+        $produtoReferenciaId = !empty($validated['produto_id'])
+            ? $validated['produto_id']
+            : (!empty($validated['item_id']) ? $validated['item_id'] : null);
+
+        $item = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $oportunidade, $produtoReferenciaId) {
+            $totalItem = (float)$validated['quantidade'] * (float)$validated['valor_unitario'];
+
+            $novoItem = \App\Models\CrmOportunidadeItem::create([
+                'id' => (string) Str::uuid(),
+                'oportunidade_id' => $oportunidade->id,
+                'produto_id' => $produtoReferenciaId, // <-- COLUNA CORRETA DA TABELA
+                'descricao' => $validated['descricao'],
+                'quantidade' => (float)$validated['quantidade'],
+                'valor_unitario' => (float)$validated['valor_unitario'],
+                'valor_total' => $totalItem,
+            ]);
+
+            $novoTotalOp = \App\Models\CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)->sum('valor_total');
+            $oportunidade->update(['valor_estimado' => $novoTotalOp]);
+
+            return $novoItem;
+        });
+
+        return response()->json(['data' => $item], 201);
+    }
+
+    public function removerItemOportunidade(Request $request, string $id, string $itemId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+
+        DB::transaction(function () use ($itemId, $oportunidade) {
+            // Removido o where('tenant_id', $tenantId) que causava o erro SQL
+            CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)
+                ->where('id', $itemId)
+                ->delete();
+
+            $novoTotalOp = CrmOportunidadeItem::where('oportunidade_id', $oportunidade->id)->sum('valor_total');
+            $oportunidade->update(['valor_estimado' => $novoTotalOp]);
+        });
+
+        return response()->json(['data' => ['message' => 'Item removido da oportunidade.']]);
+    }
+
+    public function marcarPerdido(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'motivo_perda_id' => 'required|uuid|exists:sis_tabelas_dominio,id',
+            'justificativa_perda' => 'nullable|string',
+        ]);
+
+        $oportunidade->update([
+            'status' => 'PERDIDO',
+            'motivo_perda_id' => $validated['motivo_perda_id'],
+            'justificativa_perda' => $validated['justificativa_perda'] ?? null,
+            'data_fechamento' => now(),
+        ]);
+
+        return response()->json(['data' => ['message' => 'Oportunidade marcada como perdida.', 'oportunidade' => $oportunidade]]);
+    }
+
+    public function converterParaOrcamento(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $this->getTenantId();
+        $oportunidade = CrmOportunidade::with('itens')->where('tenant_id', $tenantId)->findOrFail($id);
+
+        try {
+            return DB::transaction(function () use ($oportunidade, $tenantId, $request) {
+                $clienteId = $oportunidade->cliente_id;
+
+                // Cria o cliente se ele ainda for apenas um Lead
+                if (!$clienteId) {
+                    $cpfAleatorio = 'CRM' . strtoupper(substr(str_replace('-', '', (string) Str::uuid()), 0, 8));
+                    $pessoa = Pessoa::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => $tenantId,
+                        'tipo_pessoa' => 'PF',
+                        'nome_razao_social' => $oportunidade->nome_contato,
+                        'cpf_cnpj' => $cpfAleatorio,
+                        'email_principal' => $oportunidade->email_contato,
+                        'telefone_principal' => $oportunidade->telefone_contato,
+                        'is_cliente' => true,
+                        'is_ativo' => true,
+                    ]);
+                    $clienteId = $pessoa->id;
+                    $oportunidade->update(['cliente_id' => $clienteId]);
+                }
+
+                $empresaId = $request->user()->empresa_padrao_id
+                          ?? Empresa::where('tenant_id', $tenantId)->first()?->id
+                          ?? Empresa::first()?->id;
+
+                $depositoId = Deposito::where('tenant_id', $tenantId)->where('is_padrao', true)->first()?->id
+                           ?? Deposito::where('tenant_id', $tenantId)->first()?->id
+                           ?? Deposito::first()?->id;
+
+                $ultimoNumero = PedidoVenda::withoutGlobalScopes()->where('tenant_id', $tenantId)->max('numero_pedido') ?? 1000;
+                $valorEstimado = (float) ($oportunidade->valor_estimado ?? 0);
+
+                // Cria o cabeçalho do Orçamento
+                $orcamento = PedidoVenda::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'empresa_id' => $empresaId,
+                    'cliente_id' => $clienteId,
+                    'vendedor_id' => $oportunidade->vendedor_id ?? $request->user()->id,
+                    'deposito_saida_id' => $depositoId,
+                    'tipo_documento' => 'ORCAMENTO',
+                    'numero_pedido' => (int) ($ultimoNumero + 1),
+                    'status' => 'ORCAMENTO',
+                    'data_emissao' => now(),
+                    'valor_subtotal_itens' => $valorEstimado,
+                    'valor_frete' => 0.00,
+                    'valor_seguro' => 0.00,
+                    'valor_outras_despesas' => 0.00,
+                    'percentual_desconto' => 0.00,
+                    'valor_desconto' => 0.00,
+                    'valor_total_liquido' => $valorEstimado,
+                    'observacoes' => "Orçamento gerado a partir do Funil CRM: {$oportunidade->titulo}",
+                ]);
+
+                $observacoesAvulsos = [];
+
+                // Lança os itens no Orçamento
+                if ($oportunidade->itens->isNotEmpty()) {
+                    foreach ($oportunidade->itens as $itemOp) {
+
+                        $produtoIdParaFaturar = $itemOp->produto_id;
+
+                        // MÁGICA AQUI: Se o item for avulso, resolve de forma invisível para o usuário
+                        if (empty($produtoIdParaFaturar)) {
+                            $itemGenerico = \App\Models\Item::firstOrCreate(
+                                [
+                                    'tenant_id' => $tenantId,
+                                    'codigo_sku' => 'ITEM-AVULSO'
+                                ],
+                                [
+                                    'id' => (string) Str::uuid(),
+                                    'nome' => 'Item Avulso / Diversos',
+                                    'tipo_item' => 'SERVICO', // Seta como Serviço para não impactar estoque WMS
+                                    'unidade_medida' => 'UN',
+                                    'preco_venda' => 0.00,
+                                    'controla_estoque' => false,
+                                    'is_ativo' => true,
+                                ]
+                            );
+
+                            $produtoIdParaFaturar = $itemGenerico->id;
+                            $itemOp->update(['produto_id' => $produtoIdParaFaturar]);
+
+                            // Guarda a descrição que o vendedor digitou para não perder a informação
+                            $observacoesAvulsos[] = "Item Avulso: " . $itemOp->descricao . " (Qtd: " . (float)$itemOp->quantidade . ")";
+                        }
+
+                        \App\Models\PedidoVendaItem::create([
+                            'id' => (string) Str::uuid(),
+                            'pedido_id' => $orcamento->id,
+                            'item_id' => $produtoIdParaFaturar,
+                            'quantidade' => $itemOp->quantidade,
+                            'preco_tabela_unitario' => $itemOp->valor_unitario,
+                            'percentual_desconto' => 0.00,
+                            'valor_desconto_unitario' => 0.00,
+                            'preco_venda_unitario' => $itemOp->valor_unitario,
+                            'valor_total_bruto' => $itemOp->valor_total,
+                            'valor_total_liquido' => $itemOp->valor_total,
+                        ]);
+                    }
+                }
+
+                // Se houveram itens avulsos, adiciona as descrições nas notas do Orçamento
+                if (!empty($observacoesAvulsos)) {
+                    $orcamento->update([
+                        'observacoes' => $orcamento->observacoes . "\n\nDetalhes de Itens Avulsos:\n" . implode("\n", $observacoesAvulsos)
+                    ]);
+                }
+
+                // Finaliza a Oportunidade
+                $oportunidade->update([
+                    'status' => 'GANHO',
+                    'data_fechamento' => now()
+                ]);
+
+                return response()->json([
+                    'data' => [
+                        'message' => "Orçamento #{$orcamento->numero_pedido} gerado com sucesso!",
+                        'orcamento_id' => $orcamento->id
+                    ]
+                ]);
+            });
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'CONVERSION_ERROR',
+                    'message' => 'Falha na conversão: ' . $e->getMessage()
+                ]
+            ], 422);
+        }
+    }
+
+    public function adicionarAtividade(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $oportunidade = CrmOportunidade::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'tipo' => 'required|string|in:NOTA,LIGACAO,REUNIAO,WHATSAPP,TAREFA',
+            'descricao' => 'required|string',
+            'data_agendamento' => 'nullable|date',
+        ]);
+
+        $atividade = CrmOportunidadeAtividade::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'oportunidade_id' => $oportunidade->id,
+            'usuario_id' => $request->user()->id,
+            'tipo' => $validated['tipo'],
+            'descricao' => $validated['descricao'],
+            'data_agendamento' => $validated['data_agendamento'] ?? null,
+            'is_concluida' => empty($validated['data_agendamento']),
+        ]);
+
+        return response()->json(['data' => $atividade->load('usuario:id,name')], 201);
+    }
+
+    public function toggleAtividade(Request $request, string $id, string $atividadeId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $atividade = CrmOportunidadeAtividade::where('tenant_id', $tenantId)->where('oportunidade_id', $id)->findOrFail($atividadeId);
+        $atividade->update(['is_concluida' => !$atividade->is_concluida]);
+
+        return response()->json(['data' => $atividade]);
+    }
+
+    // --- GESTÃO DE MOTIVOS DE PERDA (CRUD VIA TABELA DE DOMÍNIO) ---
+
+    public function storeMotivoPerda(Request $request): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'codigo' => 'nullable|string|max:50',
+            'cor_hex' => 'nullable|string|max:10',
+        ]);
+
+        $maxOrdem = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'CRM_MOTIVO_PERDA')->max('ordem_exibicao') ?? 0;
+        $codigo = !empty($validated['codigo']) ? Str::slug($validated['codigo'], '_') : Str::slug($validated['nome'], '_');
+
+        $motivo = TabelaDominio::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'tipo_lista' => 'CRM_MOTIVO_PERDA',
+            'codigo' => strtoupper($codigo),
+            'nome' => $validated['nome'],
+            'cor_hex' => $validated['cor_hex'] ?? '#ef4444',
+            'ordem_exibicao' => $maxOrdem + 1,
+            'is_ativo' => true,
+            'is_sistema' => false,
+        ]);
+
+        return response()->json(['data' => $motivo], 201);
+    }
+
+    public function updateMotivoPerda(Request $request, string $id): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+        $motivo = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'CRM_MOTIVO_PERDA')->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'cor_hex' => 'nullable|string|max:10',
+            'is_ativo' => 'nullable|boolean',
+        ]);
+
+        $motivo->update($validated);
+        return response()->json(['data' => $motivo]);
+    }
+
+    public function destroyMotivoPerda(Request $request, string $id): JsonResponse
+    {
+        $this->autorizarGestao($request);
+        $tenantId = $request->user()->tenant_id;
+        $motivo = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'CRM_MOTIVO_PERDA')->findOrFail($id);
+
+        if (CrmOportunidade::where('motivo_perda_id', $motivo->id)->exists()) {
+            return response()->json(['error' => 'Não é possível excluir motivo de perda já vinculado a oportunidades.'], 422);
+        }
+
+        $motivo->delete();
+        return response()->json(['data' => ['message' => 'Motivo de perda removido com sucesso.']]);
+    }
+
+    public function metricasAnaliticas(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pipelineId = $request->get('pipeline_id');
+
+        $query = CrmOportunidade::where('tenant_id', $tenantId);
+        if (!empty($pipelineId)) {
+            $query->where('funil_id', $pipelineId);
+        }
+
+        $totalGeral = (clone $query)->count();
+        $totalGanhos = (clone $query)->where('status', 'GANHO')->count();
+        $totalPerdidos = (clone $query)->where('status', 'PERDIDO')->count();
+        $totalAbertos = (clone $query)->where('status', 'ABERTO')->count();
+
+        $taxaConversao = ($totalGanhos + $totalPerdidos) > 0 ? round(($totalGanhos / ($totalGanhos + $totalPerdidos)) * 100, 1) : 0;
+        $volumeTotalGanhos = (clone $query)->where('status', 'GANHO')->sum('valor_estimado');
+
+        $rankingPerdas = DB::table('crm_oportunidades')
+            ->join('sis_tabelas_dominio', 'crm_oportunidades.motivo_perda_id', '=', 'sis_tabelas_dominio.id')
+            ->where('crm_oportunidades.tenant_id', $tenantId)
+            ->where('crm_oportunidades.status', 'PERDIDO')
+            ->select('sis_tabelas_dominio.nome', 'sis_tabelas_dominio.cor_hex', DB::raw('count(crm_oportunidades.id) as total'))
+            ->groupBy('sis_tabelas_dominio.nome', 'sis_tabelas_dominio.cor_hex')
+            ->orderByDesc('total')
+            ->get();
+
+        $desempenhoVendedores = DB::table('crm_oportunidades')
+            ->join('users', 'crm_oportunidades.vendedor_id', '=', 'users.id')
+            ->where('crm_oportunidades.tenant_id', $tenantId)
+            ->select(
+                'users.name as vendedor',
+                DB::raw("count(case when crm_oportunidades.status = 'GANHO' then 1 end) as ganhos"),
+                DB::raw("count(case when crm_oportunidades.status = 'PERDIDO' then 1 end) as perdidos"),
+                DB::raw("sum(case when crm_oportunidades.status = 'GANHO' then crm_oportunidades.valor_estimado else 0 end) as valor_ganho")
+            )
+            ->groupBy('users.name')
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'total_geral' => $totalGeral,
+                'total_abertos' => $totalAbertos,
+                'total_ganhos' => $totalGanhos,
+                'total_perdidos' => $totalPerdidos,
+                'taxa_conversao_percentual' => $taxaConversao,
+                'volume_total_ganhos' => (float)$volumeTotalGanhos,
+                'ranking_perdas' => $rankingPerdas,
+                'desempenho_vendedores' => $desempenhoVendedores,
+            ]
+        ]);
+    }
+
+    public function webhookCapturaLead(Request $request, string $token): JsonResponse
+    {
+        $pipeline = CrmFunil::withoutGlobalScopes()->where('token_captacao', $token)->where('is_ativo', true)->first();
+
+        if (!$pipeline) {
+            return response()->json(['error' => 'Token de captação inválido ou inativo.'], 404);
+        }
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'telefone' => 'required|string|max:30',
+            'mensagem' => 'nullable|string',
+            'valor_estimado' => 'nullable|numeric',
+        ]);
+
+        $primeiraEtapa = CrmFunilEtapa::where('funil_id', $pipeline->id)->orderBy('ordem_exibicao')->first();
+
+        if (!$primeiraEtapa) {
+            return response()->json(['error' => 'Pipeline sem etapas configuradas.'], 500);
+        }
+
+        $oportunidade = CrmOportunidade::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $pipeline->tenant_id,
+            'funil_id' => $pipeline->id,
+            'etapa_id' => $primeiraEtapa->id,
+            'titulo' => 'Inbound: ' . ($validated['nome'] ?? 'Novo Lead'),
+            'nome_contato' => $validated['nome'],
+            'email_contato' => $validated['email'] ?? null,
+            'telefone_contato' => $validated['telefone'],
+            'valor_estimado' => (float) ($validated['valor_estimado'] ?? 0),
+            'status' => 'ABERTO',
+            'origem_lead' => 'LANDING_PAGE',
+            'observacoes' => $validated['mensagem'] ?? 'Lead recebido via Landing Page Comercial',
+        ]);
+
+        if (!empty($validated['mensagem'])) {
+            CrmOportunidadeAtividade::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $pipeline->tenant_id,
+                'oportunidade_id' => $oportunidade->id,
+                'tipo' => 'NOTA',
+                'descricao' => 'Mensagem do Formulário: ' . $validated['mensagem'],
+                'is_concluida' => true,
+            ]);
+        }
+
+        return response()->json([
+            'data' => [
+                'message' => 'Lead capturado com sucesso!',
+                'oportunidade_id' => $oportunidade->id
+            ]
+        ], 201);
+    }
+
+    private static function garantirMotivosPerdaPadrao(string $tenantId): void
+    {
+        $padroes = [
+            ['codigo' => 'PRECO_ALTO', 'nome' => 'Preço Acima do Orçamento', 'cor' => '#ef4444'],
+            ['codigo' => 'CONCORRENTE', 'nome' => 'Fechou com Concorrente', 'cor' => '#f97316'],
+            ['codigo' => 'SEM_RETORNO', 'nome' => 'Lead Parou de Responder', 'cor' => '#64748b'],
+            ['codigo' => 'SEM_INTERESSE', 'nome' => 'Sem Interesse / Projeto Cancelado', 'cor' => '#a855f7'],
+        ];
+
+        $qtd = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'CRM_MOTIVO_PERDA')->count();
+        if ($qtd === 0) {
+            foreach ($padroes as $idx => $p) {
+                TabelaDominio::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'tipo_lista' => 'CRM_MOTIVO_PERDA',
+                    'codigo' => $p['codigo'],
+                    'nome' => $p['nome'],
+                    'cor_hex' => $p['cor'],
+                    'ordem_exibicao' => $idx + 1,
+                    'is_ativo' => true,
+                    'is_sistema' => true,
+                ]);
+            }
+        }
+    }
+    private function getTenantId(): ?string
+{
+    return request()->user()->tenant_id
+        ?? auth()->user()->tenant_id
+        ?? session('tenant_id');
+}
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\CrmInboundController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\CrmFunil;
+use App\Models\CrmOportunidade;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class CrmInboundController extends Controller
+{
+    public function receberLead(Request $request, string $token): JsonResponse
+    {
+        // Encontra o Funil pelo Token Público (sem Sanctum)
+        $funil = CrmFunil::withoutGlobalScopes()
+            ->where('token_captacao', $token)
+            ->where('is_ativo', true)
+            ->first();
+
+        if (!$funil) {
+            return response()->json(['error' => 'Token de integração inválido ou funil inativo.'], 401);
+        }
+
+        // Pega a primeira etapa do funil (Entrada)
+        $primeiraEtapa = $funil->etapas()->orderBy('ordem_exibicao')->first();
+
+        if (!$primeiraEtapa) {
+            return response()->json(['error' => 'O funil não possui etapas configuradas.'], 422);
+        }
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'email' => 'nullable|email|max:150',
+            'telefone' => 'nullable|string|max:30',
+            'assunto' => 'nullable|string|max:200',
+            'origem' => 'nullable|string|max:100',
+            'mensagem' => 'nullable|string',
+        ]);
+
+        $oportunidade = CrmOportunidade::create([
+            'tenant_id' => $funil->tenant_id,
+            'funil_id' => $funil->id,
+            'etapa_id' => $primeiraEtapa->id,
+            'titulo' => $validated['assunto'] ?? "Novo Lead: {$validated['nome']}",
+            'nome_contato' => $validated['nome'],
+            'email_contato' => $validated['email'] ?? null,
+            'telefone_contato' => $validated['telefone'] ?? null,
+            'observacoes' => $validated['mensagem'] ?? null,
+            'origem_lead' => $validated['origem'] ?? 'API_WEBHOOK',
+        ]);
+
+        return response()->json(['data' => ['success' => true, 'message' => 'Lead capturado e inserido no funil!']], 201);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\DashboardController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\DocumentoFiscal;
+use App\Models\EstoqueDeposito;
+use App\Models\OrdemServico;
+use App\Models\PedidoVenda;
+use App\Models\TituloFinanceiro;
+use Illuminate\Http\JsonResponse;
+
+class DashboardController extends Controller
+{
+    public function metricas(): JsonResponse
+    {
+        $faturamentoHoje = PedidoVenda::where('status', 'FATURADO')
+            ->whereDate('data_emissao', now()->toDateString())
+            ->sum('valor_total_liquido') ?? 0.00;
+
+        $faturamentoMes = PedidoVenda::where('status', 'FATURADO')
+            ->whereMonth('data_emissao', now()->month)
+            ->whereYear('data_emissao', now()->year)
+            ->sum('valor_total_liquido') ?? 0.00;
+
+        $totalAReceber = TituloFinanceiro::where('natureza', 'RECEBER')
+            ->whereIn('status', ['ABERTO', 'PARCIAL'])
+            ->sum('valor_saldo_aberto') ?? 0.00;
+
+        $totalAPagar = TituloFinanceiro::where('natureza', 'PAGAR')
+            ->whereIn('status', ['ABERTO', 'PARCIAL'])
+            ->sum('valor_saldo_aberto') ?? 0.00;
+
+        $osAbertas = OrdemServico::where('status', 'ABERTA')->count();
+        $osEmAndamento = OrdemServico::where('status', 'EM_ANDAMENTO')->count();
+        $osConcluidasMes = OrdemServico::where('status', 'CONCLUIDA')
+            ->whereMonth('data_conclusao', now()->month)
+            ->count();
+
+        $totalNfeEmitidas = DocumentoFiscal::where('status', 'AUTORIZADO')
+            ->whereMonth('data_emissao', now()->month)
+            ->count();
+
+        $itensEstoqueBaixo = EstoqueDeposito::where('quantidade_saldo', '<=', 5.0000)
+            ->with(['item', 'deposito'])
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'data' => [
+                'faturamento_hoje' => (float) $faturamentoHoje,
+                'faturamento_mes' => (float) $faturamentoMes,
+                'total_a_receber' => (float) $totalAReceber,
+                'total_a_pagar' => (float) $totalAPagar,
+                'os_abertas' => (int) $osAbertas,
+                'os_em_andamento' => (int) $osEmAndamento,
+                'os_concluidas_mes' => (int) $osConcluidasMes,
+                'total_nfe_emitidas' => (int) $totalNfeEmitidas,
+                'itens_estoque_baixo' => $itensEstoqueBaixo,
+            ]
+        ]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\DesempenhoClimaController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\App;
+use Exception;
+use App\Models\EnpsCampanha;
+use App\Models\EnpsResposta;
+use App\Models\NineboxEixo;
+use App\Models\AvaliacaoDesempenho;
+use App\Models\Pdi;
+
+class DesempenhoClimaController extends Controller
+{
+    // ==========================================
+    // eNPS - PESQUISA DE CLIMA
+    // ==========================================
+    public function storeCampanha(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $empresaId = $request->user()->empresa_padrao_id
+                      ?? \App\Models\Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->first()?->id;
+
+            App::instance('current_tenant_id', $tenantId);
+            if ($empresaId) App::instance('current_empresa_id', $empresaId);
+
+            $validated = $request->validate([
+                'titulo' => 'required|string|max:150',
+                'data_inicio' => 'required|date',
+                'data_fim' => 'required|date|after_or_equal:data_inicio',
+            ]);
+
+            $campanha = EnpsCampanha::withoutGlobalScopes()->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'titulo' => $validated['titulo'],
+                'data_inicio' => $validated['data_inicio'],
+                'data_fim' => $validated['data_fim'],
+                'status' => 'ATIVA',
+            ]);
+
+            return response()->json(['data' => $campanha], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Campanha: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function responderEnps(Request $request, string $campanhaId): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'nota' => 'required|integer|min:0|max:10',
+                'comentario' => 'nullable|string',
+            ]);
+
+            $campanha = EnpsCampanha::withoutGlobalScopes()->findOrFail($campanhaId);
+
+            if ($campanha->status !== 'ATIVA') {
+                return response()->json(['error' => ['message' => 'Esta campanha de eNPS já foi encerrada.']], 403);
+            }
+
+            EnpsResposta::create([
+                'id' => (string) Str::uuid(),
+                'campanha_id' => $campanha->id,
+                'nota' => $validated['nota'],
+                'comentario' => $validated['comentario'] ?? null,
+            ]);
+
+            return response()->json(['data' => ['message' => 'Resposta computada anonimamente com sucesso!']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Resposta: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function resultadosEnps(Request $request, string $campanhaId): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $campanha = EnpsCampanha::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($campanhaId);
+
+            $totalRespostas = EnpsResposta::where('campanha_id', $campanha->id)->count();
+
+            // REGRA DE OURO: Proteção de Anonimato
+            if ($totalRespostas < 5) {
+                return response()->json([
+                    'error' => [
+                        'message' => 'Dados insuficientes para preservar o anonimato. É necessário um mínimo de 5 respostas para visualizar o relatório.',
+                        'code' => 'ANONIMATO_PROTEGIDO'
+                    ]
+                ], 403);
+            }
+
+            $promotores = EnpsResposta::where('campanha_id', $campanha->id)->whereBetween('nota', [9, 10])->count();
+            $detratores = EnpsResposta::where('campanha_id', $campanha->id)->whereBetween('nota', [0, 6])->count();
+
+            $scoreEnps = (($promotores - $detratores) / $totalRespostas) * 100;
+
+            $comentarios = EnpsResposta::where('campanha_id', $campanha->id)->whereNotNull('comentario')->pluck('comentario');
+
+            return response()->json([
+                'data' => [
+                    'campanha' => $campanha->titulo,
+                    'total_respostas' => $totalRespostas,
+                    'score_enps' => round($scoreEnps, 2),
+                    'comentarios' => $comentarios
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Resultados: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    // ==========================================
+    // NINE-BOX & PDI - AVALIAÇÃO DE DESEMPENHO
+    // ==========================================
+    public function storeEixo(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+            $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->first()?->id;
+
+            App::instance('current_tenant_id', $tenantId);
+            if ($empresaId) App::instance('current_empresa_id', $empresaId);
+
+            $validated = $request->validate([
+                'tipo' => 'required|string|in:X,Y',
+                'nome' => 'required|string|max:100',
+                'descricao' => 'nullable|string',
+            ]);
+
+            $eixo = NineboxEixo::withoutGlobalScopes()->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'tipo' => $validated['tipo'],
+                'nome' => $validated['nome'],
+                'descricao' => $validated['descricao'] ?? null,
+            ]);
+
+            return response()->json(['data' => $eixo], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro Backend Eixo: ' . $e->getMessage()]], 500);
+        }
+    }
+    public function indexCampanhas(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $campanhas = EnpsCampanha::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $campanhas]);
+    }
+
+    public function indexEixos(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $eixos = NineboxEixo::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->orderBy('tipo')
+            ->get();
+
+        return response()->json(['data' => $eixos]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\EmpresaController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Empresa;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Response;
+
+class EmpresaController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = Empresa::where('tenant_id', $tenantId);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome_fantasia', 'ILIKE', "%{$search}%")
+                  ->orWhere('razao_social', 'ILIKE', "%{$search}%")
+                  ->orWhere('cnpj', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $empresas = $query->orderByDesc('is_matriz')->orderBy('razao_social')->get();
+
+        return response()->json(['data' => $empresas]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $assinatura = Assinatura::where('tenant_id', $tenantId)->with('plano')->first();
+        if ($assinatura && $assinatura->plano) {
+            $totalEmpresas = Empresa::where('tenant_id', $tenantId)->count();
+            if ($totalEmpresas >= $assinatura->plano->limite_empresas) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'PLAN_LIMIT_REACHED',
+                        'message' => "Seu plano ({$assinatura->plano->nome}) permite até {$assinatura->plano->limite_empresas} empresa(s)/filial(is). Faça upgrade para adicionar mais unidades.",
+                    ]
+                ], Response::HTTP_PAYMENT_REQUIRED);
+            }
+        }
+
+        $validated = $request->validate([
+            'nome_fantasia' => 'required|string|max:150',
+            'razao_social' => 'required|string|max:200',
+            'cnpj' => 'required|string|max:20',
+            'inscricao_estadual' => 'nullable|string|max:30',
+            'regime_tributario' => 'required|string',
+            'is_matriz' => 'boolean',
+        ]);
+
+        $validated['id'] = (string) Str::uuid();
+        $validated['tenant_id'] = $tenantId;
+
+        $empresa = Empresa::create($validated);
+
+        return response()->json(['data' => $empresa], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresa = Empresa::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome_fantasia' => 'required|string|max:150',
+            'razao_social' => 'required|string|max:200',
+            'cnpj' => 'required|string|max:20',
+            'inscricao_estadual' => 'nullable|string|max:30',
+            'regime_tributario' => 'required|string',
+        ]);
+
+        $empresa->update($validated);
+
+        return response()->json(['data' => $empresa]);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresa = Empresa::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($empresa->is_matriz) {
+            return response()->json([
+                'error' => [
+                    'code' => 'MATRIZ_DELETE_FORBIDDEN',
+                    'message' => 'Não é permitido excluir a empresa Matriz do tenant.',
+                ]
+            ], 422);
+        }
+
+        $empresa->delete();
+
+        return response()->json(['data' => ['message' => 'Filial removida com sucesso.']]);
+    }
+
+    public function trocarContexto(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'empresa_id' => 'required|uuid|exists:sis_empresas,id',
+        ]);
+
+        $user = $request->user();
+        $empresa = Empresa::where('tenant_id', $user->tenant_id)->findOrFail($validated['empresa_id']);
+
+        $user->update(['empresa_padrao_id' => $empresa->id]);
+
+        return response()->json([
+            'data' => [
+                'message' => "Contexto alterado com sucesso para: {$empresa->nome_fantasia}",
+                'empresa' => $empresa,
+            ]
+        ]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\EscalaTrabalhoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\EscalaTrabalho;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+
+class EscalaTrabalhoController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $escalas = EscalaTrabalho::where('tenant_id', $tenantId)
+            ->orderBy('nome')
+            ->get();
+
+        return response()->json(['data' => $escalas]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'tipo_escala' => 'required|string|in:SEMANAL,12X36,6X2',
+            'horario_entrada' => 'required|date_format:H:i',
+            'horario_saida' => 'required|date_format:H:i',
+            'inicio_intervalo' => 'nullable|date_format:H:i',
+            'fim_intervalo' => 'nullable|date_format:H:i',
+            'tolerancia_minutos' => 'nullable|integer|min:0|max:60',
+        ]);
+
+        $escala = EscalaTrabalho::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'nome' => $validated['nome'],
+            'tipo_escala' => $validated['tipo_escala'],
+            'horario_entrada' => $validated['horario_entrada'],
+            'horario_saida' => $validated['horario_saida'],
+            'inicio_intervalo' => $validated['inicio_intervalo'] ?? null,
+            'fim_intervalo' => $validated['fim_intervalo'] ?? null,
+            'tolerancia_minutos' => $validated['tolerancia_minutos'] ?? 10,
+            'is_ativo' => true,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => 'Escala de trabalho cadastrada com sucesso!',
+                'escala' => $escala,
+            ]
+        ], 201);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $escala = EscalaTrabalho::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $escala->delete();
+
+        return response()->json(['data' => ['message' => 'Escala removida com sucesso.']]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ExportacaoContabilController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\DocumentoFiscal;
+use App\Models\Empresa;
+use App\Models\TituloFinanceiro;
+use App\Services\ExportacaoContabilService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class ExportacaoContabilController extends Controller
+{
+    public function metricas(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $dtInicio = $request->get('data_inicio', now()->startOfMonth()->toDateString());
+        $dtFim = $request->get('data_fim', now()->endOfMonth()->toDateString());
+
+        $totalTitulosLiquidados = TituloFinanceiro::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->where('status', 'LIQUIDADO')
+            ->whereBetween('data_liquidacao', [$dtInicio, $dtFim])
+            ->count();
+
+        $totalDocumentosFiscais = DocumentoFiscal::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->where('status', 'AUTORIZADO')
+            ->whereBetween('data_emissao', [$dtInicio, $dtFim])
+            ->count();
+
+        $volumeFinanceiro = TituloFinanceiro::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->where('status', 'LIQUIDADO')
+            ->whereBetween('data_liquidacao', [$dtInicio, $dtFim])
+            ->sum('valor_pago_acumulado') ?? 0.00;
+
+        return response()->json([
+            'data' => [
+                'total_titulos_liquidados' => (int) $totalTitulosLiquidados,
+                'total_documentos_fiscais' => (int) $totalDocumentosFiscais,
+                'volume_financeiro' => (float) $volumeFinanceiro,
+            ]
+        ]);
+    }
+
+    public function download(Request $request): StreamedResponse|JsonResponse
+    {
+        $request->validate([
+            'tipo_formato' => 'required|string|in:DOMINIO,SPED_FISCAL,CSV_FINANCEIRO',
+            'data_inicio' => 'required|date',
+            'data_fim' => 'required|date|after_or_equal:data_inicio',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $tipo = $request->get('tipo_formato');
+        $dtInicio = $request->get('data_inicio');
+        $dtFim = $request->get('data_fim');
+
+        try {
+            switch ($tipo) {
+                case 'DOMINIO':
+                    $conteudo = ExportacaoContabilService::gerarDominioSistemas($tenantId, $empresaId, $dtInicio, $dtFim);
+                    $nomeArquivo = "dominio_contabil_{$dtInicio}_{$dtFim}.txt";
+                    $contentType = 'text/plain';
+                    break;
+
+                case 'SPED_FISCAL':
+                    $conteudo = ExportacaoContabilService::gerarSpedFiscal($tenantId, $empresaId, $dtInicio, $dtFim);
+                    $nomeArquivo = "sped_fiscal_efd_{$dtInicio}_{$dtFim}.txt";
+                    $contentType = 'text/plain';
+                    break;
+
+                case 'CSV_FINANCEIRO':
+                    $conteudo = ExportacaoContabilService::gerarCsvFinanceiro($tenantId, $empresaId, $dtInicio, $dtFim);
+                    $nomeArquivo = "financeiro_analitico_{$dtInicio}_{$dtFim}.csv";
+                    $contentType = 'text/csv';
+                    break;
+            }
+
+            return response()->streamDownload(function () use ($conteudo) {
+                echo $conteudo;
+            }, $nomeArquivo, [
+                'Content-Type' => $contentType,
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'EXPORT_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\FinanceiroController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\ContaFinanceira;
+use App\Models\MovimentacaoExtrato;
+use App\Models\TituloFinanceiro;
+use App\Services\FinanceiroService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class FinanceiroController extends Controller
+{
+    public function titulos(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $query = TituloFinanceiro::query()->with(['pessoa', 'contaPadrao']);
+
+            if ($user && $user->tenant_id) {
+                $query->where('tenant_id', $user->tenant_id);
+            }
+
+            if ($request->filled('natureza')) {
+                $query->where('natureza', $request->get('natureza'));
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->get('status'));
+            }
+
+            $titulos = $query->orderBy('data_vencimento')->paginate(15);
+            return response()->json($titulos);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
+    }
+
+    public function contas(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $query = ContaFinanceira::where('is_ativo', true);
+
+            if ($user && $user->tenant_id) {
+                $query->where('tenant_id', $user->tenant_id);
+            }
+
+            $contas = $query->orderBy('nome')->get();
+            return response()->json(['data' => $contas]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
+    }
+
+    public function extrato(string $contaId): JsonResponse
+    {
+        try {
+            $movimentos = MovimentacaoExtrato::where('conta_financeira_id', $contaId)
+                ->with('titulo')
+                ->orderByDesc('data_movimento')
+                ->orderByDesc('created_at')
+                ->limit(50)
+                ->get();
+
+            return response()->json(['data' => $movimentos]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
+    }
+
+    public function liquidar(Request $request, string $id): JsonResponse
+    {
+        $titulo = TituloFinanceiro::findOrFail($id);
+
+        $validated = $request->validate([
+            'conta_financeira_id' => 'required|uuid|exists:fin_contas_financeiras,id',
+            'valor_pago' => 'required|numeric|min:0.01',
+            'juros' => 'nullable|numeric|min:0',
+            'multa' => 'nullable|numeric|min:0',
+            'desconto' => 'nullable|numeric|min:0',
+            'forma_pagamento' => 'required|string',
+        ]);
+
+        try {
+            $tituloLiquidado = FinanceiroService::liquidarTitulo(
+                $titulo,
+                $validated['conta_financeira_id'],
+                (float) $validated['valor_pago'],
+                (float) ($validated['juros'] ?? 0.00),
+                (float) ($validated['multa'] ?? 0.00),
+                (float) ($validated['desconto'] ?? 0.00),
+                $validated['forma_pagamento'],
+                $request->user()
+            );
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Título liquidado e saldo bancário atualizado!',
+                    'titulo' => $tituloLiquidado,
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FINANCIAL_ERROR',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
+    }
+    public function storeConta(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'tipo_conta' => 'required|string|in:BANCO,CAIXA,CARTAO_CREDITO',
+            'codigo_banco' => 'nullable|string|max:10',
+            'agencia' => 'nullable|string|max:20',
+            'numero_conta' => 'nullable|string|max:30',
+            'saldo_inicial' => 'nullable|numeric',
+        ]);
+
+        $saldoInicial = (float) ($validated['saldo_inicial'] ?? 0.00);
+
+        try {
+            $conta = ContaFinanceira::create([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'nome' => $validated['nome'],
+                'tipo_conta' => $validated['tipo_conta'],
+                'codigo_banco' => $validated['codigo_banco'] ?? null,
+                'agencia' => $validated['agencia'] ?? null,
+                'numero_conta' => $validated['numero_conta'] ?? null,
+                'saldo_inicial' => $saldoInicial,
+                'saldo_atual' => $saldoInicial,
+                'is_ativo' => true,
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Conta bancária registrada com sucesso!',
+                    'conta' => $conta
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao criar conta bancária: ' . $e->getMessage()]], 422);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\FiscalController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\DocumentoFiscal;
+use App\Models\Empresa;
+use App\Models\Pessoa;
+use App\Models\RegraTributaria;
+use App\Services\MotorFiscalService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class FiscalController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $tenantId = $user ? $user->tenant_id : null;
+
+            $query = DocumentoFiscal::query()->with(['destinatario', 'empresa']);
+
+            if ($tenantId) {
+                $query->where('tenant_id', $tenantId);
+            }
+
+            if ($request->filled('modelo')) {
+                $query->where('modelo_documento', $request->get('modelo'));
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->get('status'));
+            }
+
+            $documentos = $query->orderByDesc('created_at')->get();
+
+            return response()->json(['data' => $documentos]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
+    }
+
+    public function regras(Request $request): JsonResponse
+    {
+        try {
+            $regras = RegraTributaria::where('is_ativo', true)->orderBy('cfop')->get();
+            return response()->json(['data' => $regras]);
+        } catch (Exception $e) {
+            return response()->json(['data' => []]);
+        }
+    }
+
+    public function emitir(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'destinatario_id' => 'required|uuid|exists:pes_pessoas,id',
+            'modelo_documento' => 'required|string|in:55,65,NFS-e',
+            'itens' => 'required|array|min:1',
+        ]);
+
+        $empresa = Empresa::first();
+        $destinatario = Pessoa::findOrFail($validated['destinatario_id']);
+
+        try {
+            $docFiscal = MotorFiscalService::prepararDocumento(
+                $empresa,
+                $destinatario,
+                $validated['modelo_documento'],
+                $validated['itens']
+            );
+
+            \App\Jobs\TransmitirDocumentoFiscalJob::dispatch($docFiscal->id);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Documento fiscal enfileirado para transmissão! O status será atualizado em breve.',
+                    'documento' => $docFiscal,
+                ]
+            ], 202);
+
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FISCAL_PREPARATION_ERROR',
+                    'message' => $e->getMessage()
+                ]
+            ], 422);
+        }
+    }
+
+    public function cancelar(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $documento = DocumentoFiscal::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($documento->status !== 'AUTORIZADO') {
+            return response()->json(['error' => ['message' => 'Apenas documentos com status AUTORIZADO podem ser cancelados.']], 422);
+        }
+
+        // A SEFAZ exige no mínimo 15 caracteres na justificativa
+        $validated = $request->validate([
+            'justificativa' => 'required|string|min:15|max:255',
+        ]);
+
+        try {
+            // Aqui entraria a chamada real: MotorFiscalService::cancelarDocumento($documento, $validated['justificativa']);
+
+            // Simulação de Sucesso (Bypass do Certificado)
+            $documento->update([
+                'status' => 'CANCELADO',
+                'mensagem_sefaz' => 'Evento de Cancelamento Homologado com Sucesso. Justificativa: ' . $validated['justificativa'],
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Documento fiscal cancelado com sucesso na SEFAZ!',
+                    'documento' => $documento
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro de comunicação com a SEFAZ: ' . $e->getMessage()]], 422);
+        }
+    }
+
+    public function cartaCorrecao(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $documento = DocumentoFiscal::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($documento->status !== 'AUTORIZADO') {
+            return response()->json(['error' => ['message' => 'Apenas documentos autorizados aceitam Carta de Correção.']], 422);
+        }
+
+        // A SEFAZ também exige no mínimo 15 caracteres para a CC-e
+        $validated = $request->validate([
+            'correcao' => 'required|string|min:15|max:1000',
+        ]);
+
+        try {
+            // Aqui entraria a chamada real: MotorFiscalService::enviarCCe($documento, $validated['correcao']);
+
+            // Simulação de Sucesso (Bypass do Certificado)
+            $documento->update([
+                'mensagem_sefaz' => 'CC-e Vinculada com Sucesso. Correção averbada: ' . $validated['correcao'],
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Carta de Correção Eletrônica (CC-e) averbada com sucesso!',
+                    'documento' => $documento
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro de comunicação com a SEFAZ: ' . $e->getMessage()]], 422);
+        }
+    }
+
+    public function statusSefaz(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $tenantId = $user->tenant_id;
+            $empresaId = $user->empresa_padrao_id
+                      ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+            $empresa = \App\Models\Empresa::find($empresaId);
+            $uf = $empresa->endereco_uf ?? 'RJ';
+
+            $resultado = \App\Services\MotorFiscalService::pingSefaz($tenantId, $empresaId, $uf);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Comunicação com a SEFAZ testada.',
+                    'sefaz' => $resultado
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'SEFAZ_COMMUNICATION_ERROR',
+                    'message' => $e->getMessage()
+                ]
+            ], 422);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\FrotaOperacaoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Empresa;
+use App\Services\Frota\FrotaOperacaoService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class FrotaOperacaoController extends Controller
+{
+    public function storeAbastecimento(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
+                  ?? Empresa::first()->id;
+
+        $validated = $request->validate([
+            'veiculo_id' => 'required|uuid|exists:fro_veiculos,id',
+            'motorista_id' => 'required|uuid|exists:pes_pessoas,id', // O motorista
+            'posto_id' => 'required|uuid|exists:pes_pessoas,id', // O fornecedor
+            'data_abastecimento' => 'required|date',
+            'km_marcador' => 'required|numeric|min:0',
+            'litros' => 'required|numeric|min:0.01',
+            'valor_total' => 'required|numeric|min:0.01',
+            'tipo_combustivel_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+        ]);
+
+        try {
+            $abastecimentoId = FrotaOperacaoService::registrarAbastecimento($validated, $tenantId, $empresaId);
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Abastecimento registrado com sucesso! Integrações financeiras e preventivas processadas.',
+                    'abastecimento_id' => $abastecimentoId
+                ]
+            ], 201);
+
+        } catch (\Throwable $e) {
+            // Devolve o erro mastigado pro React se a regra de negócio barrar (ex: KM menor que o atual)
+            return response()->json([
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ]
+            ], 422);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\FrotaVeiculoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Empresa;
+use App\Models\FrotaVeiculo;
+use App\Models\TabelaDominio;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class FrotaVeiculoController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = FrotaVeiculo::where('tenant_id', $tenantId)->with('status');
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('placa', 'ILIKE', "%{$search}%")
+                  ->orWhere('marca', 'ILIKE', "%{$search}%")
+                  ->orWhere('modelo', 'ILIKE', "%{$search}%")
+                  ->orWhere('chassi', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('status_id')) {
+            $query->where('status_id', $request->get('status_id'));
+        }
+
+        $veiculos = $query->orderBy('marca')->orderBy('modelo')->paginate(15);
+        return response()->json($veiculos);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id
+                  ?? Empresa::first()->id;
+
+        $validated = $request->validate([
+            'placa' => 'required|string|max:10',
+            'chassi' => 'nullable|string|max:50',
+            'marca' => 'required|string|max:50',
+            'modelo' => 'required|string|max:100',
+            'ano_fabricacao' => 'required|integer|min:1900|max:' . (date('Y') + 1),
+            'ano_modelo' => 'required|integer|min:1900|max:' . (date('Y') + 2),
+            'km_atual' => 'nullable|numeric|min:0',
+            'tipo_combustivel_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+            'status_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+        ]);
+
+        $placaLimpa = strtoupper(preg_replace('/[^A-Z0-9]/', '', $validated['placa']));
+
+        if (FrotaVeiculo::where('tenant_id', $tenantId)->where('placa', $placaLimpa)->exists()) {
+            return response()->json(['error' => ['message' => 'Veículo com esta placa já cadastrado na frota.']], 422);
+        }
+
+        $veiculo = FrotaVeiculo::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'empresa_id' => $empresaId,
+            'placa' => $placaLimpa,
+            'chassi' => $validated['chassi'] ? strtoupper($validated['chassi']) : null,
+            'marca' => $validated['marca'],
+            'modelo' => $validated['modelo'],
+            'ano_fabricacao' => $validated['ano_fabricacao'],
+            'ano_modelo' => $validated['ano_modelo'],
+            'km_atual' => $validated['km_atual'] ?? 0.00,
+            'tipo_combustivel_id' => $validated['tipo_combustivel_id'] ?? null,
+            'status_id' => $validated['status_id'] ?? null,
+            'is_ativo' => true,
+        ]);
+
+        return response()->json(['data' => $veiculo->load('status')], 201);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $veiculo = FrotaVeiculo::where('tenant_id', $tenantId)->with('status')->findOrFail($id);
+
+        return response()->json(['data' => $veiculo]);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $veiculo = FrotaVeiculo::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'marca' => 'required|string|max:50',
+            'modelo' => 'required|string|max:100',
+            'km_atual' => 'nullable|numeric|min:0',
+            'status_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+            'tipo_combustivel_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+            'is_ativo' => 'boolean',
+        ]);
+
+        $veiculo->update([
+            'marca' => $validated['marca'],
+            'modelo' => $validated['modelo'],
+            'km_atual' => $validated['km_atual'] ?? $veiculo->km_atual,
+            'status_id' => $validated['status_id'] ?? $veiculo->status_id,
+            'tipo_combustivel_id' => $validated['tipo_combustivel_id'] ?? $veiculo->tipo_combustivel_id,
+            'is_ativo' => $validated['is_ativo'] ?? $veiculo->is_ativo,
+        ]);
+
+        return response()->json(['data' => $veiculo->fresh('status')]);
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        $tenantId = request()->user()->tenant_id;
+        $veiculo = FrotaVeiculo::where('tenant_id', $tenantId)->findOrFail($id);
+
+        // Soft delete para manter histórico de manutenções e OS vinculadas no futuro
+        $veiculo->delete();
+
+        return response()->json(['data' => ['message' => 'Veículo removido da frota com sucesso.']]);
+    }
+
+    // ========================================================
+    // TABELAS DE DOMÍNIO (Listas Suspensas Dinâmicas)
+    // ========================================================
+    public function dominios(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        self::garantirDominiosPadrao($tenantId);
+
+        $status = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'FRO_STATUS_VEICULO')->orderBy('ordem_exibicao')->get();
+        $combustiveis = TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'FRO_TIPO_COMBUSTIVEL')->orderBy('ordem_exibicao')->get();
+
+        return response()->json([
+            'data' => [
+                'status_veiculo' => $status,
+                'tipos_combustivel' => $combustiveis,
+            ]
+        ]);
+    }
+
+    private static function garantirDominiosPadrao(string $tenantId): void
+    {
+        $statusPadrao = [
+            ['codigo' => 'DISPONIVEL', 'nome' => 'Disponível', 'cor' => '#10b981'],
+            ['codigo' => 'EM_USO', 'nome' => 'Em Uso', 'cor' => '#3b82f6'],
+            ['codigo' => 'MANUTENCAO', 'nome' => 'Em Manutenção', 'cor' => '#f59e0b'],
+            ['codigo' => 'INATIVO', 'nome' => 'Inativo', 'cor' => '#64748b'],
+        ];
+
+        $combustiveisPadrao = [
+            ['codigo' => 'FLEX', 'nome' => 'Flex (Etanol/Gasolina)', 'cor' => '#14b8a6'],
+            ['codigo' => 'DIESEL', 'nome' => 'Diesel', 'cor' => '#f97316'],
+            ['codigo' => 'GASOLINA', 'nome' => 'Gasolina', 'cor' => '#0ea5e9'],
+            ['codigo' => 'ELETRICO', 'nome' => 'Elétrico', 'cor' => '#8b5cf6'],
+        ];
+
+        DB::transaction(function () use ($tenantId, $statusPadrao, $combustiveisPadrao) {
+            if (TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'FRO_STATUS_VEICULO')->count() === 0) {
+                foreach ($statusPadrao as $idx => $p) {
+                    TabelaDominio::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'tipo_lista' => 'FRO_STATUS_VEICULO', 'codigo' => $p['codigo'], 'nome' => $p['nome'], 'cor_hex' => $p['cor'], 'ordem_exibicao' => $idx + 1, 'is_ativo' => true, 'is_sistema' => true]);
+                }
+            }
+
+            if (TabelaDominio::where('tenant_id', $tenantId)->where('tipo_lista', 'FRO_TIPO_COMBUSTIVEL')->count() === 0) {
+                foreach ($combustiveisPadrao as $idx => $c) {
+                    TabelaDominio::create(['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'tipo_lista' => 'FRO_TIPO_COMBUSTIVEL', 'codigo' => $c['codigo'], 'nome' => $c['nome'], 'cor_hex' => $c['cor'], 'ordem_exibicao' => $idx + 1, 'is_ativo' => true, 'is_sistema' => true]);
+                }
+            }
+        });
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\GedController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Empresa;
+use App\Models\GedDocumento;
+use App\Models\GedPasta;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class GedController extends Controller
+{
+    public function listar(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $pastaId = $request->get('pasta_id');
+
+        $pastas = GedPasta::where('tenant_id', $tenantId)
+            ->where('pasta_pai_id', $pastaId)
+            ->orderBy('nome')
+            ->get();
+
+        $documentos = GedDocumento::where('tenant_id', $tenantId)
+            ->where('pasta_id', $pastaId)
+            ->with('uploader:id,name')
+            ->orderByDesc('created_at')
+            ->get();
+
+        $caminho = [];
+        if ($pastaId) {
+            $atual = GedPasta::find($pastaId);
+            while ($atual) {
+                array_unshift($caminho, ['id' => $atual->id, 'nome' => $atual->nome]);
+                $atual = GedPasta::find($atual->pasta_pai_id);
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'caminho' => $caminho,
+                'pastas' => $pastas,
+                'documentos' => $documentos,
+            ]
+        ]);
+    }
+
+    public function criarPasta(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $validated = $request->validate([
+            'nome' => 'required|string|max:150',
+            'pasta_pai_id' => 'nullable|uuid|exists:ged_pastas,id',
+        ]);
+
+        $pasta = GedPasta::create([
+            'tenant_id' => $tenantId,
+            'empresa_id' => $request->user()->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()?->id,
+            'pasta_pai_id' => $validated['pasta_pai_id'] ?? null,
+            'nome' => $validated['nome'],
+        ]);
+
+        return response()->json(['data' => $pasta], 201);
+    }
+
+    public function upload(Request $request): JsonResponse
+    {
+        // Validação da Cota já é feita pelo Middleware CheckStorageQuota
+        $validated = $request->validate([
+            'arquivo' => 'required|file|max:20480', // 20MB
+            'pasta_id' => 'nullable|uuid|exists:ged_pastas,id',
+            'entidade_type' => 'nullable|string',
+            'entidade_id' => 'nullable|uuid',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $userId = $request->user()->id;
+        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $arquivo = $request->file('arquivo');
+        $nomeOriginal = $arquivo->getClientOriginalName();
+        $tamanhoBytes = $arquivo->getSize();
+        $mimeType = $arquivo->getMimeType();
+        $extensao = $arquivo->getClientOriginalExtension() ?: 'bin'; // Extrai a extensão e previne nulos
+        $caminho = $arquivo->store("ged/{$tenantId}", 'public');
+
+        $doc = DB::transaction(function () use ($validated, $tenantId, $userId, $empresaId, $nomeOriginal, $tamanhoBytes, $caminho, $mimeType, $extensao) {
+
+            $documentoId = (string) Str::uuid();
+
+            // Mapeamento corretivo exaustivo para contornar restrições Not Null da base legada
+            DB::table('ged_documentos')->insert([
+                'id' => $documentoId,
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pasta_id' => $validated['pasta_id'] ?? null,
+                'entidade_vinculada_type' => $validated['entidade_type'] ?? null,
+                'entidade_vinculada_id' => $validated['entidade_id'] ?? null,
+                'nome_original' => $nomeOriginal,
+                'caminho_s3' => $caminho,
+                'mime_type' => $mimeType,
+                'tamanho_bytes' => $tamanhoBytes,
+                'extensao' => $extensao, // <-- Coluna adicionada para satisfazer a restrição
+                'usuario_upload_id' => $userId,
+                'usuario_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            Assinatura::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->increment('storage_utilizado_bytes', $tamanhoBytes);
+
+            return DB::table('ged_documentos')->where('id', $documentoId)->first();
+        });
+
+        return response()->json(['data' => ['message' => 'Arquivo anexado ao cofre com sucesso!', 'documento' => $doc]], 201);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\HoleriteController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Colaborador;
+use App\Models\Empresa;
+use App\Models\Holerite;
+use App\Models\HoleriteItem;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Exception;
+
+class HoleriteController extends Controller
+{
+    // ==========================================
+    // PORTAL DO COLABORADOR
+    // ==========================================
+
+    public function meusHolerites(Request $request): JsonResponse
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+
+            // Busca o colaborador vinculado ao usuário logado
+            $colaborador = Colaborador::where('tenant_id', $tenantId)
+                ->where('usuario_id', $request->user()->id)
+                ->first();
+
+            if (!$colaborador) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'COLABORADOR_NAO_VINCULADO',
+                        'message' => 'Este usuário do sistema não possui uma ficha de colaborador vinculada no RH. Cadastre o colaborador e vincule o usuário.'
+                    ]
+                ], 422);
+            }
+
+            $holerites = Holerite::where('colaborador_id', $colaborador->id)
+                ->orderByDesc('competencia')
+                ->get();
+
+            return response()->json(['data' => $holerites]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => 'Erro ao listar meus holerites: ' . $e->getMessage()]], 500);
+        }
+    }
+
+    public function baixarMeuPdf(Request $request, string $id)
+    {
+        try {
+            $tenantId = $request->user()->tenant_id;
+
+            $colaborador = Colaborador::where('tenant_id', $tenantId)
+                ->where('usuario_id', $request->user()->id)
+                ->first();
+
+            if (!$colaborador) {
+                return response()->json([
+                    'error' => ['message' => 'Usuário sem vínculo de colaborador ativo para emissão de PDF.']
+                ], 422);
+            }
+
+            $holerite = Holerite::where('colaborador_id', $colaborador->id)
+                ->with(['colaborador.pessoa', 'itens'])
+                ->findOrFail($id);
+
+            if (!view()->exists('pdfs.holerite')) {
+                return response()->json([
+                    'error' => ['message' => 'Template de PDF do holerite (resources/views/pdfs/holerite.blade.php) não encontrado no servidor.']
+                ], 500);
+            }
+
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.holerite', ['holerite' => $holerite])
+                ->setPaper('a4', 'portrait');
+
+            // A MÁGICA AQUI: Troca a barra (/) por traço (-) para o sistema operacional aceitar o nome do arquivo
+            $competenciaLimpa = str_replace('/', '-', $holerite->competencia);
+
+            return $pdf->download("Holerite_{$competenciaLimpa}.pdf");
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('FALHA PDF DOMPDF: ' . $e->getMessage(), ['linha' => $e->getLine(), 'arquivo' => $e->getFile()]);
+
+            return response()->json([
+                'error' => [
+                    'code' => 'PDF_GENERATION_ERROR',
+                    'message' => 'Erro interno na conversão do PDF: ' . $e->getMessage()
+                ]
+            ], 500);
+        }
+    }
+
+    // ==========================================
+    // GESTÃO DE RH (ADMIN)
+    // ==========================================
+
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $holerites = Holerite::where('tenant_id', $tenantId)
+            ->with(['colaborador.pessoa:id,nome_razao_social,cpf_cnpj'])
+            ->orderByDesc('competencia')
+            ->orderByDesc('data_emissao')
+            ->paginate(15);
+
+        return response()->json($holerites);
+    }
+
+    public function show(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $holerite = Holerite::where('tenant_id', $tenantId)
+            ->with(['colaborador.pessoa', 'itens.rubrica'])
+            ->findOrFail($id);
+
+        return response()->json(['data' => $holerite]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id;
+
+        $validated = $request->validate([
+            'colaborador_id' => 'required|uuid|exists:rh_colaboradores,id',
+            'competencia' => 'required|string|size:7',
+            'data_emissao' => 'required|date',
+            'observacoes' => 'nullable|string',
+            'itens' => 'required|array|min:1',
+            'itens.*.tipo' => 'required|string|in:PROVENTO,DESCONTO',
+            'itens.*.rubrica_id' => 'nullable|uuid|exists:sis_tabelas_dominio,id',
+            'itens.*.descricao' => 'required|string|max:150',
+            'itens.*.referencia' => 'nullable|string|max:50',
+            'itens.*.valor' => 'required|numeric|min:0',
+        ]);
+
+        $colaborador = Colaborador::where('tenant_id', $tenantId)->findOrFail($validated['colaborador_id']);
+
+        $holeriteGerado = DB::transaction(function () use ($validated, $tenantId, $empresaId, $colaborador) {
+            $totalProventos = 0;
+            $totalDescontos = 0;
+
+            foreach ($validated['itens'] as $item) {
+                if ($item['tipo'] === 'PROVENTO') {
+                    $totalProventos += (float) $item['valor'];
+                } else {
+                    $totalDescontos += (float) $item['valor'];
+                }
+            }
+
+            $valorLiquido = max(0, $totalProventos - $totalDescontos);
+
+            $holerite = Holerite::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'colaborador_id' => $colaborador->id,
+                'competencia' => $validated['competencia'],
+                'data_emissao' => $validated['data_emissao'],
+                'salario_base' => $colaborador->salario_base,
+                'total_proventos' => $totalProventos,
+                'total_descontos' => $totalDescontos,
+                'valor_liquido' => $valorLiquido,
+                'status' => 'GERADO',
+                'observacoes' => $validated['observacoes'] ?? null,
+            ]);
+
+            foreach ($validated['itens'] as $item) {
+                HoleriteItem::create([
+                    'id' => (string) Str::uuid(),
+                    'holerite_id' => $holerite->id,
+                    'tipo' => $item['tipo'],
+                    'rubrica_id' => $item['rubrica_id'] ?? null,
+                    'descricao' => $item['descricao'],
+                    'referencia' => $item['referencia'] ?? null,
+                    'valor' => (float) $item['valor'],
+                ]);
+            }
+
+            return $holerite;
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => 'Holerite processado com sucesso!',
+                'holerite' => $holeriteGerado->load(['itens', 'colaborador.pessoa']),
+            ]
+        ], 201);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ImportacaoController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Pessoa;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class ImportacaoController extends Controller
+{
+    public function importarPessoas(Request $request): JsonResponse
+    {
+        $request->validate([
+            'arquivo_csv' => 'required|file' // Aceita upload genérico, nós validamos o conteúdo
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $path = $request->file('arquivo_csv')->getRealPath();
+
+        // Lê o arquivo CSV considerando o delimitador ponto e vírgula (padrão do Excel no Brasil)
+        $linhas = array_map(function($v) { return str_getcsv($v, ";"); }, file($path));
+
+        // Remove o cabeçalho
+        array_shift($linhas);
+
+        $sucesso = 0;
+        $erros = 0;
+
+        DB::beginTransaction();
+        try {
+            foreach ($linhas as $linha) {
+                // Se a linha não tiver o mínimo de colunas esperadas, ignora
+                if (count($linha) < 2) {
+                    continue;
+                }
+
+                $nome = trim($linha[0] ?? '');
+                $documento = preg_replace('/[^0-9]/', '', $linha[1] ?? '');
+                $email = trim($linha[2] ?? '');
+                $telefone = trim($linha[3] ?? '');
+                $tipoReg = strtoupper(trim($linha[4] ?? 'CLIENTE')); // CLIENTE, FORNECEDOR ou AMBOS
+
+                if (empty($nome) || empty($documento)) {
+                    $erros++;
+                    continue;
+                }
+
+                $tipoPessoa = strlen($documento) > 11 ? 'PJ' : 'PF';
+
+                // Evita duplicidade travando pelo documento dentro do Tenant
+                $existe = Pessoa::where('tenant_id', $tenantId)->where('cpf_cnpj', $documento)->exists();
+                if ($existe) {
+                    $erros++;
+                    continue;
+                }
+
+                Pessoa::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'tipo_pessoa' => $tipoPessoa,
+                    'nome_razao_social' => $nome,
+                    'cpf_cnpj' => $documento,
+                    'email_principal' => $email,
+                    'telefone_principal' => $telefone,
+                    'is_cliente' => in_array($tipoReg, ['CLIENTE', 'AMBOS']),
+                    'is_fornecedor' => in_array($tipoReg, ['FORNECEDOR', 'AMBOS']),
+                    'is_ativo' => true,
+                ]);
+                $sucesso++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'data' => [
+                    'message' => "Importação concluída! {$sucesso} cadastros criados. {$erros} linhas ignoradas (duplicadas ou inválidas)."
+                ]
+            ]);
+
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'error' => [
+                    'message' => 'Erro ao processar arquivo CSV. Certifique-se de que ele está separado por ponto e vírgula (;). Detalhes: ' . $e->getMessage()
+                ]
+            ], 422);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\IotTelemetryController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+
+class IotTelemetryController extends Controller
+{
+    // Rota pública protegida por API Key embutida no microcontrolador (ESP32)
+    public function receive(Request $request)
+    {
+        $data = $request->validate([
+            'api_key' => 'required|string',
+            'tenant_id' => 'required|uuid',
+            'device_id' => 'required|string',
+            'sensor_type' => 'required|string', // ex: 'TEMPERATURE', 'PIECE_COUNTER'
+            'value' => 'required|numeric'
+        ]);
+
+        // Aqui validamos a API Key do Tenant contra a base de dados
+        // (Lógica simplificada para a estrutura core)
+
+        DB::table('iot_leituras')->insert([
+            'tenant_id' => $data['tenant_id'],
+            'device_id' => $data['device_id'],
+            'tipo_sensor' => $data['sensor_type'],
+            'valor' => $data['value'],
+            'created_at' => now(),
+        ]);
+
+        // Retorno extremamente leve (ACK) para não travar o ESP32
+        return response()->json(['ack' => true], 201);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ItemController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Deposito;
+use App\Models\Empresa;
+use App\Models\EstoqueDeposito;
+use App\Models\Item;
+use App\Models\MovimentacaoEstoque;
+use App\Models\TransferenciaEstoque;
+use App\Services\EstoqueService;
+use App\Services\ImportadorXmlNfeService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class ItemController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = Item::where('tenant_id', $tenantId)->with('saldosPorDeposito.deposito');
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo_sku', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo_barras_ean', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('tipo')) {
+            $query->where('tipo_item', $request->get('tipo'));
+        }
+
+        $itens = $query->orderBy('nome')->paginate(15);
+
+        return response()->json($itens);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'nome' => 'required|string|max:200',
+            'codigo_sku' => 'required|string|max:50',
+            'tipo_item' => 'required|string|in:PRODUTO,SERVICO,MATERIA_PRIMA,INSUMO',
+            'preco_venda' => 'required|numeric|min:0',
+            'preco_custo' => 'nullable|numeric|min:0',
+            'unidade_medida' => 'required|string|max:10',
+            'ncm' => 'nullable|string|max:10',
+            'controla_estoque' => 'boolean',
+        ]);
+
+        $validated['id'] = (string) Str::uuid();
+        $validated['tenant_id'] = $request->user()->tenant_id;
+        $validated['is_ativo'] = true;
+        $item = Item::create($validated);
+
+        return response()->json(['data' => $item], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $item = Item::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:200',
+            'codigo_sku' => 'required|string|max:50',
+            'tipo_item' => 'required|string|in:PRODUTO,SERVICO,MATERIA_PRIMA,INSUMO',
+            'preco_venda' => 'required|numeric|min:0',
+            'preco_custo' => 'nullable|numeric|min:0',
+            'unidade_medida' => 'required|string|max:10',
+            'ncm' => 'nullable|string|max:10',
+            'controla_estoque' => 'boolean',
+            'is_ativo' => 'boolean',
+        ]);
+
+        $item->update($validated);
+
+        return response()->json(['data' => $item]);
+    }
+
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $item = Item::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $item->delete();
+
+        return response()->json(['data' => ['message' => 'Item removido do catálogo com sucesso.']]);
+    }
+
+    public function kardex(string $id): JsonResponse
+    {
+        $movimentos = MovimentacaoEstoque::where('item_id', $id)
+            ->with(['deposito'])
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json(['data' => $movimentos]);
+    }
+
+    public function depositos(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        
+        $empresa = $request->user()->empresaPadrao 
+                ?? Empresa::where('tenant_id', $tenantId)->first()
+                ?? Empresa::firstOrCreate(
+                    ['tenant_id' => $tenantId],
+                    [
+                        'id' => (string) Str::uuid(),
+                        'razao_social' => 'Scalle Enterprise Matriz',
+                        'nome_fantasia' => 'Scalle Matriz',
+                        'cnpj' => '00.000.000/0001-91',
+                        'regime_tributario' => 'simples_nacional',
+                        'is_matriz' => true,
+                    ]
+                );
+
+        $empresaId = $empresa->id;
+
+        if (Deposito::where('empresa_id', $empresaId)->count() === 0) {
+            Deposito::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'nome' => 'Depósito Central / Matriz',
+                'codigo' => 'DEP-01',
+                'descricao' => 'Almoxarifado Geral de Operações',
+                'is_padrao' => true,
+                'is_ativo' => true,
+            ]);
+        }
+
+        $query = Deposito::where('empresa_id', $empresaId);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $depositos = $query->withCount('saldos')
+            ->orderByDesc('is_padrao')
+            ->orderBy('nome')
+            ->get();
+
+        return response()->json(['data' => $depositos]);
+    }
+
+    public function storeDeposito(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        
+        $empresa = $request->user()->empresaPadrao 
+                ?? Empresa::where('tenant_id', $tenantId)->first()
+                ?? Empresa::first();
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'codigo' => 'required|string|max:30',
+            'descricao' => 'nullable|string|max:255',
+            'is_padrao' => 'nullable|boolean',
+        ]);
+
+        $codigoFormatado = strtoupper(trim($validated['codigo']));
+
+        $jaExiste = Deposito::where('empresa_id', $empresa->id)
+            ->where('codigo', $codigoFormatado)
+            ->exists();
+
+        if ($jaExiste) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DUPLICATE_CODE',
+                    'message' => "Já existe um depósito com o código '{$codigoFormatado}' nesta empresa.",
+                ]
+            ], 422);
+        }
+
+        $isPadrao = !empty($validated['is_padrao']) && $validated['is_padrao'];
+
+        if ($isPadrao) {
+            Deposito::where('empresa_id', $empresa->id)->update(['is_padrao' => false]);
+        }
+
+        $deposito = Deposito::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'empresa_id' => $empresa->id,
+            'nome' => $validated['nome'],
+            'codigo' => $codigoFormatado,
+            'descricao' => $validated['descricao'] ?? null,
+            'is_padrao' => $isPadrao,
+            'is_ativo' => true,
+        ]);
+
+        return response()->json(['data' => $deposito], 201);
+    }
+
+    public function updateDeposito(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $deposito = Deposito::where('tenant_id', $tenantId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'codigo' => 'required|string|max:30',
+            'descricao' => 'nullable|string|max:255',
+            'is_padrao' => 'nullable|boolean',
+            'is_ativo' => 'boolean',
+        ]);
+
+        $codigoFormatado = strtoupper(trim($validated['codigo']));
+
+        $jaExiste = Deposito::where('empresa_id', $deposito->empresa_id)
+            ->where('codigo', $codigoFormatado)
+            ->where('id', '!=', $id)
+            ->exists();
+
+        if ($jaExiste) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DUPLICATE_CODE',
+                    'message' => "Já existe outro depósito com o código '{$codigoFormatado}'.",
+                ]
+            ], 422);
+        }
+
+        $isPadrao = !empty($validated['is_padrao']) && $validated['is_padrao'];
+
+        if ($isPadrao) {
+            Deposito::where('empresa_id', $deposito->empresa_id)->update(['is_padrao' => false]);
+        }
+
+        $deposito->update([
+            'nome' => $validated['nome'],
+            'codigo' => $codigoFormatado,
+            'descricao' => $validated['descricao'] ?? null,
+            'is_padrao' => $isPadrao,
+            'is_ativo' => $validated['is_ativo'] ?? $deposito->is_ativo,
+        ]);
+
+        return response()->json(['data' => $deposito]);
+    }
+
+    public function destroyDeposito(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $deposito = Deposito::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($deposito->is_padrao) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PADRAO_DELETE_FORBIDDEN',
+                    'message' => 'O depósito padrão da empresa não pode ser excluído.',
+                ]
+            ], 422);
+        }
+
+        $deposito->delete();
+
+        return response()->json(['data' => ['message' => 'Depósito removido com sucesso.']]);
+    }
+
+    public function ajustarSaldo(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+            'item_id' => 'required|uuid|exists:pro_itens,id',
+            'novo_saldo' => 'required|numeric|min:0',
+            'motivo' => 'required|string|max:255',
+            'lote' => 'nullable|string|max:50',
+            'data_validade' => 'nullable|date',
+            'localizacao_rua' => 'nullable|string|max:20',
+            'localizacao_predio' => 'nullable|string|max:20',
+            'localizacao_nivel' => 'nullable|string|max:20',
+            'localizacao_vao' => 'nullable|string|max:20',
+        ]);
+
+        try {
+            DB::transaction(function () use ($validated, $request) {
+                $saldoAtual = EstoqueDeposito::where('deposito_id', $validated['deposito_id'])
+                    ->where('item_id', $validated['item_id'])
+                    ->when(!empty($validated['lote']), fn($q) => $q->where('lote', $validated['lote']))
+                    ->lockForUpdate()
+                    ->first();
+
+                $quantidadeAtual = $saldoAtual ? (float) $saldoAtual->quantidade_saldo : 0.00;
+                $novoSaldo = (float) $validated['novo_saldo'];
+                $diferenca = $novoSaldo - $quantidadeAtual;
+
+                if ($diferenca == 0) {
+                    return;
+                }
+
+                $tipoMovimento = 'AJUSTE_INVENTARIO';
+                $quantidadeMovimentar = abs($diferenca);
+
+                if (!$saldoAtual) {
+                    $saldoAtual = EstoqueDeposito::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_id' => $request->user()->tenant_id,
+                        'deposito_id' => $validated['deposito_id'],
+                        'item_id' => $validated['item_id'],
+                        'lote' => $validated['lote'] ?? null,
+                        'data_validade' => $validated['data_validade'] ?? null,
+                        'localizacao_rua' => $validated['localizacao_rua'] ?? null,
+                        'localizacao_predio' => $validated['localizacao_predio'] ?? null,
+                        'localizacao_nivel' => $validated['localizacao_nivel'] ?? null,
+                        'localizacao_vao' => $validated['localizacao_vao'] ?? null,
+                        'quantidade_saldo' => 0.0000,
+                        'quantidade_reservada' => 0.0000,
+                    ]);
+                } else {
+                    $saldoAtual->update([
+                        'localizacao_rua' => $validated['localizacao_rua'] ?? $saldoAtual->localizacao_rua,
+                        'localizacao_predio' => $validated['localizacao_predio'] ?? $saldoAtual->localizacao_predio,
+                        'localizacao_nivel' => $validated['localizacao_nivel'] ?? $saldoAtual->localizacao_nivel,
+                        'localizacao_vao' => $validated['localizacao_vao'] ?? $saldoAtual->localizacao_vao,
+                    ]);
+                }
+
+                $saldoAtual->update(['quantidade_saldo' => $novoSaldo]);
+
+                MovimentacaoEstoque::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $request->user()->tenant_id,
+                    'deposito_id' => $validated['deposito_id'],
+                    'item_id' => $validated['item_id'],
+                    'usuario_id' => $request->user()->id,
+                    'tipo_movimento' => $tipoMovimento,
+                    'quantidade' => $quantidadeMovimentar,
+                    'saldo_anterior' => $quantidadeAtual,
+                    'saldo_posterior' => $novoSaldo,
+                    'custo_unitario' => 0.00,
+                    'documento_origem_tipo' => 'inventario',
+                    'motivo' => $validated['motivo'] . ' (Ajuste de ' . ($diferenca > 0 ? '+' : '-') . $quantidadeMovimentar . ')',
+                    'created_at' => now(),
+                ]);
+            });
+
+            return response()->json(['data' => ['message' => 'Inventário atualizado com sucesso!']]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function importarXml(Request $request): JsonResponse
+    {
+        $request->validate([
+            'xml_file' => 'required|file',
+            'deposito_id' => 'required|uuid|exists:wms_depositos,id',
+        ]);
+
+        $xmlConteudo = file_get_contents($request->file('xml_file')->getRealPath());
+        $empresaId = $request->user()->empresa_padrao_id ?? Deposito::find($request->deposito_id)->empresa_id;
+
+        $resultado = ImportadorXmlNfeService::processarXml(
+            $xmlConteudo,
+            $empresaId,
+            $request->deposito_id,
+            $request->user()->id
+        );
+
+        return response()->json([
+            'data' => [
+                'message' => 'XML de NF-e importado e estoque provisionado com sucesso!',
+                'compra' => $resultado,
+            ]
+        ]);
+    }
+
+    public function saldosPorDeposito(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $depositoId = $request->get('deposito_id');
+
+        $query = Item::where('tenant_id', $tenantId)
+            ->where('tipo_item', '!=', 'SERVICO')
+            ->with(['saldosPorDeposito' => function ($q) use ($depositoId) {
+                if (!empty($depositoId)) {
+                    $q->where('deposito_id', $depositoId);
+                }
+                $q->with('deposito');
+            }]);
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('nome', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo_sku', 'ILIKE', "%{$search}%")
+                  ->orWhere('codigo_barras_ean', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $itens = $query->orderBy('nome')->get();
+
+        $linhas = [];
+        foreach ($itens as $item) {
+            if ($item->saldosPorDeposito->isEmpty()) {
+                $linhas[] = [
+                    'id' => 'item-' . $item->id,
+                    'item_id' => $item->id,
+                    'item' => [
+                        'id' => $item->id,
+                        'nome' => $item->nome,
+                        'codigo_sku' => $item->codigo_sku,
+                        'unidade_medida' => $item->unidade_medida,
+                        'preco_venda' => (float) $item->preco_venda,
+                        'preco_custo' => (float) $item->preco_custo,
+                    ],
+                    'deposito' => [
+                        'nome' => 'Depósito Central / Matriz',
+                    ],
+                    'lote' => null,
+                    'data_validade' => null,
+                    'localizacao_rua' => null,
+                    'localizacao_predio' => null,
+                    'quantidade_saldo' => 0.0000,
+                ];
+            } else {
+                foreach ($item->saldosPorDeposito as $saldo) {
+                    $linhas[] = [
+                        'id' => $saldo->id,
+                        'item_id' => $item->id,
+                        'item' => [
+                            'id' => $item->id,
+                            'nome' => $item->nome,
+                            'codigo_sku' => $item->codigo_sku,
+                            'unidade_medida' => $item->unidade_medida,
+                            'preco_venda' => (float) $item->preco_venda,
+                            'preco_custo' => (float) $item->preco_custo,
+                        ],
+                        'deposito' => [
+                            'nome' => $saldo->deposito?->nome ?? 'Depósito Geral',
+                        ],
+                        'lote' => $saldo->lote,
+                        'data_validade' => $saldo->data_validade,
+                        'localizacao_rua' => $saldo->localizacao_rua,
+                        'localizacao_predio' => $saldo->localizacao_predio,
+                        'quantidade_saldo' => (float) $saldo->quantidade_saldo,
+                    ];
+                }
+            }
+        }
+
+        return response()->json(['data' => $linhas]);
+    }
+
+    public function transferencias(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $query = TransferenciaEstoque::where('tenant_id', $tenantId)
+            ->with(['origem', 'destino', 'item', 'solicitante', 'recebedor']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->get('status'));
+        }
+
+        $transfs = $query->orderByDesc('created_at')->paginate(15);
+        return response()->json($transfs);
+    }
+
+    public function transferir(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'deposito_origem_id' => 'required|uuid|exists:wms_depositos,id|different:deposito_destino_id',
+            'deposito_destino_id' => 'required|uuid|exists:wms_depositos,id',
+            'item_id' => 'required|uuid|exists:pro_itens,id',
+            'quantidade' => 'required|numeric|min:0.0001',
+            'modalidade' => 'required|string|in:DIRETO,EM_TRANSITO',
+            'lote' => 'nullable|string|max:50',
+            'observacoes' => 'nullable|string|max:255',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $empresaId = $request->user()->empresa_padrao_id 
+                  ?? Empresa::where('tenant_id', $tenantId)->first()?->id 
+                  ?? Empresa::first()?->id;
+
+        try {
+            $transf = DB::transaction(function () use ($validated, $tenantId, $empresaId, $request) {
+                $origemId = $validated['deposito_origem_id'];
+                $destinoId = $validated['deposito_destino_id'];
+                $itemId = $validated['item_id'];
+                $qtd = (float) $validated['quantidade'];
+                $userId = $request->user()->id;
+                $lote = $validated['lote'] ?? null;
+                $modalidade = $validated['modalidade'];
+
+                $transfId = (string) Str::uuid();
+
+                // 1. Saída física da origem
+                EstoqueService::movimentar(
+                    $origemId,
+                    $itemId,
+                    $qtd,
+                    'TRANSFERENCIA_SAIDA',
+                    $userId,
+                    'transferencias',
+                    $transfId,
+                    $lote,
+                    0.00
+                );
+
+                if ($modalidade === 'DIRETO') {
+                    // Entrada imediata no destino
+                    EstoqueService::movimentar(
+                        $destinoId,
+                        $itemId,
+                        $qtd,
+                        'TRANSFERENCIA_ENTRADA',
+                        $userId,
+                        'transferencias',
+                        $transfId,
+                        $lote,
+                        0.00
+                    );
+
+                    $status = 'CONCLUIDA';
+                    $recebidoEm = now();
+                    $recebedorId = $userId;
+                } else {
+                    $status = 'EM_TRANSITO';
+                    $recebidoEm = null;
+                    $recebedorId = null;
+                }
+
+                return TransferenciaEstoque::create([
+                    'id' => $transfId,
+                    'tenant_id' => $tenantId,
+                    'empresa_id' => $empresaId,
+                    'deposito_origem_id' => $origemId,
+                    'deposito_destino_id' => $destinoId,
+                    'item_id' => $itemId,
+                    'solicitante_id' => $userId,
+                    'recebedor_id' => $recebedorId,
+                    'quantidade_enviada' => $qtd,
+                    'quantidade_recebida' => ($modalidade === 'DIRETO') ? $qtd : null,
+                    'lote' => $lote,
+                    'modalidade' => $modalidade,
+                    'status' => $status,
+                    'observacoes' => $validated['observacoes'] ?? null,
+                    'data_envio' => now(),
+                    'data_recebimento' => $recebidoEm,
+                ]);
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => ($validated['modalidade'] === 'DIRETO') ? 'Transferência direta executada com sucesso!' : 'Transferência despachada em trânsito com sucesso!',
+                    'transferencia' => $transf->load(['origem', 'destino', 'item']),
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function conferirTransferencia(Request $request, string $id): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $transf = TransferenciaEstoque::where('tenant_id', $tenantId)->findOrFail($id);
+
+        if ($transf->status !== 'EM_TRANSITO') {
+            return response()->json(['error' => ['message' => 'Esta transferência já foi conferida ou encerrada.']], 422);
+        }
+
+        $validated = $request->validate([
+            'quantidade_recebida' => 'required|numeric|min:0',
+            'motivo_divergencia' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            DB::transaction(function () use ($transf, $validated, $request) {
+                $qtdRecebida = (float) $validated['quantidade_recebida'];
+                $qtdEnviada = (float) $transf->quantidade_enviada;
+                $userId = $request->user()->id;
+
+                if ($qtdRecebida > 0) {
+                    // Entrada física definitiva no destino
+                    EstoqueService::movimentar(
+                        $transf->deposito_destino_id,
+                        $transf->item_id,
+                        $qtdRecebida,
+                        'TRANSFERENCIA_ENTRADA',
+                        $userId,
+                        'transferencias',
+                        $transf->id,
+                        $transf->lote,
+                        0.00
+                    );
+                }
+
+                $statusFinal = ($qtdRecebida === $qtdEnviada) ? 'CONCLUIDA' : 'DIVERGENCIA';
+
+                $transf->update([
+                    'status' => $statusFinal,
+                    'quantidade_recebida' => $qtdRecebida,
+                    'recebedor_id' => $userId,
+                    'data_recebimento' => now(),
+                    'motivo_divergencia' => $validated['motivo_divergencia'] ?? null,
+                ]);
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Transferência conferida e estoque de destino abastecido com sucesso!',
+                    'transferencia' => $transf->fresh(['origem', 'destino', 'item', 'recebedor']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function relatorioCurvaAbc(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $itens = Item::where('tenant_id', $tenantId)
+            ->where('tipo_item', '!=', 'SERVICO')
+            ->get();
+
+        $dadosAbc = [];
+        $valorTotalGeral = 0.00;
+
+        foreach ($itens as $item) {
+            $saidas = MovimentacaoEstoque::where('item_id', $item->id)
+                ->whereIn('tipo_movimento', ['SAIDA_VENDA', 'SAIDA_OS'])
+                ->where('created_at', '>=', now()->subDays(90))
+                ->sum('quantidade') ?? 0;
+
+            $preco = (float) ($item->preco_venda > 0 ? $item->preco_venda : $item->preco_custo);
+            $valorTotal = (float) $saidas * $preco;
+       

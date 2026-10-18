@@ -9,6 +9,7 @@ import AppLayout from './layouts/AppLayout';
 import Login from './pages/Login';
 import PortalOsPage from './pages/portal/PortalOsPage';
 import LandingCrm from './pages/public/LandingCrm';
+import LandingComercialPage from './pages/public/LandingComercialPage';
 
 // Páginas Operacionais e Corporativas
 import DashboardPage from './pages/dashboard/DashboardPage';
@@ -75,14 +76,15 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          {/* Rotas Públicas */}
+          {/* Rotas Públicas e Landing Comercial Self-Service */}
+          <Route path="/" element={<LandingComercialPage />} />
+          <Route path="/planos" element={<LandingComercialPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/portal/os/:token" element={<PortalOsPage />} />
           <Route path="/crm" element={<LandingCrm />} />
 
           {/* Aliases e Redirecionamentos de Segurança */}
           <Route path="/crm/configuracoes" element={<Navigate to="/app/crm/configuracoes" replace />} />
-          <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
 
           {/* Rotas Protegidas sob o Layout Principal (/app) */}
           <Route path="/app" element={<AppLayout />}>
@@ -152,7 +154,7 @@ export default function App() {
           </Route>
 
           {/* Fallback Global */}
-          <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

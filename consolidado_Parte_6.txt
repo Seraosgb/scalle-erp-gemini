@@ -1,0 +1,3326 @@
+﻿ 'km_marcador' => $dados['km_marcador'],
+                'litros' => $dados['litros'],
+                'valor_total' => $dados['valor_total'],
+                'tipo_combustivel_id' => $dados['tipo_combustivel_id'] ?? null,
+                'titulo_financeiro_id' => $tituloId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // 5. Integração CMMS: Alerta de Manutenção (Ex: Troca de óleo a cada 10k KM)
+            // Se o resto da divisão por 10.000 for menor que a quilometragem desse abastecimento, acende o alerta.
+            if ($veiculo->km_atual % 10000 < 500) {
+                self::gerarOsPreventiva($veiculo, $tenantId, $empresaId);
+            }
+
+            return $abastecimentoId;
+        });
+    }
+
+    private static function gerarOsPreventiva(FrotaVeiculo $veiculo, string $tenantId, string $empresaId)
+    {
+        DB::table('os_ordens_servico')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'empresa_id' => $empresaId,
+            'descricao' => "Revisão Preventiva Automática (Troca de Óleo) - KM Atual: {$veiculo->km_atual}",
+            // Como as etapas/status são dinâmicos (sis_tabelas_dominio), deixamos o status inicial nulo para o trigger do banco assumir o padrão
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Hardware\Adapters\ControlIdAdapter.php
+========================================
+<?php
+
+namespace App\Services\Hardware\Adapters;
+
+use App\Contracts\EquipamentoAcessoInterface;
+use Illuminate\Support\Facades\Http;
+use Exception;
+
+class ControlIdAdapter implements EquipamentoAcessoInterface
+{
+    public function liberarAcesso(string $ipEquipamento, string $idPessoa): bool
+    {
+        try {
+            // A API oficial da Control iD usa JSON no endpoint execute_actions.fcgi
+            $response = Http::timeout(3)->post("http://{$ipEquipamento}/execute_actions.fcgi", [
+                'actions' => [
+                    ['action' => 'door', 'parameters' => 'door=1'] // Aciona rele 1
+                ]
+            ]);
+
+            return $response->successful();
+        } catch (Exception $e) {
+            return false; // Falha silenciosa (catraca offline)
+        }
+    }
+
+    public function bloquearAcesso(string $ipEquipamento, string $idPessoa): bool
+    {
+        // Lógica de bloqueio ou deleção de usuário na biometria
+        return true;
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Traits\Auditable.php
+========================================
+<?php
+
+namespace App\Traits;
+
+use App\Models\AuditoriaLog;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Request;
+use Illuminate\Support\Str;
+
+trait Auditable
+{
+    public static function bootAuditable(): void
+    {
+        static::created(function ($model) {
+            static::gravarAuditoriaLog($model, 'CREATED', null, $model->getAttributes());
+        });
+
+        static::updated(function ($model) {
+            static::gravarAuditoriaLog($model, 'UPDATED', $model->getOriginal(), $model->getChanges());
+        });
+
+        static::deleted(function ($model) {
+            static::gravarAuditoriaLog($model, 'DELETED', $model->getOriginal(), null);
+        });
+    }
+
+    protected static function gravarAuditoriaLog($model, string $acao, ?array $antigos, ?array $novos): void
+    {
+        try {
+            $user = Auth::user();
+            $tenantId = $model->tenant_id ?? $user?->tenant_id ?? (app()->bound('current_tenant_id') ? app('current_tenant_id') : null);
+            $nomeTabela = $model->getTable();
+
+            AuditoriaLog::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'usuario_id' => $user?->id,
+                'modulo' => 'CRM',
+                'acao' => $acao,
+                'entidade' => $nomeTabela, // Suporte para coluna legada
+                'tabela_entidade' => $nomeTabela, // Suporte para coluna atual
+                'registro_id' => (string) $model->getKey(),
+                'valores_anteriores' => $antigos,
+                'valores_novos' => $novos,
+                'ip' => Request::ip(),
+                'user_agent' => Request::userAgent(),
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("[Auditoria] Falha silenciosa: " . $e->getMessage());
+        }
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Traits\BelongsToEmpresa.php
+========================================
+<?php
+
+namespace App\Traits;
+
+use App\Models\Empresa;
+use App\Scopes\EmpresaScope;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Schema;
+
+trait BelongsToEmpresa
+{
+    public static function bootBelongsToEmpresa(): void
+    {
+        static::addGlobalScope(new EmpresaScope());
+
+        static::creating(function ($model) {
+            // Só injeta se a tabela de fato possuir a coluna empresa_id
+            if (Schema::hasColumn($model->getTable(), 'empresa_id')) {
+                if (empty($model->empresa_id) && App::bound('current_empresa_id')) {
+                    $model->empresa_id = App::make('current_empresa_id');
+                }
+            }
+        });
+    }
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Traits\BelongsToTenant.php
+========================================
+<?php
+
+namespace App\Traits;
+
+use App\Scopes\TenantScope;
+use Illuminate\Support\Facades\App;
+use RuntimeException;
+
+trait BelongsToTenant
+{
+    protected static function bootBelongsToTenant(): void
+    {
+        // Aplica o cerco em TODAS as queries de leitura/update/delete
+        static::addGlobalScope(new TenantScope);
+
+        // Intercepta a criação (insert)
+        static::creating(function ($model) {
+            if (empty($model->tenant_id)) {
+                $tenantId = App::bound('current_tenant_id') ? App::make('current_tenant_id') : null;
+
+                if (!$tenantId && !app()->runningInConsole()) {
+                    // Ignora bloqueio de insert caso seja o próprio User sendo criado na mão
+                    if (class_basename($model) === 'User') return;
+
+                    throw new RuntimeException("🔒 Furo de Segurança Bloqueado [Padrão Gemini]: Tentativa de inserir registro no model " . class_basename($model) . " sem tenant_id.");
+                }
+
+                if ($tenantId) {
+                    $model->tenant_id = $tenantId;
+                }
+            }
+        });
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\app.php
+========================================
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Application Name
+    |--------------------------------------------------------------------------
+    |
+    | This value is the name of your application, which will be used when the
+    | framework needs to place the application's name in a notification or
+    | other UI elements where an application name needs to be displayed.
+    |
+    */
+
+    'name' => env('APP_NAME', 'Laravel'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Application Environment
+    |--------------------------------------------------------------------------
+    |
+    | This value determines the "environment" your application is currently
+    | running in. This may determine how you prefer to configure various
+    | services the application utilizes. Set this in your ".env" file.
+    |
+    */
+
+    'env' => env('APP_ENV', 'production'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Application Debug Mode
+    |--------------------------------------------------------------------------
+    |
+    | When your application is in debug mode, detailed error messages with
+    | stack traces will be shown on every error that occurs within your
+    | application. If disabled, a simple generic error page is shown.
+    |
+    */
+
+    'debug' => (bool) env('APP_DEBUG', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Application URL
+    |--------------------------------------------------------------------------
+    |
+    | This URL is used by the console to properly generate URLs when using
+    | the Artisan command line tool. You should set this to the root of
+    | the application so that it's available within Artisan commands.
+    |
+    */
+
+    'url' => env('APP_URL', 'http://localhost'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Application Timezone
+    |--------------------------------------------------------------------------
+    |
+    | Here you may specify the default timezone for your application, which
+    | will be used by the PHP date and date-time functions. The timezone
+    | is set to "UTC" by default as it is suitable for most use cases.
+    |
+    */
+
+    'timezone' => 'America/Sao_Paulo',
+    /*
+    |--------------------------------------------------------------------------
+    | Application Locale Configuration
+    |--------------------------------------------------------------------------
+    |
+    | The application locale determines the default locale that will be used
+    | by Laravel's translation / localization methods. This option can be
+    | set to any locale for which you plan to have translation strings.
+    |
+    */
+
+    'locale' => env('APP_LOCALE', 'en'),
+
+    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
+
+    'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Encryption Key
+    |--------------------------------------------------------------------------
+    |
+    | This key is utilized by Laravel's encryption services and should be set
+    | to a random, 32 character string to ensure that all encrypted values
+    | are secure. You should do this prior to deploying the application.
+    |
+    */
+
+    'cipher' => 'AES-256-CBC',
+
+    'key' => env('APP_KEY'),
+
+    'previous_keys' => [
+        ...array_filter(
+            explode(',', (string) env('APP_PREVIOUS_KEYS', ''))
+        ),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Maintenance Mode Driver
+    |--------------------------------------------------------------------------
+    |
+    | These configuration options determine the driver used to determine and
+    | manage Laravel's "maintenance mode" status. The "cache" driver will
+    | allow maintenance mode to be controlled across multiple machines.
+    |
+    | Supported drivers: "file", "cache", "array"
+    |
+    */
+
+    'maintenance' => [
+        'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
+        'store' => env('APP_MAINTENANCE_STORE', 'database'),
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\auth.php
+========================================
+<?php
+
+use App\Models\User;
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Defaults
+    |--------------------------------------------------------------------------
+    |
+    | This option defines the default authentication "guard" and password
+    | reset "broker" for your application. You may change these values
+    | as required, but they're a perfect start for most applications.
+    |
+    */
+
+    'defaults' => [
+        'guard' => env('AUTH_GUARD', 'web'),
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Guards
+    |--------------------------------------------------------------------------
+    |
+    | Next, you may define every authentication guard for your application.
+    | Of course, a great default configuration has been defined for you
+    | which utilizes session storage plus the Eloquent user provider.
+    |
+    | All authentication guards have a user provider, which defines how the
+    | users are actually retrieved out of your database or other storage
+    | system used by the application. Typically, Eloquent is utilized.
+    |
+    | Supported: "session"
+    |
+    */
+
+    'guards' => [
+        'web' => [
+            'driver' => 'session',
+            'provider' => 'users',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | User Providers
+    |--------------------------------------------------------------------------
+    |
+    | All authentication guards have a user provider, which defines how the
+    | users are actually retrieved out of your database or other storage
+    | system used by the application. Typically, Eloquent is utilized.
+    |
+    | If you have multiple user tables or models you may configure multiple
+    | providers to represent the model / table. These providers may then
+    | be assigned to any extra authentication guards you have defined.
+    |
+    | Supported: "database", "eloquent"
+    |
+    */
+
+    'providers' => [
+        'users' => [
+            'driver' => 'eloquent',
+            'model' => env('AUTH_MODEL', User::class),
+        ],
+
+        // 'users' => [
+        //     'driver' => 'database',
+        //     'table' => 'users',
+        // ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Resetting Passwords
+    |--------------------------------------------------------------------------
+    |
+    | These configuration options specify the behavior of Laravel's password
+    | reset functionality, including the table utilized for token storage
+    | and the user provider that is invoked to actually retrieve users.
+    |
+    | The expiry time is the number of minutes that each reset token will be
+    | considered valid. This security feature keeps tokens short-lived so
+    | they have less time to be guessed. You may change this as needed.
+    |
+    | The throttle setting is the number of seconds a user must wait before
+    | generating more password reset tokens. This prevents the user from
+    | quickly generating a very large amount of password reset tokens.
+    |
+    */
+
+    'passwords' => [
+        'users' => [
+            'provider' => 'users',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Password Confirmation Timeout
+    |--------------------------------------------------------------------------
+    |
+    | Here you may define the number of seconds before a password confirmation
+    | window expires and users are asked to re-enter their password via the
+    | confirmation screen. By default, the timeout lasts for three hours.
+    |
+    */
+
+    'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\cache.php
+========================================
+<?php
+
+use Illuminate\Support\Str;
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Cache Store
+    |--------------------------------------------------------------------------
+    |
+    | This option controls the default cache store that will be used by the
+    | framework. This connection is utilized if another isn't explicitly
+    | specified when running a cache operation inside the application.
+    |
+    */
+
+    'default' => env('CACHE_STORE', 'database'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache Stores
+    |--------------------------------------------------------------------------
+    |
+    | Here you may define all of the cache "stores" for your application as
+    | well as their drivers. You may even define multiple stores for the
+    | same cache driver to group types of items stored in your caches.
+    |
+    | Supported drivers: "array", "database", "file", "memcached",
+    |                    "redis", "dynamodb", "storage", "octane",
+    |                    "session", "failover", "null"
+    |
+    */
+
+    'stores' => [
+
+        'array' => [
+            'driver' => 'array',
+            'serialize' => false,
+        ],
+
+        'database' => [
+            'driver' => 'database',
+            'connection' => env('DB_CACHE_CONNECTION'),
+            'table' => env('DB_CACHE_TABLE', 'cache'),
+            'lock_connection' => env('DB_CACHE_LOCK_CONNECTION'),
+            'lock_table' => env('DB_CACHE_LOCK_TABLE'),
+        ],
+
+        'file' => [
+            'driver' => 'file',
+            'path' => storage_path('framework/cache/data'),
+            'lock_path' => storage_path('framework/cache/data'),
+        ],
+
+        'storage' => [
+            'driver' => 'storage',
+            'disk' => env('CACHE_STORAGE_DISK'),
+            'path' => env('CACHE_STORAGE_PATH', 'framework/cache/data'),
+        ],
+
+        'memcached' => [
+            'driver' => 'memcached',
+            'persistent_id' => env('MEMCACHED_PERSISTENT_ID'),
+            'sasl' => [
+                env('MEMCACHED_USERNAME'),
+                env('MEMCACHED_PASSWORD'),
+            ],
+            'options' => [
+                // Memcached::OPT_CONNECT_TIMEOUT => 2000,
+            ],
+            'servers' => [
+                [
+                    'host' => env('MEMCACHED_HOST', '127.0.0.1'),
+                    'port' => env('MEMCACHED_PORT', 11211),
+                    'weight' => 100,
+                ],
+            ],
+        ],
+
+        'redis' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_CACHE_CONNECTION', 'cache'),
+            'lock_connection' => env('REDIS_CACHE_LOCK_CONNECTION', 'default'),
+        ],
+
+        'dynamodb' => [
+            'driver' => 'dynamodb',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+            'table' => env('DYNAMODB_CACHE_TABLE', 'cache'),
+            'endpoint' => env('DYNAMODB_ENDPOINT'),
+        ],
+
+        'octane' => [
+            'driver' => 'octane',
+        ],
+
+        'failover' => [
+            'driver' => 'failover',
+            'stores' => [
+                'database',
+                'array',
+            ],
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache Key Prefix
+    |--------------------------------------------------------------------------
+    |
+    | When utilizing the APC, database, memcached, Redis, and DynamoDB cache
+    | stores, there might be other applications using the same cache. For
+    | that reason, you may prefix every cache key to avoid collisions.
+    |
+    */
+
+    'prefix' => env('CACHE_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-cache-'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Serializable Classes
+    |--------------------------------------------------------------------------
+    |
+    | This value determines the classes that can be unserialized from cache
+    | storage. By default, no PHP classes will be unserialized from your
+    | cache to prevent gadget chain attacks if your APP_KEY is leaked.
+    |
+    */
+
+    'serializable_classes' => false,
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\database.php
+========================================
+<?php
+
+use Illuminate\Support\Str;
+use Pdo\Mysql;
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Database Connection Name
+    |--------------------------------------------------------------------------
+    |
+    | Here you may specify which of the database connections below you wish
+    | to use as your default connection for database operations. This is
+    | the connection which will be utilized unless another connection
+    | is explicitly specified when you execute a query / statement.
+    |
+    */
+
+    'default' => env('DB_CONNECTION', 'sqlite'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Database Connections
+    |--------------------------------------------------------------------------
+    |
+    | Below are all of the database connections defined for your application.
+    | An example configuration is provided for each database system which
+    | is supported by Laravel. You're free to add / remove connections.
+    |
+    */
+
+    'connections' => [
+
+        'sqlite' => [
+            'driver' => 'sqlite',
+            'url' => env('DB_URL'),
+            'database' => env('DB_DATABASE', database_path('database.sqlite')),
+            'prefix' => '',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            'busy_timeout' => null,
+            'journal_mode' => null,
+            'synchronous' => null,
+            'transaction_mode' => 'DEFERRED',
+        ],
+
+        'mysql' => [
+            'driver' => 'mysql',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '3306'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => env('DB_CHARSET', 'utf8mb4'),
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        'mariadb' => [
+            'driver' => 'mariadb',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '3306'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => env('DB_CHARSET', 'utf8mb4'),
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        'pgsql' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+        ],
+
+        'sqlsrv' => [
+            'driver' => 'sqlsrv',
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', 'localhost'),
+            'port' => env('DB_PORT', '1433'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            // 'encrypt' => env('DB_ENCRYPT', 'yes'),
+            // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Migration Repository Table
+    |--------------------------------------------------------------------------
+    |
+    | This table keeps track of all the migrations that have already run for
+    | your application. Using this information, we can determine which of
+    | the migrations on disk haven't actually been run on the database.
+    |
+    */
+
+    'migrations' => [
+        'table' => 'migrations',
+        'update_date_on_publish' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Redis Databases
+    |--------------------------------------------------------------------------
+    |
+    | Redis is an open source, fast, and advanced key-value store that also
+    | provides a richer body of commands than a typical key-value system
+    | such as Memcached. You may define your connection settings here.
+    |
+    */
+
+    'redis' => [
+
+        'client' => env('REDIS_CLIENT', 'phpredis'),
+
+        'options' => [
+            'cluster' => env('REDIS_CLUSTER', 'redis'),
+            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
+            'persistent' => env('REDIS_PERSISTENT', false),
+        ],
+
+        'default' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_DB', '0'),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
+        'cache' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_CACHE_DB', '1'),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\filesystems.php
+========================================
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Filesystem Disk
+    |--------------------------------------------------------------------------
+    |
+    | Here you may specify the default filesystem disk that should be used
+    | by the framework. The "local" disk, as well as a variety of cloud
+    | based disks are available to your application for file storage.
+    |
+    */
+
+    'default' => env('FILESYSTEM_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filesystem Disks
+    |--------------------------------------------------------------------------
+    |
+    | Below you may configure as many filesystem disks as necessary, and you
+    | may even configure multiple disks for the same driver. Examples for
+    | most supported storage drivers are configured here for reference.
+    |
+    | Supported drivers: "local", "ftp", "sftp", "s3"
+    |
+    */
+
+    'disks' => [
+
+        'local' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private'),
+            'serve' => true,
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'public' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public'),
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        's3' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_BUCKET'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'throw' => false,
+            'report' => false,
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Symbolic Links
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure the symbolic links that will be created when the
+    | `storage:link` Artisan command is executed. The array keys should be
+    | the locations of the links and the values should be their targets.
+    |
+    */
+
+    'links' => [
+        public_path('storage') => storage_path('app/public'),
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\logging.php
+========================================
+<?php
+
+use Monolog\Handler\NullHandler;
+use Monolog\Handler\StreamHandler;
+use Monolog\Handler\SyslogUdpHandler;
+use Monolog\Processor\PsrLogMessageProcessor;
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Log Channel
+    |--------------------------------------------------------------------------
+    |
+    | This option defines the default log channel that is utilized to write
+    | messages to your logs. The value provided here should match one of
+    | the channels present in the list of "channels" configured below.
+    |
+    */
+
+    'default' => env('LOG_CHANNEL', 'stack'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Deprecations Log Channel
+    |--------------------------------------------------------------------------
+    |
+    | This option controls the log channel that should be used to log warnings
+    | regarding deprecated PHP and library features. This allows you to get
+    | your application ready for upcoming major versions of dependencies.
+    |
+    */
+
+    'deprecations' => [
+        'channel' => env('LOG_DEPRECATIONS_CHANNEL', 'null'),
+        'trace' => env('LOG_DEPRECATIONS_TRACE', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Log Channels
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure the log channels for your application. Laravel
+    | utilizes the Monolog PHP logging library, which includes a variety
+    | of powerful log handlers and formatters that you're free to use.
+    |
+    | Available drivers: "single", "daily", "monthly", "slack", "syslog",
+    |                    "errorlog", "monolog", "custom", "stack"
+    |
+    */
+
+    'channels' => [
+
+        'stack' => [
+            'driver' => 'stack',
+            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'ignore_exceptions' => false,
+        ],
+
+        'single' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'replace_placeholders' => true,
+        ],
+
+        'daily' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/laravel.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'max_files' => env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
+        'monthly' => [
+            'driver' => 'monthly',
+            'path' => storage_path('logs/laravel.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'max_files' => 3,
+            'replace_placeholders' => true,
+        ],
+
+        'slack' => [
+            'driver' => 'slack',
+            'url' => env('LOG_SLACK_WEBHOOK_URL'),
+            'username' => env('LOG_SLACK_USERNAME', env('APP_NAME', 'Laravel')),
+            'emoji' => env('LOG_SLACK_EMOJI', ':boom:'),
+            'level' => env('LOG_LEVEL', 'critical'),
+            'replace_placeholders' => true,
+        ],
+
+        'papertrail' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => env('LOG_PAPERTRAIL_HANDLER', SyslogUdpHandler::class),
+            'handler_with' => [
+                'host' => env('PAPERTRAIL_URL'),
+                'port' => env('PAPERTRAIL_PORT'),
+                'connectionString' => 'tls://'.env('PAPERTRAIL_URL').':'.env('PAPERTRAIL_PORT'),
+            ],
+            'processors' => [PsrLogMessageProcessor::class],
+        ],
+
+        'stderr' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => StreamHandler::class,
+            'handler_with' => [
+                'stream' => 'php://stderr',
+            ],
+            'formatter' => env('LOG_STDERR_FORMATTER'),
+            'processors' => [PsrLogMessageProcessor::class],
+        ],
+
+        'syslog' => [
+            'driver' => 'syslog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'facility' => env('LOG_SYSLOG_FACILITY', LOG_USER),
+            'replace_placeholders' => true,
+        ],
+
+        'errorlog' => [
+            'driver' => 'errorlog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'replace_placeholders' => true,
+        ],
+
+        'null' => [
+            'driver' => 'monolog',
+            'handler' => NullHandler::class,
+        ],
+
+        'emergency' => [
+            'path' => storage_path('logs/laravel.log'),
+        ],
+
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\mail.php
+========================================
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Mailer
+    |--------------------------------------------------------------------------
+    |
+    | This option controls the default mailer that is used to send all email
+    | messages unless another mailer is explicitly specified when sending
+    | the message. All additional mailers can be configured within the
+    | "mailers" array. Examples of each type of mailer are provided.
+    |
+    */
+
+    'default' => env('MAIL_MAILER', 'log'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Mailer Configurations
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure all of the mailers used by your application plus
+    | their respective settings. Several examples have been configured for
+    | you and you are free to add your own as your application requires.
+    |
+    | Laravel supports a variety of mail "transport" drivers that can be used
+    | when delivering an email. You may specify which one you're using for
+    | your mailers below. You may also add additional mailers if needed.
+    |
+    | Supported: "smtp", "sendmail", "mailgun", "ses", "ses-v2",
+    |            "postmark", "resend", "log", "array",
+    |            "failover", "roundrobin"
+    |
+    */
+
+    'mailers' => [
+
+        'smtp' => [
+            'transport' => 'smtp',
+            'scheme' => env('MAIL_SCHEME'),
+            'url' => env('MAIL_URL'),
+            'host' => env('MAIL_HOST', '127.0.0.1'),
+            'port' => env('MAIL_PORT', 2525),
+            'username' => env('MAIL_USERNAME'),
+            'password' => env('MAIL_PASSWORD'),
+            'timeout' => null,
+            'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
+        ],
+
+        'ses' => [
+            'transport' => 'ses',
+        ],
+
+        'postmark' => [
+            'transport' => 'postmark',
+            // 'message_stream_id' => env('POSTMARK_MESSAGE_STREAM_ID'),
+            // 'client' => [
+            //     'timeout' => 5,
+            // ],
+        ],
+
+        'resend' => [
+            'transport' => 'resend',
+        ],
+
+        'sendmail' => [
+            'transport' => 'sendmail',
+            'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),
+        ],
+
+        'log' => [
+            'transport' => 'log',
+            'channel' => env('MAIL_LOG_CHANNEL'),
+        ],
+
+        'array' => [
+            'transport' => 'array',
+        ],
+
+        'failover' => [
+            'transport' => 'failover',
+            'mailers' => [
+                'smtp',
+                'log',
+            ],
+            'retry_after' => 60,
+        ],
+
+        'roundrobin' => [
+            'transport' => 'roundrobin',
+            'mailers' => [
+                'ses',
+                'postmark',
+            ],
+            'retry_after' => 60,
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Global "From" Address
+    |--------------------------------------------------------------------------
+    |
+    | You may wish for all emails sent by your application to be sent from
+    | the same address. Here you may specify a name and address that is
+    | used globally for all emails that are sent by your application.
+    |
+    */
+
+    'from' => [
+        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
+        'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\queue.php
+========================================
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Queue Connection Name
+    |--------------------------------------------------------------------------
+    |
+    | Laravel's queue supports a variety of backends via a single, unified
+    | API, giving you convenient access to each backend using identical
+    | syntax for each. The default queue connection is defined below.
+    |
+    */
+
+    'default' => env('QUEUE_CONNECTION', 'database'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Connections
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure the connection options for every queue backend
+    | used by your application. An example configuration is provided for
+    | each backend supported by Laravel. You're also free to add more.
+    |
+    | Drivers: "sync", "database", "beanstalkd", "sqs", "redis",
+    |          "deferred", "background", "failover", "null"
+    |
+    */
+
+    'connections' => [
+
+        'sync' => [
+            'driver' => 'sync',
+        ],
+
+        'database' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => env('DB_QUEUE', 'default'),
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            'after_commit' => false,
+        ],
+
+        'beanstalkd' => [
+            'driver' => 'beanstalkd',
+            'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
+            'queue' => env('BEANSTALKD_QUEUE', 'default'),
+            'retry_after' => (int) env('BEANSTALKD_QUEUE_RETRY_AFTER', 90),
+            'block_for' => 0,
+            'after_commit' => false,
+        ],
+
+        'sqs' => [
+            'driver' => 'sqs',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'prefix' => env('SQS_PREFIX', 'https://sqs.us-east-1.amazonaws.com/your-account-id'),
+            'queue' => env('SQS_QUEUE', 'default'),
+            'suffix' => env('SQS_SUFFIX'),
+            'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+            'after_commit' => false,
+        ],
+
+        'redis' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_QUEUE', 'default'),
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        'deferred' => [
+            'driver' => 'deferred',
+        ],
+
+        'background' => [
+            'driver' => 'background',
+        ],
+
+        'failover' => [
+            'driver' => 'failover',
+            'connections' => [
+                'database',
+                'deferred',
+            ],
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Job Batching
+    |--------------------------------------------------------------------------
+    |
+    | The following options configure the database and table that store job
+    | batching information. These options can be updated to any database
+    | connection and table which has been defined by your application.
+    |
+    */
+
+    'batching' => [
+        'database' => env('DB_CONNECTION', 'sqlite'),
+        'table' => 'job_batches',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Failed Queue Jobs
+    |--------------------------------------------------------------------------
+    |
+    | These options configure the behavior of failed queue job logging so you
+    | can control how and where failed jobs are stored. Laravel ships with
+    | support for storing failed jobs in a simple file or in a database.
+    |
+    | Supported drivers: "database-uuids", "dynamodb", "file", "null"
+    |
+    */
+
+    'failed' => [
+        'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
+        'database' => env('DB_CONNECTION', 'sqlite'),
+        'table' => 'failed_jobs',
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\sanctum.php
+========================================
+<?php
+
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
+use Laravel\Sanctum\Sanctum;
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Stateful Domains
+    |--------------------------------------------------------------------------
+    |
+    | Requests from the following domains / hosts will receive stateful API
+    | authentication cookies. Typically, these should include your local
+    | and production domains which access your API via a frontend SPA.
+    |
+    */
+
+    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
+        '%s%s',
+        'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
+        Sanctum::currentApplicationUrlWithPort(),
+        // Sanctum::currentRequestHost(),
+    ))),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sanctum Guards
+    |--------------------------------------------------------------------------
+    |
+    | This array contains the authentication guards that will be checked when
+    | Sanctum is trying to authenticate a request. If none of these guards
+    | are able to authenticate the request, Sanctum will use the bearer
+    | token that's present on an incoming request for authentication.
+    |
+    */
+
+    'guard' => ['web'],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Expiration Minutes
+    |--------------------------------------------------------------------------
+    |
+    | This value controls the number of minutes until an issued token will be
+    | considered expired. This will override any values set in the token's
+    | "expires_at" attribute, but first-party sessions are not affected.
+    |
+    */
+
+    'expiration' => null,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Token Prefix
+    |--------------------------------------------------------------------------
+    |
+    | Sanctum can prefix new tokens in order to take advantage of numerous
+    | security scanning initiatives maintained by open source platforms
+    | that notify developers if they commit tokens into repositories.
+    |
+    | See: https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning
+    |
+    */
+
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sanctum Middleware
+    |--------------------------------------------------------------------------
+    |
+    | When authenticating your first-party SPA with Sanctum you may need to
+    | customize some of the middleware Sanctum uses while processing the
+    | request. You may change the middleware listed below as required.
+    |
+    */
+
+    'middleware' => [
+        'authenticate_session' => AuthenticateSession::class,
+        'encrypt_cookies' => EncryptCookies::class,
+        'validate_csrf_token' => ValidateCsrfToken::class,
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\services.php
+========================================
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Third Party Services
+    |--------------------------------------------------------------------------
+    |
+    | This file is for storing the credentials for third party services such
+    | as Resend, Postmark, AWS, and more. This file provides the de facto
+    | location for this type of information, allowing packages to have
+    | a conventional file to locate the various service credentials.
+    |
+    */
+
+    'postmark' => [
+        'key' => env('POSTMARK_API_KEY'),
+    ],
+
+    'resend' => [
+        'key' => env('RESEND_API_KEY'),
+    ],
+
+    'ses' => [
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+    ],
+
+    'slack' => [
+        'notifications' => [
+            'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
+            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
+        ],
+    ],
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\config\session.php
+========================================
+<?php
+
+use Illuminate\Support\Str;
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Session Driver
+    |--------------------------------------------------------------------------
+    |
+    | This option determines the default session driver that is utilized for
+    | incoming requests. Laravel supports a variety of storage options to
+    | persist session data. Database storage is a great default choice.
+    |
+    | Supported: "file", "cookie", "database", "memcached",
+    |            "redis", "dynamodb", "array"
+    |
+    */
+
+    'driver' => env('SESSION_DRIVER', 'database'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | Here you may specify the number of minutes that you wish the session
+    | to be allowed to remain idle before it expires. If you want them
+    | to expire immediately when the browser is closed then you may
+    | indicate that via the expire_on_close configuration option.
+    |
+    */
+
+    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+
+    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Encryption
+    |--------------------------------------------------------------------------
+    |
+    | This option allows you to easily specify that all of your session data
+    | should be encrypted before it's stored. All encryption is performed
+    | automatically by Laravel and you may use the session like normal.
+    |
+    */
+
+    'encrypt' => env('SESSION_ENCRYPT', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session File Location
+    |--------------------------------------------------------------------------
+    |
+    | When utilizing the "file" session driver, the session files are placed
+    | on disk. The default storage location is defined here; however, you
+    | are free to provide another location where they should be stored.
+    |
+    */
+
+    'files' => storage_path('framework/sessions'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Database Connection
+    |--------------------------------------------------------------------------
+    |
+    | When using the "database" or "redis" session drivers, you may specify a
+    | connection that should be used to manage these sessions. This should
+    | correspond to a connection in your database configuration options.
+    |
+    */
+
+    'connection' => env('SESSION_CONNECTION'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Database Table
+    |--------------------------------------------------------------------------
+    |
+    | When using the "database" session driver, you may specify the table to
+    | be used to store sessions. Of course, a sensible default is defined
+    | for you; however, you're welcome to change this to another table.
+    |
+    */
+
+    'table' => env('SESSION_TABLE', 'sessions'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Cache Store
+    |--------------------------------------------------------------------------
+    |
+    | When using one of the framework's cache driven session backends, you may
+    | define the cache store which should be used to store the session data
+    | between requests. This must match one of your defined cache stores.
+    |
+    | Affects: "dynamodb", "memcached", "redis"
+    |
+    */
+
+    'store' => env('SESSION_STORE'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Sweeping Lottery
+    |--------------------------------------------------------------------------
+    |
+    | Some session drivers must manually sweep their storage location to get
+    | rid of old sessions from storage. Here are the chances that it will
+    | happen on a given request. By default, the odds are 2 out of 100.
+    |
+    */
+
+    'lottery' => [2, 100],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Cookie Name
+    |--------------------------------------------------------------------------
+    |
+    | Here you may change the name of the session cookie that is created by
+    | the framework. Typically, you should not need to change this value
+    | since doing so does not grant a meaningful security improvement.
+    |
+    */
+
+    'cookie' => env(
+        'SESSION_COOKIE',
+        Str::slug((string) env('APP_NAME', 'laravel')).'-session'
+    ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Cookie Path
+    |--------------------------------------------------------------------------
+    |
+    | The session cookie path determines the path for which the cookie will
+    | be regarded as available. Typically, this will be the root path of
+    | your application, but you're free to change this when necessary.
+    |
+    */
+
+    'path' => env('SESSION_PATH', '/'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Cookie Domain
+    |--------------------------------------------------------------------------
+    |
+    | This value determines the domain and subdomains the session cookie is
+    | available to. By default, the cookie will be available to the root
+    | domain without subdomains. Typically, this shouldn't be changed.
+    |
+    */
+
+    'domain' => env('SESSION_DOMAIN'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | HTTPS Only Cookies
+    |--------------------------------------------------------------------------
+    |
+    | By setting this option to true, session cookies will only be sent back
+    | to the server if the browser has a HTTPS connection. This will keep
+    | the cookie from being sent to you when it can't be done securely.
+    |
+    */
+
+    'secure' => env('SESSION_SECURE_COOKIE'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | HTTP Access Only
+    |--------------------------------------------------------------------------
+    |
+    | Setting this value to true will prevent JavaScript from accessing the
+    | value of the cookie and the cookie will only be accessible through
+    | the HTTP protocol. It's unlikely you should disable this option.
+    |
+    */
+
+    'http_only' => env('SESSION_HTTP_ONLY', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Same-Site Cookies
+    |--------------------------------------------------------------------------
+    |
+    | This option determines how your cookies behave when cross-site requests
+    | take place, and can be used to mitigate CSRF attacks. By default, we
+    | will set this value to "lax" to permit secure cross-site requests.
+    |
+    | See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#samesitesamesite-value
+    |
+    | Supported: "lax", "strict", "none", null
+    |
+    */
+
+    'same_site' => env('SESSION_SAME_SITE', 'lax'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Partitioned Cookies
+    |--------------------------------------------------------------------------
+    |
+    | Setting this value to true will tie the cookie to the top-level site for
+    | a cross-site context. Partitioned cookies are accepted by the browser
+    | when flagged "secure" and the Same-Site attribute is set to "none".
+    |
+    */
+
+    'partitioned' => env('SESSION_PARTITIONED_COOKIE', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session Serialization
+    |--------------------------------------------------------------------------
+    |
+    | This value controls the serialization strategy for session data, which
+    | is JSON by default. Setting this to "php" allows the storage of PHP
+    | objects in the session but can make an application vulnerable to
+    | "gadget chain" serialization attacks if the APP_KEY is leaked.
+    |
+    | Supported: "json", "php"
+    |
+    */
+
+    'serialization' => 'json',
+
+];
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\factories\TenantFactory.php
+========================================
+<?php
+
+namespace Database\Factories;
+
+use App\Models\Tenant;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
+
+class TenantFactory extends Factory
+{
+    protected $model = Tenant::class;
+
+    public function definition(): array
+    {
+        return [
+            'id' => (string) Str::uuid(),
+            'nome_fantasia' => fake()->company(),
+            'razao_social' => fake()->company() . ' LTDA',
+            'documento' => fake()->numerify('##############'),
+            'status' => 'ativo',
+            'configuracoes' => [],
+        ];
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\factories\UserFactory.php
+========================================
+<?php
+
+namespace Database\Factories;
+
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+
+/**
+ * @extends Factory<User>
+ */
+class UserFactory extends Factory
+{
+    /**
+     * The current password being used by the factory.
+     */
+    protected static ?string $password;
+
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        return [
+            'name' => fake()->name(),
+            'email' => fake()->unique()->safeEmail(),
+            'email_verified_at' => now(),
+            'password' => static::$password ??= Hash::make('password'),
+            'remember_token' => Str::random(10),
+        ];
+    }
+
+    /**
+     * Indicate that the model's email address should be unverified.
+     */
+    public function unverified(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'email_verified_at' => null,
+        ]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\0001_01_01_000000_create_users_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+    $table->uuid('id')->primary();
+    $table->string('name');
+    $table->string('email')->unique();
+    $table->timestamp('email_verified_at')->nullable();
+    $table->string('password');
+    $table->rememberToken();
+    $table->timestamps();
+});
+
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token');
+            $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+$table->foreignUuid('user_id')->nullable()->index();            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('sessions');
+    }
+};
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\0001_01_01_000001_create_cache_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('cache', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->mediumText('value');
+            $table->bigInteger('expiration')->index();
+        });
+
+        Schema::create('cache_locks', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->string('owner');
+            $table->bigInteger('expiration')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('cache');
+        Schema::dropIfExists('cache_locks');
+    }
+};
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\0001_01_01_000002_create_jobs_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('queue')->index();
+            $table->longText('payload');
+            $table->unsignedSmallInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
+        });
+
+        Schema::create('job_batches', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('name');
+            $table->integer('total_jobs');
+            $table->integer('pending_jobs');
+            $table->integer('failed_jobs');
+            $table->longText('failed_job_ids');
+            $table->mediumText('options')->nullable();
+            $table->integer('cancelled_at')->nullable();
+            $table->integer('created_at');
+            $table->integer('finished_at')->nullable();
+        });
+
+        Schema::create('failed_jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('uuid')->unique();
+            $table->string('connection');
+            $table->string('queue');
+            $table->longText('payload');
+            $table->longText('exception');
+            $table->timestamp('failed_at')->useCurrent();
+
+            $table->index(['connection', 'queue', 'failed_at']);
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('jobs');
+        Schema::dropIfExists('job_batches');
+        Schema::dropIfExists('failed_jobs');
+    }
+};
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_22_223641_create_core_tenancy_and_domain_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Tenants / Contas Contratantes
+        Schema::create('sis_tenants', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('nome_fantasia');
+            $table->string('razao_social');
+            $table->string('documento', 20)->unique(); // CPF ou CNPJ
+            $table->string('status', 30)->default('trial'); // trial, ativo, suspenso, cancelado
+            $table->jsonb('configuracoes')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        // 2. Tabela de Empresas (Suporte a Grupos e Múltiplos CNPJs)
+        Schema::create('sis_empresas', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->string('nome_fantasia');
+            $table->string('razao_social');
+            $table->string('cnpj', 20);
+            $table->string('inscricao_estadual', 30)->nullable();
+            $table->string('regime_tributario', 50)->default('simples_nacional');
+            $table->boolean('is_matriz')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'cnpj']);
+        });
+
+        // 3. Tabela de Domínio para Listas Suspensas (Dropdowns como Tabelas)
+        Schema::create('sis_tabelas_dominio', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->nullable()->constrained('sis_tenants')->cascadeOnDelete();
+            $table->string('tipo_lista', 50); // ex: status_os, categoria_produto, motivo_cancelamento
+            $table->string('codigo', 50);
+            $table->string('nome', 100);
+            $table->string('descricao')->nullable();
+            $table->string('cor_hex', 10)->nullable(); // Para badges e UI
+            $table->integer('ordem_exibicao')->default(0);
+            $table->boolean('is_ativo')->default(true);
+            $table->boolean('is_sistema')->default(false); // Registros protegidos
+            $table->jsonb('metadados')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'tipo_lista', 'is_ativo']);
+        });
+
+        // 4. Tabela Centralizada de Trilha de Auditoria
+        Schema::create('sis_auditoria_logs', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->nullable()->constrained('sis_tenants')->cascadeOnDelete();
+            $table->uuid('usuario_id')->nullable();
+            $table->string('acao', 50); // INSERT, UPDATE, DELETE, APROVACAO, LOGIN
+            $table->string('modulo', 50);
+            $table->string('entidade', 100);
+            $table->uuid('registro_id');
+            $table->jsonb('valores_antigos')->nullable();
+            $table->jsonb('valores_novos')->nullable();
+            $table->string('ip_origem', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->uuid('request_id')->nullable();
+            $table->timestamp('created_at')->useCurrent();
+
+            $table->index(['tenant_id', 'modulo', 'created_at']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('sis_auditoria_logs');
+        Schema::dropIfExists('sis_tabelas_dominio');
+        Schema::dropIfExists('sis_empresas');
+        Schema::dropIfExists('sis_tenants');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_22_233527_create_identity_and_acl_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Perfis de Acesso (Roles)
+        Schema::create('sis_perfis', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->string('nome', 100);
+            $table->string('slug', 100);
+            $table->string('descricao')->nullable();
+            $table->boolean('is_admin')->default(false);
+            $table->boolean('is_sistema')->default(false);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->unique(['tenant_id', 'slug']);
+        });
+
+        // 2. Tabela de Permissões Granulares
+        Schema::create('sis_permissoes', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('modulo', 50); // ex: vendas, financeiro, os, estoque
+            $table->string('slug', 100)->unique(); // ex: financeiro.receber.criar, vendas.desconto.aprovar
+            $table->string('nome', 100);
+            $table->string('descricao')->nullable();
+            $table->timestamps();
+        });
+
+        // 3. Pivô Perfil x Permissão
+        Schema::create('sis_perfil_permissao', function (Blueprint $table) {
+            $table->foreignUuid('perfil_id')->constrained('sis_perfis')->cascadeOnDelete();
+            $table->foreignUuid('permissao_id')->constrained('sis_permissoes')->cascadeOnDelete();
+            $table->primary(['perfil_id', 'permissao_id']);
+        });
+
+        // 4. Modificar Tabela Padrão de Usuários para Suporte a Tenant e UUID
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreignUuid('tenant_id')->nullable()->after('id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_padrao_id')->nullable()->after('tenant_id')->constrained('sis_empresas')->nullOnDelete();
+            $table->foreignUuid('perfil_id')->nullable()->after('empresa_padrao_id')->constrained('sis_perfis')->nullOnDelete();
+            $table->string('telefone', 30)->nullable()->after('email');
+            $table->boolean('is_ativo')->default(true)->after('telefone');
+            $table->boolean('mfa_ativo')->default(false)->after('is_ativo');
+            $table->string('mfa_secret')->nullable()->after('mfa_ativo');
+            $table->softDeletes()->after('updated_at');
+
+            $table->index(['tenant_id', 'is_ativo']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['tenant_id']);
+            $table->dropForeign(['empresa_padrao_id']);
+            $table->dropForeign(['perfil_id']);
+            $table->dropColumn(['tenant_id', 'empresa_padrao_id', 'perfil_id', 'telefone', 'is_ativo', 'mfa_ativo', 'mfa_secret', 'deleted_at']);
+        });
+
+        Schema::dropIfExists('sis_perfil_permissao');
+        Schema::dropIfExists('sis_permissoes');
+        Schema::dropIfExists('sis_perfis');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_22_234634_create_personal_access_tokens_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->uuidMorphs('tokenable'); // Suporte nativo a Models com chave primária UUID
+            $table->text('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable()->index();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('personal_access_tokens');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_22_235251_create_pessoas_and_contatos_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela Unificada de Pessoas (Clientes, Fornecedores, Técnicos, Parceiros)
+        Schema::create('pes_pessoas', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->string('tipo_pessoa', 2)->default('PJ'); // 'PF' ou 'PJ'
+            $table->string('nome_razao_social', 200);
+            $table->string('nome_fantasia_apelido', 200)->nullable();
+            $table->string('cpf_cnpj', 20);
+            $table->string('rg_ie', 30)->nullable();
+            $table->string('inscricao_municipal', 30)->nullable();
+            $table->string('email_principal')->nullable();
+            $table->string('telefone_principal', 30)->nullable();
+            $table->string('whatsapp', 30)->nullable();
+            
+            // Flags de Papel (uma pessoa pode ser cliente e fornecedor ao mesmo tempo)
+            $table->boolean('is_cliente')->default(true);
+            $table->boolean('is_fornecedor')->default(false);
+            $table->boolean('is_tecnico')->default(false);
+            $table->boolean('is_transportadora')->default(false);
+            $table->boolean('is_ativo')->default(true);
+            
+            // Parâmetros Financeiros e Fiscais
+            $table->string('regime_tributario', 50)->nullable();
+            $table->decimal('limite_credito', 15, 2)->default(0.00);
+            $table->text('observacoes')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'cpf_cnpj']);
+            $table->index(['tenant_id', 'is_cliente', 'is_ativo']);
+        });
+
+        // 2. Tabela de Endereços Múltiplos por Pessoa (Cobrança, Entrega, Instalação)
+        Schema::create('pes_enderecos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('pessoa_id')->constrained('pes_pessoas')->cascadeOnDelete();
+            $table->string('tipo_endereco', 30)->default('principal'); // principal, cobranca, entrega, instalacao
+            $table->string('cep', 10);
+            $table->string('logradouro', 200);
+            $table->string('numero', 20);
+            $table->string('complemento', 100)->nullable();
+            $table->string('bairro', 100);
+            $table->string('cidade', 100);
+            $table->string('uf', 2);
+            $table->string('codigo_ibge', 10)->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'pessoa_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('pes_enderecos');
+        Schema::dropIfExists('pes_pessoas');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_000135_create_produtos_servicos_and_alcadas_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela Unificada de Catálogo de Itens (Produtos e Serviços)
+        Schema::create('pro_itens', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->string('tipo_item', 20)->default('PRODUTO'); // PRODUTO, SERVICO, MATERIA_PRIMA, INSUMO
+            $table->string('codigo_sku', 50)->nullable();
+            $table->string('codigo_barras_ean', 30)->nullable();
+            $table->string('nome', 200);
+            $table->text('descricao')->nullable();
+            $table->string('unidade_medida', 10)->default('UN'); // UN, KG, M, CX, L, HR
+            $table->foreignUuid('categoria_id')->nullable()->constrained('sis_tabelas_dominio')->nullOnDelete();
+            
+            // Preços e Custos
+            $table->decimal('preco_venda', 15, 2)->default(0.00);
+            $table->decimal('preco_custo', 15, 2)->default(0.00);
+            $table->decimal('custo_medio', 15, 2)->default(0.00);
+            $table->decimal('margem_lucro_markup', 8, 2)->default(0.00);
+            
+            // Parâmetros Fiscais
+            $table->string('ncm', 15)->nullable();
+            $table->string('cest', 15)->nullable();
+            $table->string('cfop_padrao', 10)->nullable();
+            $table->string('origem_mercadoria', 2)->default('0'); // 0 = Nacional
+            
+            // Controle de Estoque
+            $table->boolean('controla_estoque')->default(true);
+            $table->decimal('estoque_minimo', 15, 4)->default(0.0000);
+            $table->decimal('estoque_maximo', 15, 4)->default(0.0000);
+            $table->boolean('is_ativo')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'codigo_sku']);
+            $table->index(['tenant_id', 'tipo_item', 'is_ativo']);
+        });
+
+       // 2. Tabela de Motor de Alçadas e Aprovações
+        Schema::create('sis_alcadas_aprovacoes', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('solicitante_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignUuid('aprovador_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('tipo_operacao', 50); // DESCONTO_VENDA, COMPRA_VALOR, CANCELAMENTO_NF
+            $table->string('entidade_origem', 50); // pedidos, compras, os
+            $table->uuid('registro_origem_id');
+            $table->decimal('valor_solicitado', 15, 2)->default(0.00);
+            $table->decimal('percentual_solicitado', 8, 2)->nullable();
+            $table->string('status', 30)->default('PENDENTE'); // PENDENTE, APROVADO, REJEITADO
+            $table->text('justificativa_solicitacao')->nullable();
+            $table->text('justificativa_resposta')->nullable();
+            $table->timestamp('respondido_em')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status', 'tipo_operacao']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('sis_alcadas_aprovacoes');
+        Schema::dropIfExists('pro_itens');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_002901_create_wms_and_estoque_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Almoxarifados / Depósitos de Estoque
+        Schema::create('wms_depositos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->string('nome', 100);
+            $table->string('codigo', 30);
+            $table->string('descricao')->nullable();
+            $table->boolean('is_padrao')->default(false);
+            $table->boolean('is_ativo')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->unique(['tenant_id', 'empresa_id', 'codigo']);
+        });
+
+        // 2. Tabela de Saldo Fracionado por Depósito, Lote e Validade
+        Schema::create('wms_estoque_deposito', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('deposito_id')->constrained('wms_depositos')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->string('lote', 50)->nullable();
+            $table->date('data_validade')->nullable();
+            $table->string('localizacao_rua', 20)->nullable();
+            $table->string('localizacao_predio', 20)->nullable();
+            $table->string('localizacao_nivel', 20)->nullable();
+            $table->string('localizacao_vao', 20)->nullable();
+            
+            // Saldos com precisão fracionária (até 4 casas decimais)
+            $table->decimal('quantidade_saldo', 15, 4)->default(0.0000);
+            $table->decimal('quantidade_reservada', 15, 4)->default(0.0000);
+            $table->timestamps();
+
+            $table->index(['tenant_id', 'deposito_id', 'item_id']);
+        });
+
+        // 3. Tabela de Movimentações Históricas de Estoque (Kardex)
+        Schema::create('wms_movimentacoes', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('deposito_id')->constrained('wms_depositos')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->foreignUuid('usuario_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('tipo_movimento', 30); // ENTRADA_COMPRA, SAIDA_VENDA, SAIDA_OS, AJUSTE_INVENTARIO, TRANSFERENCIA_SAIDA, TRANSFERENCIA_ENTRADA
+            $table->decimal('quantidade', 15, 4);
+            $table->decimal('saldo_anterior', 15, 4);
+            $table->decimal('saldo_posterior', 15, 4);
+            $table->decimal('custo_unitario', 15, 2)->default(0.00);
+            $table->string('documento_origem_tipo', 50)->nullable(); // compras, vendas, os, transferencias
+            $table->uuid('documento_origem_id')->nullable();
+            $table->text('motivo')->nullable();
+            $table->timestamp('created_at')->useCurrent();
+
+            $table->index(['tenant_id', 'deposito_id', 'item_id', 'created_at']);
+        });
+
+        // 4. Tabela de Transferências Internas entre Depósitos
+        Schema::create('wms_transferencias', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('solicitante_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignUuid('deposito_origem_id')->constrained('wms_depositos')->cascadeOnDelete();
+            $table->foreignUuid('deposito_destino_id')->constrained('wms_depositos')->cascadeOnDelete();
+            $table->string('modalidade', 30)->default('DIRETO'); // DIRETO, EM_TRANSITO
+            $table->string('status', 30)->default('PENDENTE'); // PENDENTE, EM_TRANSITO, CONCLUIDO, CANCELADO
+            $table->text('observacoes')->nullable();
+            $table->timestamp('concluido_em')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status']);
+        });
+
+        // 5. Itens da Transferência
+        Schema::create('wms_transferencia_itens', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('transferencia_id')->constrained('wms_transferencias')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->string('lote', 50)->nullable();
+            $table->decimal('quantidade_solicitada', 15, 4);
+            $table->decimal('quantidade_atendida', 15, 4)->default(0.0000);
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('wms_transferencia_itens');
+        Schema::dropIfExists('wms_transferencias');
+        Schema::dropIfExists('wms_movimentacoes');
+        Schema::dropIfExists('wms_estoque_deposito');
+        Schema::dropIfExists('wms_depositos');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_003445_create_compras_and_xml_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela Principal de Compras / Entradas de Notas
+        Schema::create('cmp_compras', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('fornecedor_id')->constrained('pes_pessoas')->cascadeOnDelete();
+            $table->foreignUuid('deposito_destino_id')->constrained('wms_depositos')->cascadeOnDelete();
+            $table->foreignUuid('comprador_id')->nullable()->constrained('users')->nullOnDelete();
+            
+            // Dados Fiscais da Nota de Entrada
+            $table->string('numero_nota', 30)->nullable();
+            $table->string('serie_nota', 10)->nullable();
+            $table->string('chave_acesso_nfe', 44)->nullable()->index();
+            $table->string('status', 30)->default('DIGITACAO'); // DIGITACAO, APROVADO, RECEBIDO, CANCELADO
+            $table->date('data_emissao')->nullable();
+            $table->date('data_entrada')->useCurrent();
+            
+            // Valores Totais
+            $table->decimal('valor_produtos', 15, 2)->default(0.00);
+            $table->decimal('valor_frete', 15, 2)->default(0.00);
+            $table->decimal('valor_seguro', 15, 2)->default(0.00);
+            $table->decimal('valor_desconto', 15, 2)->default(0.00);
+            $table->decimal('valor_outras_despesas', 15, 2)->default(0.00);
+            $table->decimal('valor_total', 15, 2)->default(0.00);
+            
+            $table->text('observacoes')->nullable();
+            $table->text('xml_conteudo')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status', 'data_entrada']);
+        });
+
+        // 2. Tabela de Itens da Compra
+        Schema::create('cmp_compra_itens', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('compra_id')->constrained('cmp_compras')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->string('codigo_fornecedor', 50)->nullable();
+            $table->string('descricao_fornecedor', 200)->nullable();
+            $table->string('unidade_fornecedor', 10)->nullable();
+            $table->decimal('fator_conversao', 10, 4)->default(1.0000); // Ex: 1 Caixa = 12 Unidades
+            
+            $table->decimal('quantidade_comercial', 15, 4);
+            $table->decimal('quantidade_estoque', 15, 4);
+            $table->decimal('valor_unitario', 15, 4);
+            $table->decimal('valor_total_item', 15, 2);
+            
+            // Dados de Rastreabilidade
+            $table->string('lote', 50)->nullable();
+            $table->date('data_validade')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('cmp_compra_itens');
+        Schema::dropIfExists('cmp_compras');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_004432_create_vendas_pedidos_and_pdv_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela Principal de Pedidos de Venda, Orçamentos e Vendas PDV
+        Schema::create('ven_pedidos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('cliente_id')->constrained('pes_pessoas')->cascadeOnDelete();
+            $table->foreignUuid('vendedor_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('deposito_saida_id')->constrained('wms_depositos')->cascadeOnDelete();
+            
+            // Identificação e Fluxo
+            $table->string('tipo_documento', 20)->default('PEDIDO'); // ORCAMENTO, PEDIDO, PDV
+            $table->bigInteger('numero_pedido')->nullable();
+            $table->string('status', 30)->default('ORCAMENTO'); // ORCAMENTO, AGUARDANDO_APROVACAO, APROVADO, FATURADO, CANCELADO
+            $table->date('data_emissao')->useCurrent();
+            $table->date('data_validade_orcamento')->nullable();
+            
+            // Valores Consolidados
+            $table->decimal('valor_subtotal_itens', 15, 2)->default(0.00);
+            $table->decimal('valor_frete', 15, 2)->default(0.00);
+            $table->decimal('valor_seguro', 15, 2)->default(0.00);
+            $table->decimal('valor_outras_despesas', 15, 2)->default(0.00);
+            $table->decimal('percentual_desconto', 8, 2)->default(0.00);
+            $table->decimal('valor_desconto', 15, 2)->default(0.00);
+            $table->decimal('valor_total_liquido', 15, 2)->default(0.00);
+            
+            // Controle de PDV Offline
+            $table->uuid('pdv_offline_uuid')->nullable()->index(); // ID gerado pelo PDV em modo offline
+            $table->timestamp('sincronizado_em')->nullable();
+            
+            $table->text('observacoes')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status', 'tipo_documento', 'data_emissao']);
+        });
+
+        // 2. Tabela de Itens do Pedido / PDV
+        Schema::create('ven_pedido_itens', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('pedido_id')->constrained('ven_pedidos')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->decimal('quantidade', 15, 4);
+            $table->decimal('preco_tabela_unitario', 15, 4);
+            $table->decimal('percentual_desconto', 8, 2)->default(0.00);
+            $table->decimal('valor_desconto_unitario', 15, 4)->default(0.0000);
+            $table->decimal('preco_venda_unitario', 15, 4);
+            $table->decimal('valor_total_bruto', 15, 2);
+            $table->decimal('valor_total_liquido', 15, 2);
+            $table->string('lote', 50)->nullable();
+            $table->timestamps();
+        });
+
+        // 3. Tabela de Formas de Pagamento Vinculadas à Venda
+        Schema::create('ven_pedido_pagamentos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('pedido_id')->constrained('ven_pedidos')->cascadeOnDelete();
+            $table->string('forma_pagamento', 50); // DINHEIRO, PIX, CARTAO_CREDITO, CARTAO_DEBITO, BOLETO, CREDIARIO
+            $table->integer('parcelas')->default(1);
+            $table->decimal('valor_pago', 15, 2);
+            $table->decimal('valor_troco', 15, 2)->default(0.00);
+            $table->string('status', 30)->default('CONFIRMADO'); // CONFIRMADO, PENDENTE
+            $table->string('transacao_nsu_autorizacao', 100)->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('ven_pedido_pagamentos');
+        Schema::dropIfExists('ven_pedido_itens');
+        Schema::dropIfExists('ven_pedidos');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_005217_create_ordens_servico_and_laudos_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela Principal de Ordens de Serviço (OS)
+        Schema::create('os_ordens_servico', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('cliente_id')->constrained('pes_pessoas')->cascadeOnDelete();
+            $table->foreignUuid('tecnico_responsavel_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('deposito_saida_id')->nullable()->constrained('wms_depositos')->nullOnDelete();
+            
+            // Dados da OS
+            $table->bigInteger('numero_os')->nullable();
+            $table->string('status', 30)->default('ABERTA'); // ABERTA, EM_ANDAMENTO, AGUARDANDO_PECA, CONCLUIDA, CANCELADA
+            $table->string('prioridade', 20)->default('NORMAL'); // BAIXA, NORMAL, ALTA, URGENTE
+            $table->string('tipo_manutencao', 30)->default('CORRETIVA'); // CORRETIVA, PREVENTIVA, INSTALACAO, PREDITIVA
+            
+            // Equipamento / Objeto do Serviço
+            $table->string('equipamento_descricao', 200)->nullable();
+            $table->string('equipamento_marca_modelo', 150)->nullable();
+            $table->string('equipamento_numero_serie', 100)->nullable();
+            
+            // Diagnóstico e Laudo
+            $table->text('defeito_reclamado')->nullable();
+            $table->text('diagnostico_tecnico')->nullable();
+            $table->text('servico_executado')->nullable();
+            
+            // Agendamento e Execução
+            $table->dateTime('data_abertura')->useCurrent();
+            $table->dateTime('data_agendamento')->nullable();
+            $table->dateTime('data_inicio_execucao')->nullable();
+            $table->dateTime('data_conclusao')->nullable();
+            
+            // Valores Totais
+            $table->decimal('valor_servicos', 15, 2)->default(0.00);
+            $table->decimal('valor_pecas', 15, 2)->default(0.00);
+            $table->decimal('valor_desconto', 15, 2)->default(0.00);
+            $table->decimal('valor_total', 15, 2)->default(0.00);
+            
+            // Assinatura e Aceite Digital
+            $table->text('assinatura_cliente_base64')->nullable();
+            $table->string('nome_responsavel_recebimento', 150)->nullable();
+            $table->string('documento_responsavel_recebimento', 30)->nullable();
+            $table->dateTime('assinado_em')->nullable();
+            
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status', 'tecnico_responsavel_id']);
+        });
+
+        // 2. Tabela de Peças e Serviços Utilizados na OS
+        Schema::create('os_itens', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('ordem_servico_id')->constrained('os_ordens_servico')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->string('tipo_item', 20); // PRODUTO (PEÇA) ou SERVICO
+            $table->decimal('quantidade', 15, 4);
+            $table->decimal('valor_unitario', 15, 4);
+            $table->decimal('valor_total', 15, 2);
+            $table->string('lote', 50)->nullable();
+            $table->timestamps();
+        });
+
+        // 3. Tabela de Fotos e Evidências (Antes e Depois)
+        Schema::create('os_fotos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('ordem_servico_id')->constrained('os_ordens_servico')->cascadeOnDelete();
+            $table->string('tipo_etapa', 20)->default('ANTES'); // ANTES, DURANTE, DEPOIS, LAUDO
+            $table->string('url_arquivo', 500);
+            $table->string('descricao')->nullable();
+            $table->decimal('latitude', 10, 8)->nullable();
+            $table->decimal('longitude', 11, 8)->nullable();
+            $table->timestamp('created_at')->useCurrent();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('os_fotos');
+        Schema::dropIfExists('os_itens');
+        Schema::dropIfExists('os_ordens_servico');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_005717_create_financeiro_core_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Contas Bancárias / Caixas / Carteiras
+        Schema::create('fin_contas_financeiras', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->string('nome', 100);
+            $table->string('tipo_conta', 30)->default('CORRENTE'); // CORRENTE, POUPANCA, CAIXA_FISICO, APLICACAO, CARTEIRA_DIGITAL
+            $table->string('codigo_banco', 10)->nullable();
+            $table->string('agencia', 20)->nullable();
+            $table->string('numero_conta', 30)->nullable();
+            $table->decimal('saldo_inicial', 15, 2)->default(0.00);
+            $table->decimal('saldo_atual', 15, 2)->default(0.00);
+            $table->boolean('is_ativo')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'empresa_id', 'is_ativo']);
+        });
+
+        // 2. Tabela de Títulos Financeiros (A Pagar e A Receber)
+        Schema::create('fin_titulos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('pessoa_id')->constrained('pes_pessoas')->cascadeOnDelete();
+            $table->foreignUuid('conta_padrao_id')->nullable()->constrained('fin_contas_financeiras')->nullOnDelete();
+            
+            // Classificação
+            $table->string('natureza', 10); // 'PAGAR' ou 'RECEBER'
+            $table->string('documento_numero', 50)->nullable();
+            $table->integer('parcela_numero')->default(1);
+            $table->integer('total_parcelas')->default(1);
+            
+            // Origem do Título (Rastreabilidade de Vendas, Compras ou OS)
+            $table->string('origem_tipo', 50)->nullable(); // vendas, compras, os, manual
+            $table->uuid('origem_id')->nullable();
+            
+            // Datas
+            $table->date('data_emissao')->useCurrent();
+            $table->date('data_vencimento');
+            $table->date('data_liquidacao')->nullable();
+            
+            // Valores
+            $table->decimal('valor_original', 15, 2);
+            $table->decimal('valor_juros', 15, 2)->default(0.00);
+            $table->decimal('valor_multa', 15, 2)->default(0.00);
+            $table->decimal('valor_desconto', 15, 2)->default(0.00);
+            $table->decimal('valor_pago_acumulado', 15, 2)->default(0.00);
+            $table->decimal('valor_saldo_aberto', 15, 2);
+            
+            $table->string('status', 30)->default('ABERTO'); // ABERTO, PARCIAL, LIQUIDADO, CANCELADO
+            $table->text('historico')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'natureza', 'status', 'data_vencimento']);
+        });
+
+        // 3. Tabela de Movimentações Bancárias / Extrato Financeiro
+        Schema::create('fin_movimentacoes_extrato', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('conta_financeira_id')->constrained('fin_contas_financeiras')->cascadeOnDelete();
+            $table->foreignUuid('titulo_id')->nullable()->constrained('fin_titulos')->nullOnDelete();
+            $table->foreignUuid('usuario_id')->nullable()->constrained('users')->nullOnDelete();
+            
+            $table->string('tipo_movimento', 10); // 'ENTRADA' ou 'SAIDA'
+            $table->decimal('valor', 15, 2);
+            $table->decimal('saldo_anterior', 15, 2);
+            $table->decimal('saldo_posterior', 15, 2);
+            $table->string('forma_pagamento', 50)->default('OUTROS'); // DINHEIRO, PIX, TRANSFERENCIA, BOLETO, CARTAO
+            $table->date('data_movimento')->useCurrent();
+            $table->text('descricao');
+            $table->timestamp('created_at')->useCurrent();
+
+            $table->index(['tenant_id', 'conta_financeira_id', 'data_movimento']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('fin_movimentacoes_extrato');
+        Schema::dropIfExists('fin_titulos');
+        Schema::dropIfExists('fin_contas_financeiras');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_010528_create_fiscal_motor_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Regras e Matriz Tributária por Operação
+        Schema::create('fis_regras_tributarias', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->string('descricao', 100);
+            $table->string('cfop', 10);
+            $table->string('uf_destino', 2)->nullable(); // Se nulo, aplica para todas as UFs
+            
+            // Regimes Vigentes
+            $table->string('cst_csosn_icms', 10)->nullable();
+            $table->decimal('aliquota_icms', 5, 2)->default(0.00);
+            $table->string('cst_pis', 10)->nullable();
+            $table->decimal('aliquota_pis', 5, 2)->default(0.00);
+            $table->string('cst_cofins', 10)->nullable();
+            $table->decimal('aliquota_cofins', 5, 2)->default(0.00);
+            $table->decimal('aliquota_issqn', 5, 2)->default(0.00);
+            
+            // Suporte Nativo à Reforma Tributária (IBS / CBS)
+            $table->string('cst_ibs_cbs', 10)->nullable();
+            $table->decimal('aliquota_ibs', 5, 2)->default(0.00);
+            $table->decimal('aliquota_cbs', 5, 2)->default(0.00);
+            
+            $table->boolean('is_ativo')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'cfop', 'uf_destino']);
+        });
+
+        // 2. Tabela Principal de Documentos Fiscais Emitidos (NF-e, NFC-e, NFS-e)
+        Schema::create('fis_documentos_fiscais', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('destinatario_id')->constrained('pes_pessoas')->cascadeOnDelete();
+            
+            // Origem do Documento Fiscal (Vendas, Compras, OS)
+            $table->string('origem_tipo', 50)->nullable();
+            $table->uuid('origem_id')->nullable();
+            
+            // Dados de Identificação SEFAZ / Prefeitura
+            $table->string('modelo_documento', 10)->default('55'); // 55 = NF-e, 65 = NFC-e, NFS-e = Servico
+            $table->integer('serie')->default(1);
+            $table->bigInteger('numero_documento');
+            $table->string('chave_acesso', 44)->nullable()->unique();
+            $table->string('ambiente', 20)->default('HOMOLOGACAO'); // HOMOLOGACAO, PRODUCAO
+            $table->string('status', 30)->default('PENDENTE'); // PENDENTE, TRANSMITINDO, AUTORIZADO, REJEITADO, CANCELADO, CONTINGENCIA
+            
+            // Protocolos e Retornos Oficiais
+            $table->string('protocolo_autorizacao', 60)->nullable();
+            $table->string('codigo_status_sefaz', 10)->nullable(); // Ex: 100 = Autorizado, 135 = Cancelado
+            $table->text('motivo_status_sefaz')->nullable();
+            
+            // Valores Fiscais Consolidados
+            $table->decimal('valor_total_produtos', 15, 2)->default(0.00);
+            $table->decimal('valor_total_servicos', 15, 2)->default(0.00);
+            $table->decimal('valor_total_documento', 15, 2)->default(0.00);
+            $table->decimal('valor_icms', 15, 2)->default(0.00);
+            $table->decimal('valor_pis', 15, 2)->default(0.00);
+            $table->decimal('valor_cofins', 15, 2)->default(0.00);
+            $table->decimal('valor_issqn', 15, 2)->default(0.00);
+            $table->decimal('valor_ibs', 15, 2)->default(0.00);
+            $table->decimal('valor_cbs', 15, 2)->default(0.00);
+            
+            // Armazenamento de Arquivos
+            $table->text('xml_assinado')->nullable();
+            $table->text('xml_protocolado')->nullable();
+            $table->string('url_danfe_pdf', 500)->nullable();
+            
+            $table->dateTime('data_emissao')->useCurrent();
+            $table->dateTime('data_autorizacao')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'modelo_documento', 'status', 'data_emissao']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('fis_documentos_fiscais');
+        Schema::dropIfExists('fis_regras_tributarias');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_011407_create_producao_frotas_and_patrimonio_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Estrutura de Produtos / Ficha Técnica (BOM - Bill of Materials)
+        Schema::create('pcp_estrutura_itens', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('produto_pai_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->foreignUuid('insumo_filho_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->decimal('quantidade_necessaria', 15, 4); // Quantidade de insumo por 1 unidade produzida
+            $table->decimal('percentual_perda_estimada', 5, 2)->default(0.00);
+            $table->timestamps();
+
+            $table->index(['tenant_id', 'produto_pai_id']);
+        });
+
+        // 2. Tabela de Ordens de Produção (OP)
+        Schema::create('pcp_ordens_producao', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('produto_id')->constrained('pro_itens')->cascadeOnDelete();
+            $table->foreignUuid('deposito_origem_id')->constrained('wms_depositos')->cascadeOnDelete(); // Onde saem os insumos
+            $table->foreignUuid('deposito_destino_id')->constrained('wms_depositos')->cascadeOnDelete(); // Onde entra o produto final
+            $table->foreignUuid('responsavel_id')->nullable()->constrained('users')->nullOnDelete();
+            
+            $table->bigInteger('numero_op')->nullable();
+            $table->string('status', 30)->default('PLANEJADA'); // PLANEJADA, EM_PRODUCAO, CONCLUIDA, CANCELADA
+            $table->decimal('quantidade_planejada', 15, 4);
+            $table->decimal('quantidade_produzida', 15, 4)->default(0.0000);
+            $table->decimal('custo_total_estimado', 15, 2)->default(0.00);
+            $table->decimal('custo_total_real', 15, 2)->default(0.00);
+            
+            $table->date('data_inicio_prevista');
+            $table->date('data_fim_prevista');
+            $table->dateTime('data_inicio_real')->nullable();
+            $table->dateTime('data_fim_real')->nullable();
+            
+            $table->text('observacoes')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status', 'produto_id']);
+        });
+
+        // 3. Tabela de Frotas / Veículos da Empresa
+        Schema::create('fro_veiculos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('motorista_padrao_id')->nullable()->constrained('users')->nullOnDelete();
+            
+            $table->string('placa', 10)->index();
+            $table->string('marca_modelo', 100);
+            $table->integer('ano_fabricacao');
+            $table->string('chassi', 30)->nullable();
+            $table->string('renavam', 30)->nullable();
+            $table->string('tipo_combustivel', 30)->default('FLEX');
+            $table->decimal('km_atual', 10, 2)->default(0.00);
+            $table->boolean('is_ativo')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'empresa_id', 'is_ativo']);
+        });
+
+        // 4. Tabela de Abastecimentos e Manutenções de Frotas
+        Schema::create('fro_manutencoes', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('veiculo_id')->constrained('fro_veiculos')->cascadeOnDelete();
+            $table->foreignUuid('motorista_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('tipo_registro', 30); // ABASTECIMENTO, PREVENTIVA, CORRETIVA, TROCA_OLEO
+            $table->decimal('km_registro', 10, 2);
+            $table->decimal('litros_combustivel', 10, 3)->nullable();
+            $table->decimal('valor_total', 15, 2);
+            $table->date('data_registro')->useCurrent();
+            $table->text('descricao_servico')->nullable();
+            $table->timestamps();
+        });
+
+        // 5. Tabela de Bens Patrimoniais e Ferramentas com QR Code
+        Schema::create('pat_bens', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('responsavel_atual_id')->nullable()->constrained('users')->nullOnDelete();
+            
+            $table->string('codigo_patrimonio', 50)->index(); // Número de tombamento / Tag
+            $table->string('descricao', 200);
+            $table->string('marca_modelo', 100)->nullable();
+            $table->string('numero_serie', 100)->nullable();
+            $table->string('qr_code_hash', 100)->unique();
+            $table->date('data_aquisicao')->nullable();
+            $table->decimal('valor_aquisicao', 15, 2)->default(0.00);
+            $table->string('status', 30)->default('DISPONIVEL'); // DISPONIVEL, EM_USO, EM_MANUTENCAO, BAIXADO
+            $table->string('localizacao_fisica', 150)->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('pat_bens');
+        Schema::dropIfExists('fro_manutencoes');
+        Schema::dropIfExists('fro_veiculos');
+        Schema::dropIfExists('pcp_ordens_producao');
+        Schema::dropIfExists('pcp_estrutura_itens');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_025905_create_rh_dp_and_ponto_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Colaboradores / Funcionários
+        Schema::create('rh_colaboradores', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->foreignUuid('usuario_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('pessoa_id')->constrained('pes_pessoas')->cascadeOnDelete();
+            
+            $table->string('matricula', 30)->index();
+            $table->string('cargo', 100);
+            $table->string('departamento', 100);
+            $table->date('data_admissao');
+            $table->date('data_demissao')->nullable();
+            $table->decimal('salario_base', 15, 2);
+            $table->string('tipo_contrato', 30)->default('CLT'); // CLT, PJ, ESTAGIO, TEMPORARIO
+            $table->string('status', 30)->default('ATIVO'); // ATIVO, FERIAS, AFASTADO, DESLIGADO
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'empresa_id', 'status']);
+        });
+
+        // 2. Tabela de Registro de Ponto Eletrônico (REP-P Portaria 671 - Base Imutável)
+        Schema::create('rh_pontos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('colaborador_id')->constrained('rh_colaboradores')->cascadeOnDelete();
+            $table->dateTime('data_hora_registro')->useCurrent();
+            $table->string('tipo_registro', 20); // ENTRADA, INTERVALO_SAIDA, INTERVALO_RETORNO, SAIDA
+            $table->decimal('latitude', 10, 8)->nullable();
+            $table->decimal('longitude', 11, 8)->nullable();
+            $table->string('ip_origem', 45)->nullable();
+            $table->string('dispositivo_info', 200)->nullable();
+            $table->string('hash_registro', 64); // Assinatura SHA-256 de imutabilidade
+            $table->timestamp('created_at')->useCurrent();
+
+            $table->index(['tenant_id', 'colaborador_id', 'data_hora_registro']);
+        });
+
+        // 3. Tabela de Vagas e Funil Kanban de R&S
+        Schema::create('rh_vagas', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+            $table->string('titulo', 150);
+            $table->string('departamento', 100);
+            $table->integer('quantidade_vagas')->default(1);
+            $table->string('status', 30)->default('ABERTA'); // ABERTA, EM_PROCESSO, ENCERRADA
+            $table->decimal('salario_oferecido', 15, 2)->nullable();
+            $table->text('requisitos')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        // 4. Tabela de Candidatos do Funil Kanban
+        Schema::create('rh_candidatos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('vaga_id')->constrained('rh_vagas')->cascadeOnDelete();
+            $table->string('nome', 150);
+            $table->string('email', 150);
+            $table->string('telefone', 30);
+            $table->string('etapa_kanban', 50)->default('TRIAGEM'); // TRIAGEM, ENTREVISTA, TESTE_TECNICO, PROPOSTA, APROVADO, REPROVADO
+            $table->text('observacoes')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('rh_candidatos');
+        Schema::dropIfExists('rh_vagas');
+        Schema::dropIfExists('rh_pontos');
+        Schema::dropIfExists('rh_colaboradores');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_031012_create_saas_billing_and_planos_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Planos Comerciais da Plataforma
+        Schema::create('sis_planos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('nome', 50); // MEI, Pro, Enterprise
+            $table->string('slug', 50)->unique();
+            $table->decimal('valor_mensal', 15, 2);
+            $table->integer('limite_usuarios')->default(1);
+            $table->integer('limite_empresas')->default(1);
+            $table->bigInteger('cota_storage_bytes'); // 3GB = 3221225472, 20GB = 21474836480
+            $table->jsonb('modulos_habilitados')->nullable(); // Lista de módulos permitidos
+            $table->boolean('is_ativo')->default(true);
+            $table->timestamps();
+        });
+
+        // 2. Tabela de Assinaturas dos Tenants
+        Schema::create('sis_assinaturas', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('plano_id')->constrained('sis_planos')->cascadeOnDelete();
+            $table->string('status', 30)->default('TRIAL'); // TRIAL, ATIVA, PENDENTE, CANCELADA, SOFT_LOCK
+            $table->date('data_inicio');
+            $table->date('data_proximo_vencimento');
+            $table->bigInteger('storage_utilizado_bytes')->default(0);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('sis_assinaturas');
+        Schema::dropIfExists('sis_planos');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_010000_add_is_master_to_users_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->boolean('is_master')->default(false)->after('is_ativo');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn('is_master');
+        });
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_020000_add_sla_and_geo_to_os_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('os_ordens_servico', function (Blueprint $table) {
+            $table->dateTime('prazo_sla_resposta')->nullable()->after('data_abertura');
+            $table->dateTime('prazo_sla_resolucao')->nullable()->after('prazo_sla_resposta');
+            $table->string('hash_assinatura_sha256', 64)->nullable()->after('assinado_em');
+            $table->string('ip_assinatura', 45)->nullable()->after('hash_assinatura_sha256');
+            $table->decimal('latitude_assinatura', 10, 8)->nullable()->after('ip_assinatura');
+            $table->decimal('longitude_assinatura', 11, 8)->nullable()->after('latitude_assinatura');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('os_ordens_servico', function (Blueprint $table) {
+            $table->dropColumn([
+                'prazo_sla_resposta',
+                'prazo_sla_resolucao',
+                'hash_assinatura_sha256',
+                'ip_assinatura',
+                'latitude_assinatura',
+                'longitude_assinatura'
+            ]);
+        });
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_030000_create_cmms_pmoc_and_ativos_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Criar tabela de Bens Patrimoniais / Ativos se não existir
+        if (!Schema::hasTable('pat_bens')) {
+            Schema::create('pat_bens', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+                $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+                $table->foreignUuid('responsavel_atual_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->string('codigo_patrimonio', 50);
+                $table->string('descricao', 200);
+                $table->string('marca_modelo', 150)->nullable();
+                $table->string('numero_serie', 100)->nullable();
+                $table->string('qr_code_hash', 64)->nullable();
+                $table->date('data_aquisicao')->nullable();
+                $table->decimal('valor_aquisicao', 15, 2)->nullable();
+                $table->string('status', 30)->default('ATIVO');
+                $table->string('localizacao_fisica', 150)->nullable();
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+
+        // 2. Adicionar coluna ativo_id na OS se não existir
+        if (Schema::hasTable('os_ordens_servico') && !Schema::hasColumn('os_ordens_servico', 'ativo_id')) {
+            Schema::table('os_ordens_servico', function (Blueprint $table) {
+                $table->foreignUuid('ativo_id')->nullable()->after('deposito_saida_id')->constrained('pat_bens')->nullOnDelete();
+            });
+        }
+
+        // 3. Tabela de Planos Preventivos (PMOC)
+        if (!Schema::hasTable('os_planos_preventivos')) {
+            Schema::create('os_planos_preventivos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+                $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+                $table->foreignUuid('cliente_id')->constrained('pes_pessoas')->cascadeOnDelete();
+                $table->foreignUuid('ativo_id')->nullable()->constrained('pat_bens')->nullOnDelete();
+                $table->foreignUuid('tecnico_padrao_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->string('titulo_plano', 150);
+                $table->string('frequencia', 30); // MENSAL, BIMESTRAL, TRIMESTRAL, SEMESTRAL, ANUAL
+                $table->date('proxima_execucao');
+                $table->date('ultima_execucao')->nullable();
+                $table->jsonb('checklist_itens')->nullable();
+                $table->text('instrucoes_tecnicas')->nullable();
+                $table->boolean('is_ativo')->default(true);
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('os_planos_preventivos');
+        if (Schema::hasColumn('os_ordens_servico', 'ativo_id')) {
+            Schema::table('os_ordens_servico', function (Blueprint $table) {
+                $table->dropForeign(['ativo_id']);
+                $table->dropColumn('ativo_id');
+            });
+        }
+        Schema::dropIfExists('pat_bens');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_040000_add_cliente_id_to_pat_bens_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasTable('pat_bens') && !Schema::hasColumn('pat_bens', 'cliente_id')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->foreignUuid('cliente_id')->nullable()->after('empresa_id')->constrained('pes_pessoas')->nullOnDelete();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'cliente_id')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->dropForeign(['cliente_id']);
+                $table->dropColumn('cliente_id');
+            });
+        }
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_050000_create_os_apontamentos_e_workflow_pecas.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Apontamentos de Mão de Obra / Jornada Técnica
+        if (!Schema::hasTable('os_apontamentos_horas')) {
+            Schema::create('os_apontamentos_horas', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('ordem_servico_id')->index();
+                $table->uuid('tecnico_id')->index();
+                $table->dateTime('data_hora_inicio');
+                $table->dateTime('data_hora_fim')->nullable();
+                $table->decimal('total_horas', 8, 2)->default(0.00);
+                $table->decimal('valor_hora', 10, 2)->default(0.00);
+                $table->decimal('valor_total', 10, 2)->default(0.00);
+                $table->text('descricao_atividades')->nullable();
+                $table->timestamps();
+
+                $table->foreign('ordem_servico_id')->references('id')->on('os_ordens_servico')->onDelete('cascade');
+                $table->foreign('tecnico_id')->references('id')->on('users')->onDelete('cascade');
+            });
+        }
+
+        // 2. Adicionar status do fluxo de almoxarifado nas peças da OS
+        if (Schema::hasTable('os_itens') && !Schema::hasColumn('os_itens', 'status_requisicao')) {
+            Schema::table('os_itens', function (Blueprint $table) {
+                $table->string('status_requisicao', 30)->default('RETIRADO')->after('lote'); // SOLICITADO, DISPONIVEL, RETIRADO
+                $table->uuid('almoxarife_id')->nullable()->after('status_requisicao');
+                $table->dateTime('atendido_em')->nullable()->after('almoxarife_id');
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('os_apontamentos_horas');
+        if (Schema::hasTable('os_itens') && Schema::hasColumn('os_itens', 'status_requisicao')) {
+            Schema::table('os_itens', function (Blueprint $table) {
+                $table->dropColumn(['status_requisicao', 'almoxarife_id', 'atendido_em']);
+            });
+        }
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_060000_alter_valor_aquisicao_on_pat_bens_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'valor_aquisicao')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->decimal('valor_aquisicao', 12, 2)->default(0.00)->nullable()->change();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'valor_aquisicao')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->decimal('valor_aquisicao', 12, 2)->nullable(false)->change();
+            });
+        }
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_070000_fix_pat_bens_valor_aquisicao_constraint.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+         if (Schema::hasTable('pat_bens') && DB::getDriverName() === 'pgsql') {
+   

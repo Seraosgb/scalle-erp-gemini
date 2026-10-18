@@ -2,11 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import {
   Users, Plus, Search, CheckCircle2, AlertTriangle,
-  X, Building2, User as UserIcon, Tag, SearchCode, UploadCloud, Printer
+  X, Building2, User as UserIcon, Tag, UploadCloud
 } from 'lucide-react';
-import { useBalanca } from '../../hooks/useBalanca';
-import { usePrinter } from '../../hooks/usePrinter';
-import { EscPosEncoder } from '../../utils/EscPosEncoder';
 
 export default function PessoasPage() {
   const [pessoas, setPessoas] = useState([]);
@@ -20,30 +17,7 @@ export default function PessoasPage() {
   const [arquivoCsv, setArquivoCsv] = useState(null);
   const [importando, setImportando] = useState(false);
 
-  // Integrações de Hardware (Laboratório)
-  const { peso, conectado, erro, conectarBalanca, desconectarBalanca } = useBalanca();
-  const { printReceipt, isPrinting } = usePrinter();
-
-  const handleImprimirTeste = async () => {
-    const pacoteDeBytes = EscPosEncoder.build([
-      EscPosEncoder.init(),
-      EscPosEncoder.align(1), // Centro
-      EscPosEncoder.text("SCALLE ERP - TESTE DE IMPRESSAO"),
-      EscPosEncoder.text("--------------------------------"),
-      EscPosEncoder.align(0), // Esquerda
-      EscPosEncoder.text("1x Bateria CR2032        R$ 5,00"),
-      EscPosEncoder.text("1x Placa ESP32          R$ 45,00"),
-      EscPosEncoder.text("--------------------------------"),
-      EscPosEncoder.align(2), // Direita
-      EscPosEncoder.text("TOTAL: R$ 50,00"),
-      EscPosEncoder.text("\n\n\n"), // Avanço de papel
-      EscPosEncoder.cut(),
-      EscPosEncoder.openDrawer()
-    ]);
-    await printReceipt(pacoteDeBytes);
-  };
-
-  // Modais
+  // Modais e Form
   const [modalNovo, setModalNovo] = useState(false);
   const [form, setForm] = useState({
     id: null,
@@ -62,7 +36,6 @@ export default function PessoasPage() {
   const carregarPessoas = async () => {
     setLoading(true);
     try {
-      // O backend aceita 'search' via query params
       const res = await api.get('/pessoas', { params: { search } });
       const data = res.data?.data?.data || res.data?.data || [];
       setPessoas(Array.isArray(data) ? data : []);
@@ -84,7 +57,7 @@ export default function PessoasPage() {
     try {
       const payload = {
         ...form,
-        cpf_cnpj: form.cpf_cnpj.replace(/\D/g, '') // Envia apenas números
+        cpf_cnpj: form.cpf_cnpj.replace(/\D/g, '')
       };
 
       if (form.id) {
@@ -141,7 +114,6 @@ export default function PessoasPage() {
     setModalNovo(true);
   };
 
-  // Filtro local adicional pelas abas
   const pessoasFiltradas = pessoas.filter(p => {
     if (filtroTipo === 'TODOS') return true;
     if (filtroTipo === 'PF' && p.tipo_pessoa === 'PF') return true;
@@ -159,39 +131,6 @@ export default function PessoasPage() {
           <p className="text-xs sm:text-sm text-slate-400 mt-1">Base central unificada para RH, Clientes e Fornecedores</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-
-          {/* VISOR DA BALANÇA NATIVA (WEB SERIAL) */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl shadow-inner mr-2">
-            {!conectado ? (
-                <button
-                  onClick={conectarBalanca}
-                  className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer border border-slate-600 flex items-center gap-1.5"
-                >
-                  ⚖️ Ligar Balança
-                </button>
-            ) : (
-                <div className="flex items-center gap-3 cursor-pointer" onClick={desconectarBalanca} title="Clique para desconectar">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider">
-                      🟢 Balança USB Ativa
-                    </span>
-                    <span className="font-mono text-xl font-bold text-emerald-400 tabular-nums text-right w-full block">
-                      {peso} <span className="text-[10px] text-slate-500">KG</span>
-                    </span>
-                  </div>
-                </div>
-            )}
-          </div>
-
-          <button
-            onClick={handleImprimirTeste}
-            disabled={isPrinting}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold rounded-xl text-sm transition shadow-sm cursor-pointer disabled:opacity-50"
-          >
-            <Printer className="h-4 w-4" />
-            {isPrinting ? 'Enviando...' : 'Testar USB'}
-          </button>
-
           <button
             onClick={() => setModalImportacao(true)}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
@@ -209,13 +148,6 @@ export default function PessoasPage() {
           </button>
         </div>
       </div>
-
-      {erro && (
-        <div className="p-3 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-xl mb-4 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>Erro na Balança: {erro}</span>
-        </div>
-      )}
 
       {feedback && (
         <div className={`p-4 rounded-xl flex items-center justify-between text-sm mb-6 ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
@@ -298,7 +230,6 @@ export default function PessoasPage() {
         </div>
       </div>
 
-      {/* MODAL CADASTRAR/EDITAR PESSOA */}
       {modalNovo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl my-auto">
@@ -334,7 +265,6 @@ export default function PessoasPage() {
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-indigo-500"
                     />
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">O sistema valida a matemática do documento.</p>
                 </div>
 
                 <div className="sm:col-span-2">
@@ -374,9 +304,6 @@ export default function PessoasPage() {
                     Técnico de Campo
                   </label>
                 </div>
-                {form.tipo_pessoa === 'PF' && (
-                  <p className="text-[10px] text-amber-500 mt-3 font-semibold">Nota RH: Para admissão, basta salvar a pessoa. A "Tag" de colaborador é dada automaticamente na tela de Admissão no menu RH.</p>
-                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
@@ -388,7 +315,7 @@ export default function PessoasPage() {
         </div>
       )}
 
-      {/* MODAL DE IMPORTAÇÃO CSV */}
+      {/* Modal de Importação CSV mantido inalterado... */}
       {modalImportacao && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
@@ -411,7 +338,7 @@ export default function PessoasPage() {
                   accept=".csv"
                   required
                   onChange={(e) => setArquivoCsv(e.target.files[0])}
-                  className="w-full text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-white cursor-pointer border border-slate-800 rounded-lg bg-slate-950"
+                  className="w-full text-slate-300 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-white cursor-pointer border border-slate-800 rounded-lg bg-slate-950"
                 />
               </div>
 

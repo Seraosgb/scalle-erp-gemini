@@ -93,4 +93,30 @@ class TenantBillingController extends Controller
 
         return response()->json($faturas);
     }
+    public function alterarPlano(Request $request): JsonResponse
+    {
+        $this->autorizarFinanceiro($request);
+
+        $validated = $request->validate([
+            'plano_slug' => 'required|string|exists:sis_planos,slug',
+        ]);
+
+        $tenantId = $request->user()->tenant_id;
+        $novoPlano = \App\Models\Plano::where('slug', $validated['plano_slug'])->firstOrFail();
+
+        $assinatura = Assinatura::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->firstOrFail();
+
+        $assinatura->update([
+            'plano_id' => $novoPlano->id,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message' => "Plano atualizado com sucesso para {$novoPlano->nome}! Os novos recursos e limites já estão ativos.",
+                'assinatura' => $assinatura->load('plano'),
+            ]
+        ]);
+    }
 }

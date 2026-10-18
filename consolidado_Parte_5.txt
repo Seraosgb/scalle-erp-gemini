@@ -1,0 +1,3582 @@
+﻿longsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class RegraTributaria extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'fis_regras_tributarias';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'descricao',
+        'cfop',
+        'uf_destino',
+        'cst_csosn_icms',
+        'aliquota_icms',
+        'cst_pis',
+        'aliquota_pis',
+        'cst_cofins',
+        'aliquota_cofins',
+        'aliquota_issqn',
+        'cst_ibs_cbs',
+        'aliquota_ibs',
+        'aliquota_cbs',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'aliquota_icms' => 'decimal:2',
+        'aliquota_pis' => 'decimal:2',
+        'aliquota_cofins' => 'decimal:2',
+        'aliquota_issqn' => 'decimal:2',
+        'aliquota_ibs' => 'decimal:2',
+        'aliquota_cbs' => 'decimal:2',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\TabelaDominio.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class TabelaDominio extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'sis_tabelas_dominio';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'tipo_lista',
+        'codigo',
+        'nome',
+        'descricao',
+        'cor_hex',
+        'ordem_exibicao',
+        'is_ativo',
+        'is_sistema',
+        'metadados',
+    ];
+
+    protected $casts = [
+        'is_ativo' => 'boolean',
+        'is_sistema' => 'boolean',
+        'metadados' => 'array',
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Tarefa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\GedDocumento;
+
+class Tarefa extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'prj_tarefas';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'projeto_id', 'etapa_id', 'responsavel_id',
+        'titulo', 'descricao', 'data_vencimento', 'prioridade'
+    ];
+
+    public function projeto()
+    {
+        return $this->belongsTo(Projeto::class, 'projeto_id');
+    }
+
+    public function etapa()
+    {
+        return $this->belongsTo(Etapa::class, 'etapa_id');
+    }
+
+    public function apontamentos()
+    {
+        return $this->hasMany(Apontamento::class, 'tarefa_id');
+    }
+    public function checklists()
+    {
+        return $this->hasMany(PrjTarefaChecklist::class, 'tarefa_id');
+    }
+
+    public function dependencias()
+    {
+        // Tarefas que precisam ser terminadas ANTES desta
+        return $this->belongsToMany(Tarefa::class, 'prj_tarefa_dependencias', 'tarefa_id', 'depende_de_id');
+    }
+
+    public function anexos()
+    {
+        // Ligação polimórfica com o GED
+        return $this->morphMany(GedDocumento::class, 'entidade_vinculada');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Tenant.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class Tenant extends Model
+{
+    use SoftDeletes;
+
+    protected $table = 'sis_tenants';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'nome_fantasia',
+        'razao_social',
+        'documento',
+        'status',
+        'configuracoes',
+    ];
+
+    protected $casts = [
+        'configuracoes' => 'array',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function empresas(): HasMany
+    {
+        return $this->hasMany(Empresa::class, 'tenant_id');
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class, 'tenant_id');
+    }
+
+    public function assinaturas(): HasMany
+    {
+        return $this->hasMany(Assinatura::class, 'tenant_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\TituloFinanceiro.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class TituloFinanceiro extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'fin_titulos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'pessoa_id',
+        'conta_padrao_id',
+        'natureza',
+        'documento_numero',
+        'parcela_numero',
+        'total_parcelas',
+        'origem_tipo',
+        'origem_id',
+        'data_emissao',
+        'data_vencimento',
+        'data_liquidacao',
+        'valor_original',
+        'valor_juros',
+        'valor_multa',
+        'valor_desconto',
+        'valor_pago_acumulado',
+        'valor_saldo_aberto',
+        'status',
+        'historico',
+    ];
+
+    protected $casts = [
+        'data_emissao' => 'date',
+        'data_vencimento' => 'date',
+        'data_liquidacao' => 'date',
+        'valor_original' => 'decimal:2',
+        'valor_juros' => 'decimal:2',
+        'valor_multa' => 'decimal:2',
+        'valor_desconto' => 'decimal:2',
+        'valor_pago_acumulado' => 'decimal:2',
+        'valor_saldo_aberto' => 'decimal:2',
+    ];
+
+    public function pessoa(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'pessoa_id');
+    }
+
+    public function contaPadrao(): BelongsTo
+    {
+        return $this->belongsTo(ContaFinanceira::class, 'conta_padrao_id');
+    }
+
+    public function movimentacoes(): HasMany
+    {
+        return $this->hasMany(MovimentacaoExtrato::class, 'titulo_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\TransferenciaEstoque.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class TransferenciaEstoque extends Model
+{
+    use BelongsToTenant;
+
+    protected $table = 'wms_transferencias';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'deposito_origem_id',
+        'deposito_destino_id',
+        'item_id',
+        'solicitante_id',
+        'recebedor_id',
+        'quantidade_enviada',
+        'quantidade_recebida',
+        'lote',
+        'modalidade',
+        'status',
+        'observacoes',
+        'motivo_divergencia',
+        'data_envio',
+        'data_recebimento',
+    ];
+
+    protected $casts = [
+        'quantidade_enviada' => 'decimal:4',
+        'quantidade_recebida' => 'decimal:4',
+        'data_envio' => 'datetime',
+        'data_recebimento' => 'datetime',
+    ];
+
+    public function origem(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_origem_id');
+    }
+
+    public function destino(): BelongsTo
+    {
+        return $this->belongsTo(Deposito::class, 'deposito_destino_id');
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    public function solicitante(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'solicitante_id');
+    }
+
+    public function recebedor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recebedor_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\User.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes, BelongsToTenant;
+
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_padrao_id',
+        'perfil_id',
+        'name',
+        'email',
+        'telefone',
+        'password',
+        'is_ativo',
+        'mfa_ativo',
+        'mfa_secret',
+        'is_master'
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'mfa_secret',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'is_ativo' => 'boolean',
+            'mfa_ativo' => 'boolean',
+            'is_master' => 'boolean'
+        ];
+    }
+
+    public function perfil(): BelongsTo
+    {
+        return $this->belongsTo(Perfil::class, 'perfil_id');
+    }
+
+    public function empresaPadrao(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class, 'empresa_padrao_id');
+    }
+
+    public function hasPermission(string $slug): bool
+    {
+        if (!$this->perfil) {
+            return false;
+        }
+
+        if ($this->perfil->is_admin) {
+            return true;
+        }
+
+        return $this->perfil->permissoes->contains('slug', $slug);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Vaga.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use App\Traits\BelongsToEmpresa;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Vaga extends Model
+{
+    use HasUuids, SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'rh_vagas';
+
+    // O SEGREDO ESTÁ AQUI: empresa_id liberado para gravação
+    protected $fillable = [
+        'tenant_id', 'empresa_id', 'titulo', 'departamento', 'status', 'descricao'
+    ];
+
+    public function candidatos(): HasMany
+    {
+        return $this->hasMany(Candidato::class, 'vaga_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Veiculo.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class Veiculo extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'fro_veiculos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'motorista_padrao_id',
+        'placa',
+        'marca_modelo',
+        'ano_fabricacao',
+        'chassi',
+        'renavam',
+        'tipo_combustivel',
+        'km_atual',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'km_atual' => 'decimal:2',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function manutencoes(): HasMany
+    {
+        return $this->hasMany(ManutencaoVeiculo::class, 'veiculo_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Scopes\GlobalScopeTenant.php
+========================================
+<?php
+
+namespace App\Models\Scopes;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Scope;
+use Illuminate\Support\Facades\App;
+
+class GlobalScopeTenant implements Scope
+{
+    public function apply(Builder $builder, Model $model): void
+    {
+        // Se houver um tenant ativo no contexto da aplicação, força o filtro
+        if (App::bound('current_tenant_id') && !empty(App::make('current_tenant_id'))) {
+            $tenantId = App::make('current_tenant_id');
+            $builder->where($model->qualifyColumn('tenant_id'), $tenantId);
+        }
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Providers\AppServiceProvider.php
+========================================
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use App\Interfaces\FiscalDriverInterface;
+use App\Services\Fiscal\SefazNfeDriver;
+
+class AppServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     */
+    public function register(): void
+    {
+        $this->app->bind(\App\Interfaces\FiscalDriverInterface::class, function ($app) {
+            // Retorna o driver limpo. A controller/service injetará o certificado dinamicamente.
+            return new \App\Services\Fiscal\SefazNfeDriver();
+        });
+    }
+
+    /**
+     * Bootstrap any application services.
+     */
+    public function boot(): void
+    {
+        //
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Scopes\EmpresaScope.php
+========================================
+<?php
+
+namespace App\Scopes;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Scope;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Schema;
+
+class EmpresaScope implements Scope
+{
+    public function apply(Builder $builder, Model $model)
+    {
+        if (app()->runningInConsole() || App::bound('bypass_empresa_scope')) {
+            return;
+        }
+
+        $empresaId = App::bound('current_empresa_id') ? App::make('current_empresa_id') : null;
+
+        if ($empresaId && Schema::hasColumn($model->getTable(), 'empresa_id')) {
+            $builder->where($model->getTable() . '.empresa_id', $empresaId);
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Scopes\TenantScope.php
+========================================
+<?php
+
+namespace App\Scopes;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Scope;
+use Illuminate\Support\Facades\App;
+use RuntimeException;
+
+class TenantScope implements Scope
+{
+    public function apply(Builder $builder, Model $model): void
+    {
+        // 1. Bypass explícito para comandos de console e rotinas de deploy
+        if (app()->runningInConsole() || App::bound('bypass_tenant_scope')) {
+            return;
+        }
+
+        // 2. Bypass para o SaaS Owner (Master Global): visão irrestrita de sustentação da plataforma
+        $user = auth()->user() ?? request()?->user();
+        if ($user && ($user->is_master ?? false)) {
+            return;
+        }
+
+        $tenantId = App::bound('current_tenant_id') ? App::make('current_tenant_id') : null;
+
+        // Se o container não tiver tenant_id, mas o usuário autenticado tiver, resolve e injeta automaticamente
+        if (!$tenantId && $user && !empty($user->tenant_id)) {
+            $tenantId = $user->tenant_id;
+            App::instance('current_tenant_id', $tenantId);
+        }
+
+        if (!$tenantId) {
+            $modelClass = class_basename($model);
+
+            // Bypass de Autenticação inicial e Resolução de Sessão:
+            // Permite checar Usuário, Token e Perfil antes de amarrar o tenant ativo
+            if (in_array($modelClass, ['User', 'PersonalAccessToken', 'Perfil'], true)) {
+                return;
+            }
+
+            // Permite rotas preliminares de autenticação pública resolverem credenciais
+            if (request()?->is('api/auth/*')) {
+                return;
+            }
+
+            // Strict Mode: Bloqueia qualquer outra tabela operacional sem contexto válido
+            throw new RuntimeException("🔒 Vazamento Evitado [Padrão Gemini]: Tentativa de consulta no model " . $modelClass . " sem contexto de Tenant definido.");
+        }
+
+        // Aplica a blindagem hermética por tenant para o model atual
+        $builder->where($model->getTable() . '.tenant_id', $tenantId);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\AsaasGatewayService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\Plano;
+use App\Models\Tenant;
+use Illuminate\Support\Facades\Http;
+use Exception;
+
+class AsaasGatewayService
+{
+    private string $baseUrl;
+    private string $apiKey;
+
+    public function __construct()
+    {
+        $this->baseUrl = config('services.asaas.base_url', 'https://sandbox.asaas.com/api/v3');
+        $this->apiKey = config('services.asaas.api_key', env('ASAAS_API_KEY'));
+    }
+
+    /**
+     * Cria ou recupera o Customer no Asaas para o Tenant
+     */
+    /**
+     * Cria ou recupera o Customer no Asaas para o Tenant
+     */
+    public function criarOuAtualizarCliente(Tenant $tenant): string
+    {
+        $docLimpo = preg_replace('/[^0-9]/', '', $tenant->documento);
+
+        $payload = [
+            'name' => $tenant->razao_social,
+            'cpfCnpj' => $docLimpo,
+            'email' => 'financeiro@' . strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $tenant->nome_fantasia)) . '.com.br',
+            'mobilePhone' => '21999998888',
+            'externalReference' => $tenant->id,
+            'notificationDisabled' => true,
+        ];
+
+        $request = Http::withHeaders(['access_token' => $this->apiKey]);
+
+        if (app()->environment('local', 'testing')) {
+            $request->withoutVerifying();
+        }
+
+        $response = $request->post("{$this->baseUrl}/customers", $payload);
+
+        if (!$response->successful()) {
+            throw new \Exception('Erro ao criar cliente no Asaas: ' . $response->body());
+        }
+
+        return $response->json('id');
+    }
+    /**
+     * Gera a assinatura híbrida: aceita todos os meios e configura o trial dinâmico
+     */
+    public function criarAssinatura(string $customerId, Plano $plano, int $trialSemanas = 0): array
+    {
+        // Regra do Trial Híbrido: Se for 0, cobra hoje. Se for > 0, joga o primeiro vencimento para frente.
+        $dataVencimento = $trialSemanas > 0
+            ? now()->addWeeks($trialSemanas)->toDateString()
+            : now()->toDateString();
+
+        $payload = [
+            'customer' => $customerId,
+            'billingType' => 'UNDEFINED', // Permite PIX, Boleto e Cartão na mesma fatura
+            'value' => (float) $plano->valor_mensal,
+            'nextDueDate' => $dataVencimento,
+            'cycle' => 'MONTHLY',
+            'description' => "Assinatura Mensal Scalle ERP - {$plano->nome}",
+        ];
+
+        $response = Http::withHeaders(['access_token' => $this->apiKey])
+            ->post("{$this->baseUrl}/subscriptions", $payload);
+
+        if (!$response->successful()) {
+            throw new Exception('Erro ao gerar assinatura no Asaas: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\CartaoGatewayService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use Exception;
+
+class CartaoGatewayService
+{
+    /**
+     * Processa a transação de cartão de crédito/débito com gateway ou terminal TEF
+     */
+    public static function processarTransacao(
+        float $valor,
+        string $modalidade, // CARTAO_CREDITO ou CARTAO_DEBITO
+        int $parcelas = 1,
+        ?array $dadosCartao = null
+    ): array {
+        if ($valor <= 0) {
+            throw new Exception("O valor da transação deve ser maior que zero.");
+        }
+
+        // Mock / Integração Gateway (ex: Asaas, Stone, MercadoPago)
+        $nsu = 'NSU' . date('YmdHis') . mt_rand(1000, 9999);
+        $autorizacao = strtoupper(substr(md5(uniqid()), 0, 6));
+
+        // Taxa MDR estimada para conciliação bancária
+        $taxaMdrPercentual = ($modalidade === 'CARTAO_DEBITO') ? 1.20 : (2.50 + (($parcelas - 1) * 0.80));
+        $valorTaxaMdr = round($valor * ($taxaMdrPercentual / 100), 2);
+        $valorLiquidoReceber = $valor - $valorTaxaMdr;
+
+        return [
+            'sucesso' => true,
+            'nsu' => $nsu,
+            'codigo_autorizacao' => $autorizacao,
+            'bandeira' => $dadosCartao['bandeira'] ?? 'VISA/MASTERCARD',
+            'taxa_mdr_percentual' => $taxaMdrPercentual,
+            'valor_taxa_mdr' => $valorTaxaMdr,
+            'valor_liquido_receber' => $valorLiquidoReceber,
+            'mensagem' => 'Transação autorizada com sucesso pela adquirente.',
+        ];
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\DocumentoService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use Illuminate\Support\Facades\Http;
+
+class DocumentoService
+{
+    /**
+     * Validação matemática pura de CPF e CNPJ
+     */
+    public static function validarCpfCnpj(string $documento): bool
+    {
+        $doc = preg_replace('/[^0-9]/', '', $documento);
+
+        if (strlen($doc) === 11) {
+            return self::validarCpf($doc);
+        }
+
+        if (strlen($doc) === 14) {
+            return self::validarCnpj($doc);
+        }
+
+        return false;
+    }
+
+    /**
+     * Consulta CNPJ na ReceitaWS com Fallback/Timeout
+     */
+    public static function consultarCnpjReceitaWs(string $cnpj): ?array
+    {
+        $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
+
+        if (strlen($cnpjLimpo) !== 14 || !self::validarCnpj($cnpjLimpo)) {
+            return null; // Nem perde tempo na API se a matemática falhar
+        }
+
+        try {
+            // Timeout de 5s para não travar o ERP se a ReceitaWS cair
+            $response = Http::timeout(5)->get("https://receitaws.com.br/v1/cnpj/{$cnpjLimpo}");
+
+            if ($response->successful() && $response->json('status') !== 'ERROR') {
+                return $response->json();
+            }
+        } catch (\Exception $e) {
+            // Log silencioso pode ser adicionado aqui
+        }
+
+        return null;
+    }
+
+    private static function validarCpf(string $cpf): bool
+    {
+        if (preg_match('/(\d)\1{10}/', $cpf)) return false;
+        for ($t = 9; $t < 11; $t++) {
+            for ($d = 0, $c = 0; $c < $t; $c++) {
+                $d += $cpf[$c] * (($t + 1) - $c);
+            }
+            $d = ((10 * $d) % 11) % 10;
+            if ($cpf[$c] != $d) return false;
+        }
+        return true;
+    }
+
+    private static function validarCnpj(string $cnpj): bool
+    {
+        if (preg_match('/(\d)\1{13}/', $cnpj)) return false;
+        $b = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        for ($i = 0, $n = 0; $i < 12; $n += $cnpj[$i] * $b[++$i]);
+        if ($cnpj[12] != ((($n %= 11) < 2) ? 0 : 11 - $n)) return false;
+        for ($i = 0, $n = 0; $i <= 12; $n += $cnpj[$i] * $b[$i++]);
+        if ($cnpj[13] != ((($n %= 11) < 2) ? 0 : 11 - $n)) return false;
+        return true;
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\EstoqueService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\EstoqueDeposito;
+use App\Models\MovimentacaoEstoque;
+use App\Models\TransferenciaEstoque;
+use App\Models\User;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class EstoqueService
+{
+    /**
+     * Executa movimentação atômica de entrada ou saída com registro de Kardex
+     */
+    public static function movimentar(
+        string $depositoId,
+        string $itemId,
+        float $quantidade,
+        string $tipoMovimento,
+        ?string $usuarioId = null,
+        ?string $documentoTipo = null,
+        ?string $documentoId = null,
+        ?string $lote = null,
+        float $custoUnitario = 0.00
+    ): EstoqueDeposito {
+        return DB::transaction(function () use (
+            $depositoId,
+            $itemId,
+            $quantidade,
+            $tipoMovimento,
+            $usuarioId,
+            $documentoTipo,
+            $documentoId,
+            $lote,
+            $custoUnitario
+        ) {
+            $isSaida = in_array($tipoMovimento, [
+                'SAIDA_VENDA', 
+                'SAIDA_OS', 
+                'TRANSFERENCIA_SAIDA', 
+                'SAIDA_PRODUCAO'
+            ]);
+
+            // 1. Resolução Automática de Lote via FEFO/FIFO se não informado
+            if ($isSaida && empty($lote)) {
+                $loteSugerido = self::resolverLoteFefo($depositoId, $itemId, $quantidade);
+                if ($loteSugerido) {
+                    $lote = $loteSugerido->lote;
+                }
+            }
+
+            // 2. Bloqueio pessimista do registro de saldo
+            $registroEstoque = EstoqueDeposito::where('deposito_id', $depositoId)
+                ->where('item_id', $itemId)
+                ->when($lote, fn($q) => $q->where('lote', $lote))
+                ->lockForUpdate()
+                ->first();
+
+            if (!$registroEstoque) {
+                $registroEstoque = EstoqueDeposito::create([
+                    'id' => (string) Str::uuid(),
+                    'deposito_id' => $depositoId,
+                    'item_id' => $itemId,
+                    'lote' => $lote,
+                    'quantidade_saldo' => 0.0000,
+                    'quantidade_reservada' => 0.0000,
+                ]);
+            }
+
+            $saldoAnterior = (float) $registroEstoque->quantidade_saldo;
+
+            if ($isSaida && ($saldoAnterior < $quantidade)) {
+                throw new Exception("Saldo insuficiente no almoxarifado selecionado. Disponível: {$saldoAnterior}, Solicitado: {$quantidade}");
+            }
+
+            $saldoPosterior = $isSaida ? ($saldoAnterior - $quantidade) : ($saldoAnterior + $quantidade);
+
+            // 3. Atualizar o saldo físico
+            $registroEstoque->update([
+                'quantidade_saldo' => $saldoPosterior,
+            ]);
+
+            // 4. Trilha Kardex
+            MovimentacaoEstoque::create([
+                'id' => (string) Str::uuid(),
+                'deposito_id' => $depositoId,
+                'item_id' => $itemId,
+                'usuario_id' => $usuarioId,
+                'tipo_movimento' => $tipoMovimento,
+                'quantidade' => $quantidade,
+                'saldo_anterior' => $saldoAnterior,
+                'saldo_posterior' => $saldoPosterior,
+                'custo_unitario' => $custoUnitario,
+                'documento_origem_tipo' => $documentoTipo,
+                'documento_origem_id' => $documentoId,
+                'motivo' => $lote ? "Lote: {$lote}" : "Movimentação Geral",
+                'created_at' => now(),
+            ]);
+
+            return $registroEstoque;
+        });
+    }
+
+    /**
+     * Sugere o melhor lote para saída seguindo FEFO (validade mais próxima) com fallback para FIFO
+     */
+    public static function resolverLoteFefo(string $depositoId, string $itemId, float $quantidade): ?EstoqueDeposito
+    {
+        $fefo = EstoqueDeposito::where('deposito_id', $depositoId)
+            ->where('item_id', $itemId)
+            ->whereNotNull('data_validade')
+            ->where('quantidade_saldo', '>=', $quantidade)
+            ->orderBy('data_validade', 'asc')
+            ->first();
+
+        if ($fefo) {
+            return $fefo;
+        }
+
+        return EstoqueDeposito::where('deposito_id', $depositoId)
+            ->where('item_id', $itemId)
+            ->where('quantidade_saldo', '>=', $quantidade)
+            ->orderBy('created_at', 'asc')
+            ->first();
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\ExportacaoContabilService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\Compra;
+use App\Models\DocumentoFiscal;
+use App\Models\Empresa;
+use App\Models\Item;
+use App\Models\PedidoVenda;
+use App\Models\Pessoa;
+use App\Models\TituloFinanceiro;
+use Carbon\Carbon;
+use Exception;
+
+class ExportacaoContabilService
+{
+    /**
+     * Gera o arquivo TXT no formato Domínio Sistemas (Lançamentos Contábeis)
+     */
+    public static function gerarDominioSistemas(string $tenantId, string $empresaId, string $dataInicio, string $dataFim): string
+    {
+        $empresa = Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($empresaId);
+
+        $titulosLiquidados = TituloFinanceiro::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->where('status', 'LIQUIDADO')
+            ->whereBetween('data_liquidacao', [$dataInicio, $dataFim])
+            ->with(['pessoa', 'contaPadrao'])
+            ->orderBy('data_liquidacao')
+            ->get();
+
+        $linhas = [];
+
+        foreach ($titulosLiquidados as $titulo) {
+            $data = Carbon::parse($titulo->data_liquidacao)->format('d/m/Y');
+            $debito = ($titulo->natureza === 'RECEBER') ? '1.1.01.01' : '2.1.01.01';
+            $credito = ($titulo->natureza === 'RECEBER') ? '3.1.01.01' : '1.1.01.01';
+            $valor = number_format((float) $titulo->valor_pago_acumulado, 2, ',', '');
+            $historico = strtoupper(substr("LIQUIDACAO {$titulo->natureza} DOC: {$titulo->documento_numero} - {$titulo->pessoa?->nome_razao_social}", 0, 100));
+
+            // Layout Domínio Sistemas: DATA | DEBITO | CREDITO | VALOR | COD_HISTORICO | HISTORICO
+            $linhas[] = "{$data}|{$debito}|{$credito}|{$valor}||{$historico}";
+        }
+
+        return implode("\r\n", $linhas);
+    }
+
+    /**
+     * Gera o arquivo TXT no formato SPED Fiscal ICMS/IPI (Blocos 0, C, E e 9)
+     */
+    public static function gerarSpedFiscal(string $tenantId, string $empresaId, string $dataInicio, string $dataFim): string
+    {
+        $empresa = Empresa::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($empresaId);
+        $dtIniSped = Carbon::parse($dataInicio)->format('dmY');
+        $dtFimSped = Carbon::parse($dataFim)->format('dmY');
+
+        $linhas = [];
+
+        // --- BLOCO 0: ABERTURA E IDENTIFICAÇÃO ---
+        $linhas[] = "|0000|018|0|{$dtIniSped}|{$dtFimSped}|" . strtoupper($empresa->razao_social) . "|" . preg_replace('/[^0-9]/', '', $empresa->cnpj) . "||RJ|" . ($empresa->inscricao_estadual ?? 'ISENTO') . "|||A|1|";
+        $linhas[] = "|0001|0|";
+        $linhas[] = "|0005|" . strtoupper($empresa->nome_fantasia) . "|26110000|AVENIDA AUTOMOVEL CLUBE|1500||CENTRO|21999999999||contato@scalle.com.br|";
+        $linhas[] = "|0100|CONTADOR RESPONSAVEL|00000000000|000000/O-0|00000000000|26110000|RUA PRINCIPAL|100||CENTRO|21999999999||contador@scalle.com.br|3300456|";
+
+        // Participantes (Pessoas)
+        $pessoas = Pessoa::withoutGlobalScopes()->where('tenant_id', $tenantId)->get();
+        foreach ($pessoas as $p) {
+            $doc = preg_replace('/[^0-9]/', '', $p->cpf_cnpj);
+            $tipoDoc = strlen($doc) === 14 ? "{$doc}||" : "|{$doc}|";
+            $linhas[] = "|0150|{$p->id}|" . strtoupper($p->nome_razao_social) . "|1058|{$tipoDoc}||3300456||RUA PRINCIPAL|100||CENTRO|";
+        }
+
+        // Catálogo de Itens
+        $itens = Item::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('tipo_item', '!=', 'SERVICO')->get();
+        foreach ($itens as $it) {
+            $linhas[] = "|0200|{$it->codigo_sku}|" . strtoupper($it->nome) . "|" . ($it->codigo_barras_ean ?? '') . "||{$it->unidade_medida}|00|" . ($it->ncm ?? '00000000') . "|||||";
+        }
+
+        $linhas[] = "|0990|" . (count($linhas) + 1) . "|";
+
+        // --- BLOCO C: DOCUMENTOS FISCAIS DE MERCADORIAS ---
+        $blocoC = [];
+        $blocoC[] = "|C001|0|";
+
+        $docsFiscais = DocumentoFiscal::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->where('status', 'AUTORIZADO')
+            ->whereBetween('data_emissao', [$dataInicio, $dataFim])
+            ->with(['destinatario'])
+            ->get();
+
+        foreach ($docsFiscais as $doc) {
+            $dtDoc = Carbon::parse($doc->data_emissao)->format('dmY');
+            $vlrDoc = number_format((float) $doc->valor_total_documento, 2, ',', '');
+            $vlrIcms = number_format((float) $doc->valor_icms, 2, ',', '');
+            $vlrPis = number_format((float) $doc->valor_pis, 2, ',', '');
+            $vlrCofins = number_format((float) $doc->valor_cofins, 2, ',', '');
+
+            $blocoC[] = "|C100|1|0|{$doc->destinatario_id}|{$doc->modelo_documento}|00|{$doc->serie}|{$doc->numero_documento}|{$doc->chave_acesso}|{$dtDoc}|{$dtDoc}|{$vlrDoc}|1|0,00|0,00|{$vlrDoc}|0|0,00|0,00|0,00|{$vlrDoc}|{$vlrIcms}|0,00|0,00|{$vlrPis}|{$vlrCofins}|0,00|0,00|";
+        }
+
+        $blocoC[] = "|C990|" . (count($blocoC) + 1) . "|";
+        $linhas = array_merge($linhas, $blocoC);
+
+        // --- BLOCO E: APURAÇÃO DO ICMS ---
+        $blocoE = [];
+        $blocoE[] = "|E001|0|";
+        $blocoE[] = "|E100|{$dtIniSped}|{$dtFimSped}|";
+        $blocoE[] = "|E110|0,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|";
+        $blocoE[] = "|E990|" . (count($blocoE) + 1) . "|";
+        $linhas = array_merge($linhas, $blocoE);
+
+        // --- BLOCO 9: TOTALIZADORES DO ARQUIVO ---
+        $bloco9 = [];
+        $bloco9[] = "|9001|0|";
+        $bloco9[] = "|9900|0000|1|";
+        $bloco9[] = "|9900|C100|" . count($docsFiscais) . "|";
+        $bloco9[] = "|9990|" . (count($bloco9) + 2) . "|";
+        
+        $totalRegistros = count($linhas) + count($bloco9) + 1;
+        $bloco9[] = "|9999|{$totalRegistros}|";
+        $linhas = array_merge($linhas, $bloco9);
+
+        return implode("\r\n", $linhas);
+    }
+
+    /**
+     * Gera CSV Analítico dos Lançamentos Financeiros e DRE
+     */
+    public static function gerarCsvFinanceiro(string $tenantId, string $empresaId, string $dataInicio, string $dataFim): string
+    {
+        $titulos = TituloFinanceiro::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->whereBetween('data_emissao', [$dataInicio, $dataFim])
+            ->with(['pessoa', 'contaPadrao'])
+            ->orderBy('data_vencimento')
+            ->get();
+
+        $output = fopen('php://temp', 'r+');
+        fputcsv($output, ['Documento', 'Natureza', 'Pessoa/Cliente/Fornecedor', 'CPF/CNPJ', 'Emissao', 'Vencimento', 'Liquidacao', 'Valor Original', 'Desconto', 'Valor Pago', 'Saldo Aberto', 'Status', 'Historico'], ';');
+
+        foreach ($titulos as $t) {
+            fputcsv($output, [
+                $t->documento_numero,
+                $t->natureza,
+                $t->pessoa?->nome_razao_social,
+                $t->pessoa?->cpf_cnpj,
+                $t->data_emissao,
+                $t->data_vencimento,
+                $t->data_liquidacao ?? '-',
+                number_format((float) $t->valor_original, 2, ',', '.'),
+                number_format((float) $t->valor_desconto, 2, ',', '.'),
+                number_format((float) $t->valor_pago_acumulado, 2, ',', '.'),
+                number_format((float) $t->valor_saldo_aberto, 2, ',', '.'),
+                $t->status,
+                $t->historico ?? '',
+            ], ';');
+        }
+
+        rewind($output);
+        $csvConteudo = stream_get_contents($output);
+        fclose($output);
+
+        return $csvConteudo;
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\FinanceiroService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\ContaFinanceira;
+use App\Models\MovimentacaoExtrato;
+use App\Models\TituloFinanceiro;
+use App\Models\User;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class FinanceiroService
+{
+    /**
+     * Realiza a liquidação (total ou parcial) de um título e atualiza o saldo da conta financeira
+     */
+    public static function liquidarTitulo(
+        TituloFinanceiro $titulo,
+        string $contaFinanceiraId,
+        float $valorPago,
+        float $juros = 0.00,
+        float $multa = 0.00,
+        float $desconto = 0.00,
+        string $formaPagamento = 'PIX',
+        ?User $usuario = null
+    ): TituloFinanceiro {
+        return DB::transaction(function () use (
+            $titulo,
+            $contaFinanceiraId,
+            $valorPago,
+            $juros,
+            $multa,
+            $desconto,
+            $formaPagamento,
+            $usuario
+        ) {
+            // 1. Bloqueio pessimista da conta financeira para garantir concorrência
+            $conta = ContaFinanceira::where('id', $contaFinanceiraId)->lockForUpdate()->firstOrFail();
+
+            $saldoAnterior = (float) $conta->saldo_atual;
+            $tipoMovimento = ($titulo->natureza === 'RECEBER') ? 'ENTRADA' : 'SAIDA';
+            $saldoPosterior = ($tipoMovimento === 'ENTRADA') ? ($saldoAnterior + $valorPago) : ($saldoAnterior - $valorPago);
+
+            // 2. Atualizar saldo da conta
+            $conta->update(['saldo_atual' => $saldoPosterior]);
+
+            // 3. Gravar Movimentação no Extrato
+            MovimentacaoExtrato::create([
+                'id' => (string) Str::uuid(),
+                'conta_financeira_id' => $conta->id,
+                'titulo_id' => $titulo->id,
+                'usuario_id' => $usuario?->id,
+                'tipo_movimento' => $tipoMovimento,
+                'valor' => $valorPago,
+                'saldo_anterior' => $saldoAnterior,
+                'saldo_posterior' => $saldoPosterior,
+                'forma_pagamento' => $formaPagamento,
+                'data_movimento' => now()->toDateString(),
+                'descricao' => "Liquidação ({$titulo->natureza}): Doc #{$titulo->documento_numero}",
+                'created_at' => now(),
+            ]);
+
+            // 4. Atualizar valores do título
+            $novoPagoAcumulado = (float) $titulo->valor_pago_acumulado + $valorPago;
+            $valorEfetivoTitulo = ((float) $titulo->valor_original + $juros + $multa) - $desconto;
+            $novoSaldoAberto = max(0.00, $valorEfetivoTitulo - $novoPagoAcumulado);
+            $novoStatus = ($novoSaldoAberto <= 0.00) ? 'LIQUIDADO' : 'PARCIAL';
+
+            $titulo->update([
+                'valor_juros' => (float) $titulo->valor_juros + $juros,
+                'valor_multa' => (float) $titulo->valor_multa + $multa,
+                'valor_desconto' => (float) $titulo->valor_desconto + $desconto,
+                'valor_pago_acumulado' => $novoPagoAcumulado,
+                'valor_saldo_aberto' => $novoSaldoAberto,
+                'status' => $novoStatus,
+                'data_liquidacao' => ($novoStatus === 'LIQUIDADO') ? now()->toDateString() : null,
+            ]);
+
+            return $titulo;
+        });
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\ImportadorXmlNfeService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\Compra;
+use App\Models\CompraItem;
+use App\Models\Item;
+use App\Models\Pessoa;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use SimpleXMLElement;
+
+class ImportadorXmlNfeService
+{
+    /**
+     * Realiza a leitura do XML da NF-e, vincula fornecedor/itens e lança a compra com entrada em estoque
+     */
+    public static function processarXml(string $xmlString, string $empresaId, string $depositoId, ?string $usuarioId = null): Compra
+    {
+        // Remove namespaces para facilitar a navegação limpa via SimpleXMLElement
+        $xmlClean = preg_replace('/xmlns[^=]*="[^"]*"/i', '', $xmlString);
+        $xml = new SimpleXMLElement($xmlClean);
+
+        $infNFe = null;
+        if (isset($xml->infNFe)) {
+            $infNFe = $xml->infNFe;
+        } elseif (isset($xml->NFe->infNFe)) {
+            $infNFe = $xml->NFe->infNFe;
+        }
+
+        if (!$infNFe) {
+            throw new Exception("Formato de XML de NF-e inválido ou não suportado.");
+        }
+
+        $chaveAcesso = str_replace('NFe', '', (string) $infNFe->attributes()->Id);
+        
+        // 1. Dados do Emitente / Fornecedor
+        $cnpjFornecedor = (string) ($infNFe->emit->CNPJ ?? $infNFe->emit->CPF);
+        $razaoSocialFornecedor = (string) $infNFe->emit->xNome;
+        $nomeFantasiaFornecedor = (string) ($infNFe->emit->xFant ?? $razaoSocialFornecedor);
+
+        return DB::transaction(function () use ($infNFe, $chaveAcesso, $cnpjFornecedor, $razaoSocialFornecedor, $nomeFantasiaFornecedor, $empresaId, $depositoId, $usuarioId, $xmlString) {
+            // Localizar ou cadastrar automaticamente o fornecedor
+            $fornecedor = Pessoa::firstOrCreate(
+                ['cpf_cnpj' => $cnpjFornecedor],
+                [
+                    'tipo_pessoa' => strlen($cnpjFornecedor) === 14 ? 'PJ' : 'PF',
+                    'nome_razao_social' => $razaoSocialFornecedor,
+                    'nome_fantasia_apelido' => $nomeFantasiaFornecedor,
+                    'is_fornecedor' => true,
+                    'is_cliente' => false,
+                ]
+            );
+
+            // 2. Criar o Registro Principal da Compra
+            $compra = Compra::create([
+                'id' => (string) Str::uuid(),
+                'empresa_id' => $empresaId,
+                'fornecedor_id' => $fornecedor->id,
+                'deposito_destino_id' => $depositoId,
+                'comprador_id' => $usuarioId,
+                'numero_nota' => (string) $infNFe->ide->nNF,
+                'serie_nota' => (string) $infNFe->ide->serie,
+                'chave_acesso_nfe' => $chaveAcesso,
+                'status' => 'RECEBIDO',
+                'data_emissao' => substr((string) $infNFe->ide->dhEmi, 0, 10),
+                'valor_produtos' => (float) $infNFe->total->ICMSTot->vProd,
+                'valor_frete' => (float) $infNFe->total->ICMSTot->vFrete,
+                'valor_total' => (float) $infNFe->total->ICMSTot->vNF,
+                'xml_conteudo' => $xmlString,
+            ]);
+
+            // 3. Processar Itens da Nota
+            foreach ($infNFe->det as $detalhe) {
+                $prod = $detalhe->prod;
+                $cProd = (string) $prod->cProd;
+                $xProd = (string) $prod->xProd;
+                $ncm = (string) $prod->NCM;
+                $qCom = (float) $prod->qCom;
+                $vUnCom = (float) $prod->vUnCom;
+                $vProd = (float) $prod->vProd;
+                $uCom = (string) $prod->uCom;
+
+                // De-para de produto: busca por código SKU ou cria novo item
+                $item = Item::firstOrCreate(
+                    ['codigo_sku' => $cProd],
+                    [
+                        'nome' => $xProd,
+                        'ncm' => $ncm,
+                        'unidade_medida' => strtoupper($uCom),
+                        'preco_custo' => $vUnCom,
+                        'preco_venda' => $vUnCom * 1.5,
+                        'controla_estoque' => true,
+                    ]
+                );
+
+                // Criar item da compra
+                CompraItem::create([
+                    'compra_id' => $compra->id,
+                    'item_id' => $item->id,
+                    'codigo_fornecedor' => $cProd,
+                    'descricao_fornecedor' => $xProd,
+                    'unidade_fornecedor' => $uCom,
+                    'fator_conversao' => 1.0000,
+                    'quantidade_comercial' => $qCom,
+                    'quantidade_estoque' => $qCom,
+                    'valor_unitario' => $vUnCom,
+                    'valor_total_item' => $vProd,
+                ]);
+
+                // 4. Executar Entrada Automática no Estoque via EstoqueService
+                EstoqueService::movimentar(
+                    $depositoId,
+                    $item->id,
+                    $qCom,
+                    'ENTRADA_COMPRA',
+                    $usuarioId,
+                    'compras',
+                    $compra->id,
+                    null,
+                    $vUnCom
+                );
+            }
+
+            return $compra;
+        });
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\MotorAlcadaService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\AlcadaAprovacao;
+use App\Models\User;
+use Illuminate\Support\Str;
+
+class MotorAlcadaService
+{
+    /**
+     * Valida se a concessão de desconto comercial requer aprovação de alçada
+     */
+    public static function validarDesconto(User $solicitante, string $entidade, string $registroId, float $percentualDesconto, float $valorDesconto): array
+    {
+        // Administradores possuem alçada livre
+        if ($solicitante->perfil && $solicitante->perfil->is_admin) {
+            return ['requer_aprovacao' => false, 'aprovado_automatico' => true];
+        }
+
+        // Regra de Negócio: Descontos comerciais acima de 10% exigem alçada de ADMIN
+        if ($percentualDesconto > 10.00) {
+            $solicitacao = AlcadaAprovacao::create([
+                'id' => (string) Str::uuid(),
+                'solicitante_id' => $solicitante->id,
+                'tipo_operacao' => 'DESCONTO_VENDA',
+                'entidade_origem' => $entidade,
+                'registro_origem_id' => $registroId,
+                'valor_solicitado' => $valorDesconto,
+                'percentual_solicitado' => $percentualDesconto,
+                'status' => 'PENDENTE',
+                'justificativa_solicitacao' => "Desconto de {$percentualDesconto}% superior ao limite operacional permitido (10%).",
+            ]);
+
+            return [
+                'requer_aprovacao' => true,
+                'aprovado_automatico' => false,
+                'solicitacao_id' => $solicitacao->id,
+            ];
+        }
+
+        return ['requer_aprovacao' => false, 'aprovado_automatico' => true];
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\MotorFiscalService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\CertificadoA1;
+use App\Models\DocumentoFiscal;
+use App\Models\Empresa;
+use App\Models\Pessoa;
+use App\Services\Fiscal\NfePhpDriver;
+use Illuminate\Support\Facades\Crypt;
+use Exception;
+use NFePHP\NFe\Common\Standardize;
+use NFePHP\DA\NFe\Danfce;
+
+class MotorFiscalService
+{
+    private static function instanciarDriver(string $tenantId, string $empresaId): NfePhpDriver
+    {
+        $certificadoDb = CertificadoA1::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('empresa_id', $empresaId)
+            ->where('is_ativo', true)
+            ->first();
+
+        if (!$certificadoDb) throw new Exception("Nenhum Certificado A1 ativo encontrado.");
+
+        $pfxBinario = Crypt::decrypt($certificadoDb->arquivo_binario_criptografado);
+        $senha = Crypt::decrypt($certificadoDb->senha_criptografada);
+        $tpAmb = 2; // Homologação
+
+        $driver = new NfePhpDriver();
+        $driver->configurar(
+            $pfxBinario, $senha, 'RJ', $tpAmb,
+            $certificadoDb->cnpj_certificado, $certificadoDb->razao_social_certificado
+        );
+        return $driver;
+    }
+
+    public static function pingSefaz(string $tenantId, string $empresaId, string $uf = 'RJ'): array
+    {
+        $driver = self::instanciarDriver($tenantId, $empresaId);
+        return $driver->verificarStatusSefaz($uf);
+    }
+
+    public static function prepararDocumento(Empresa $empresa, Pessoa $destinatario, string $modelo, array $itens): DocumentoFiscal
+    {
+        $driver = self::instanciarDriver($empresa->tenant_id, $empresa->id);
+
+        $ultimoNumero = DocumentoFiscal::where('empresa_id', $empresa->id)->max('numero_documento') ?? 1000;
+
+        $dadosEmissao = [
+            'tenant_id' => $empresa->tenant_id,
+            'empresa_id' => $empresa->id,
+            'modelo' => $modelo,
+            'numero' => $ultimoNumero + 1,
+            'emitente' => $empresa->toArray(),
+            'destinatario' => $destinatario->toArray(),
+            'itens' => $itens
+        ];
+
+        return $driver->emitir($dadosEmissao);
+    }
+
+    public static function processarTransmissaoSefaz(DocumentoFiscal $documento): void
+    {
+        try {
+            $driver = self::instanciarDriver($documento->tenant_id, $documento->empresa_id);
+
+            // Recarrega o modelo para garantir que o xml_conteudo mais fresco foi carregado do banco
+            $documento->refresh();
+            $xmlAssinado = $documento->xml_conteudo;
+
+            if (empty($xmlAssinado)) {
+                throw new Exception("O XML assinado não foi gravado na base de dados (Null).");
+            }
+
+            $reflection = new \ReflectionClass($driver);
+            $property = $reflection->getProperty('tools');
+            $property->setAccessible(true);
+            $tools = $property->getValue($driver);
+
+            // Atualiza o Tools com o modelo exato do documento (Importante para a Sefaz)
+            $tools->model($documento->modelo_documento);
+
+            $idLote = str_pad(100, 15, '0', STR_PAD_LEFT);
+
+            $respSefaz = $tools->sefazEnviaLote([$xmlAssinado], $idLote);
+
+            $std = (new Standardize())->toStd($respSefaz);
+            $cStat = $std->cStat;
+            $xMotivo = $std->xMotivo;
+
+            if ($cStat == 103 || $cStat == 104) {
+                $documento->update([
+                    'status' => 'AUTORIZADO',
+                    'mensagem_sefaz' => "Autorizado o uso da NFe. CSTAT: {$cStat}",
+                ]);
+            } else {
+                $documento->update([
+                    'status' => 'REJEITADO',
+                    'mensagem_sefaz' => "Rejeição: {$xMotivo} (cStat: {$cStat})"
+                ]);
+            }
+
+        } catch (Exception $e) {
+            $documento->update([
+                'status' => 'FALHA_COMUNICACAO',
+                'mensagem_sefaz' => 'Falha na transmissão Sefaz: ' . $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    public static function gerarDanfceBase64(DocumentoFiscal $documento): ?string
+    {
+        try {
+            if (empty($documento->xml_conteudo)) return null;
+
+            // 2 = Retrato. A classe Danfce renderiza o cupom em formato térmico estreito
+            $danfce = new Danfce($documento->xml_conteudo, '', 2);
+            $danfce->creditsIntegratorFooter('Scalle ERP - BTEC');
+            $danfce->printParameters(80, 58); // Bobina de 80mm (Padrão Epson/Bematech/Elgin)
+
+            $pdf = $danfce->render();
+            return base64_encode($pdf);
+        } catch (Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Erro DANFCE: " . $e->getMessage());
+            return null;
+        }
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\OfxParserService.php
+========================================
+<?php
+
+namespace App\Services;
+
+class OfxParserService
+{
+    /**
+     * Faz o parse de um arquivo OFX bancário extraindo as transações financeiras.
+     */
+    public static function parse(string $conteudo): array
+    {
+        $transacoes = [];
+
+        // Isola tudo que está dentro de blocos <STMTTRN> ... </STMTTRN> (ou até a próxima tag)
+        preg_match_all('/<STMTTRN>(.*?)<\/STMTTRN>/is', $conteudo, $matches);
+
+        // Fallback caso o banco exporte um OFX 1.0 rudimentar sem a tag de fechamento </STMTTRN>
+        if (empty($matches[1])) {
+            preg_match_all('/<STMTTRN>(.*?)(?=<STMTTRN>|<\/BANKTRANLIST>)/is', $conteudo, $matches);
+        }
+
+        foreach ($matches[1] as $bloco) {
+            $tipoRaw = self::extrairTag($bloco, 'TRNTYPE');
+            $dataRaw = self::extrairTag($bloco, 'DTPOSTED');
+            $valorRaw = self::extrairTag($bloco, 'TRNAMT');
+            $idBanco = self::extrairTag($bloco, 'FITID');
+            $descricaoRaw = self::extrairTag($bloco, 'MEMO') ?: self::extrairTag($bloco, 'NAME');
+
+            // Formatação da Data (YYYYMMDD)
+            $dataBase = substr($dataRaw, 0, 8);
+            $dataFormatada = substr($dataBase, 0, 4) . '-' . substr($dataBase, 4, 2) . '-' . substr($dataBase, 6, 2);
+
+            // Formatação do Valor
+            $valor = (float) str_replace(',', '.', $valorRaw);
+
+            // Determinar Natureza
+            $natureza = $valor < 0 ? 'PAGAR' : 'RECEBER';
+
+            // Limpeza de encoding para evitar erros em caracteres com acentos (típico de extratos)
+            $descricaoLimpa = mb_convert_encoding(trim($descricaoRaw), 'UTF-8', mb_detect_encoding(trim($descricaoRaw), 'UTF-8, ISO-8859-1', true));
+
+            $transacoes[] = [
+                'id_transacao_banco' => $idBanco,
+                'tipo_ofx' => $tipoRaw,
+                'natureza' => $natureza,
+                'data' => $dataFormatada,
+                'valor' => abs($valor),
+                'valor_original' => $valor,
+                'descricao' => $descricaoLimpa,
+            ];
+        }
+
+        // Ordena por data
+        usort($transacoes, fn($a, $b) => strtotime($a['data']) <=> strtotime($b['data']));
+
+        return $transacoes;
+    }
+
+    private static function extrairTag(string $bloco, string $tag): string
+    {
+        if (preg_match('/<'.$tag.'>([^<]+)/i', $bloco, $match)) {
+            return trim($match[1]);
+        }
+        return '';
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\OrdemServicoService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\OrdemServico;
+use App\Models\OrdemServicoItem;
+use App\Models\TituloFinanceiro;
+use App\Models\User;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class OrdemServicoService
+{
+    /**
+     * Calcula prazos de SLA na abertura da OS
+     */
+    public static function calcularSla(string $prioridade): array
+    {
+        $agora = now();
+
+        return match (strtoupper($prioridade)) {
+            'URGENTE' => [
+                'resposta' => $agora->copy()->addHours(2),
+                'resolucao' => $agora->copy()->addHours(6),
+            ],
+            'ALTA' => [
+                'resposta' => $agora->copy()->addHours(4),
+                'resolucao' => $agora->copy()->addHours(12),
+            ],
+            'BAIXA' => [
+                'resposta' => $agora->copy()->addHours(24),
+                'resolucao' => $agora->copy()->addHours(72),
+            ],
+            default => [ // NORMAL
+                'resposta' => $agora->copy()->addHours(8),
+                'resolucao' => $agora->copy()->addHours(24),
+            ],
+        };
+    }
+
+    /**
+     * Conclui a Ordem de Serviço com conformidade jurídica MP 2.200-2, baixa no WMS e financeiro
+     */
+    public static function concluirOrdemServico(
+        OrdemServico $os,
+        array $itensUtilizados,
+        string $laudoTecnico,
+        string $assinaturaBase64,
+        string $nomeResponsavel,
+        ?string $docResponsavel = null,
+        ?User $tecnico = null,
+        ?float $latitude = null,
+        ?float $longitude = null,
+        ?string $ipOrigem = null
+    ): OrdemServico {
+        return DB::transaction(function () use (
+            $os,
+            $itensUtilizados,
+            $laudoTecnico,
+            $assinaturaBase64,
+            $nomeResponsavel,
+            $docResponsavel,
+            $tecnico,
+            $latitude,
+            $longitude,
+            $ipOrigem
+        ) {
+            $totalServicos = 0.00;
+            $totalPecas = 0.00;
+
+            // 1. Processar itens utilizados e executar baixa no estoque
+            foreach ($itensUtilizados as $itemData) {
+                $quantidade = (float) $itemData['quantidade'];
+                $valorUnitario = (float) $itemData['valor_unitario'];
+                $totalItem = $quantidade * $valorUnitario;
+
+                if ($itemData['tipo_item'] === 'SERVICO') {
+                    $totalServicos += $totalItem;
+                } else {
+                    $totalPecas += $totalItem;
+
+                    if (!empty($os->deposito_saida_id)) {
+                        EstoqueService::movimentar(
+                            $os->deposito_saida_id,
+                            $itemData['item_id'],
+                            $quantidade,
+                            'SAIDA_OS',
+                            $tecnico?->id,
+                            'os',
+                            $os->id,
+                            $itemData['lote'] ?? null,
+                            $valorUnitario
+                        );
+                    }
+                }
+
+                OrdemServicoItem::create([
+                    'ordem_servico_id' => $os->id,
+                    'item_id' => $itemData['item_id'],
+                    'tipo_item' => $itemData['tipo_item'],
+                    'quantidade' => $quantidade,
+                    'valor_unitario' => $valorUnitario,
+                    'valor_total' => $totalItem,
+                    'lote' => $itemData['lote'] ?? null,
+                ]);
+            }
+
+            $valorTotalFinal = max(0.00, ($totalServicos + $totalPecas) - (float) $os->valor_desconto);
+            $concluidoEm = now();
+
+            // 2. Geração do Hash de Conformidade SHA-256 (MP 2.200-2/2001)
+            $payloadHash = "{$os->tenant_id}|{$os->id}|{$os->numero_os}|{$concluidoEm->toIso8601String()}|{$latitude}|{$longitude}|{$ipOrigem}|{$valorTotalFinal}|" . md5($assinaturaBase64);
+            $hashAssinatura = hash('sha256', $payloadHash);
+
+            // 3. Atualizar a Ordem de Serviço
+            $os->update([
+                'status' => 'CONCLUIDA',
+                'servico_executado' => $laudoTecnico,
+                'data_conclusao' => $concluidoEm,
+                'valor_servicos' => $totalServicos,
+                'valor_pecas' => $totalPecas,
+                'valor_total' => $valorTotalFinal,
+                'assinatura_cliente_base64' => $assinaturaBase64,
+                'nome_responsavel_recebimento' => $nomeResponsavel,
+                'documento_responsavel_recebimento' => $docResponsavel,
+                'assinado_em' => $concluidoEm,
+                'hash_assinatura_sha256' => $hashAssinatura,
+                'ip_assinatura' => $ipOrigem,
+                'latitude_assinatura' => $latitude,
+                'longitude_assinatura' => $longitude,
+            ]);
+
+            // 4. Integração Financeira: Gerar Título no Contas a Receber
+            if ($valorTotalFinal > 0.00) {
+                TituloFinanceiro::create([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $os->tenant_id,
+                    'empresa_id' => $os->empresa_id,
+                    'pessoa_id' => $os->cliente_id,
+                    'natureza' => 'RECEBER',
+                    'documento_numero' => "OS-{$os->numero_os}",
+                    'parcela_numero' => 1,
+                    'total_parcelas' => 1,
+                    'origem_tipo' => 'os',
+                    'origem_id' => $os->id,
+                    'data_emissao' => now()->toDateString(),
+                    'data_vencimento' => now()->addDays(15)->toDateString(),
+                    'valor_original' => $valorTotalFinal,
+                    'valor_desconto' => (float) $os->valor_desconto,
+                    'valor_saldo_aberto' => $valorTotalFinal,
+                    'valor_pago_acumulado' => 0.00,
+                    'status' => 'ABERTO',
+                    'historico' => "Faturamento de OS #{$os->numero_os} - {$os->equipamento_descricao}",
+                ]);
+            }
+
+            return $os;
+        });
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\PontoService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\Colaborador;
+use App\Models\PontoRegistro;
+use Illuminate\Support\Str;
+
+class PontoService
+{
+    /**
+     * Registra a batida de ponto com coordenadas GPS, IP e hash criptográfico SHA-256 (REP-P Portaria 671)
+     */
+    public static function registrarPonto(
+        Colaborador $colaborador,
+        string $tipoRegistro,
+        ?float $lat = null,
+        ?float $lng = null,
+        ?string $ip = null,
+        ?string $deviceInfo = null
+    ): PontoRegistro {
+        $dataHora = now();
+        $id = (string) Str::uuid();
+
+        // Geração do Hash de Imutabilidade SHA-256
+        $payloadString = "{$colaborador->tenant_id}|{$colaborador->id}|{$tipoRegistro}|{$dataHora->toIso8601String()}|{$lat}|{$lng}|{$ip}";
+        $hash = hash('sha256', $payloadString);
+
+        return PontoRegistro::create([
+            'id' => $id,
+            'colaborador_id' => $colaborador->id,
+            'data_hora_registro' => $dataHora,
+            'tipo_registro' => $tipoRegistro,
+            'latitude' => $lat,
+            'longitude' => $lng,
+            'ip_origem' => $ip,
+            'dispositivo_info' => $deviceInfo,
+            'hash_registro' => $hash,
+            'created_at' => $dataHora,
+        ]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\ProducaoPcpService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\EstoqueDeposito;
+use App\Models\EstruturaItem;
+use App\Models\Item;
+use App\Models\OrdemProducao;
+use App\Models\PcpApontamento;
+use App\Models\PcpLoteRastreabilidade;
+use App\Models\User;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class ProducaoPcpService
+{
+    public static function reservarInsumos(OrdemProducao $op): void
+    {
+        $estruturas = EstruturaItem::where('produto_pai_id', $op->produto_id)->get();
+
+        foreach ($estruturas as $est) {
+            $fatorPerda = 1 + ((float) $est->percentual_perda_estimada / 100);
+            $qtdNecessaria = ((float) $est->quantidade_necessaria * (float) $op->quantidade_planejada) * $fatorPerda;
+
+            $saldo = EstoqueDeposito::where('deposito_id', $op->deposito_origem_id)
+                ->where('item_id', $est->insumo_filho_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($saldo) {
+                $saldo->increment('quantidade_reservada', $qtdNecessaria);
+            }
+        }
+    }
+
+    public static function estornarReservaInsumos(OrdemProducao $op): void
+    {
+        $estruturas = EstruturaItem::where('produto_pai_id', $op->produto_id)->get();
+        $saldoRestanteProduzir = max(0.00, (float) $op->quantidade_planejada - (float) $op->quantidade_produzida);
+
+        foreach ($estruturas as $est) {
+            $fatorPerda = 1 + ((float) $est->percentual_perda_estimada / 100);
+            $qtdRestanteReserva = ((float) $est->quantidade_necessaria * $saldoRestanteProduzir) * $fatorPerda;
+
+            $saldo = EstoqueDeposito::where('deposito_id', $op->deposito_origem_id)
+                ->where('item_id', $est->insumo_filho_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($saldo) {
+                $saldo->decrement('quantidade_reservada', min((float) $saldo->quantidade_reservada, $qtdRestanteReserva));
+            }
+        }
+    }
+
+    /**
+     * Finaliza a Ordem de Produção (retrocompatibilidade com testes e encerramento direto)
+     */
+    public static function finalizarProducao(
+        OrdemProducao $op,
+        float $quantidadeProduzida,
+        float $quantidadeRefugo = 0.00,
+        ?User $usuario = null
+    ): OrdemProducao {
+        $operador = $usuario ?? $op->responsavel ?? User::first();
+
+        if (!$operador) {
+            $operador = User::withoutGlobalScopes()->where('id', $op->responsavel_id)->first();
+        }
+
+        self::apontarProducao(
+            $op,
+            $quantidadeProduzida,
+            $quantidadeRefugo,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            'Encerramento Direto de Produção',
+            $operador
+        );
+
+        return $op->fresh(['produto', 'responsavel']);
+    }
+
+    /**
+     * Executa o apontamento (parcial ou total) com apropriação de MOD, CIF, baixa de insumos, OEE e genealogia de lote
+     */
+    public static function apontarProducao(
+        OrdemProducao $op,
+        float $quantidadeProduzida,
+        float $quantidadeRefugo = 0.00,
+        float $horasMod = 0.00,
+        float $custoHoraMod = 45.00,
+        float $horasCif = 0.00,
+        float $custoHoraCif = 25.00,
+        ?string $observacoes = null,
+        ?User $responsavel = null
+    ): PcpApontamento {
+        return DB::transaction(function () use (
+            $op,
+            $quantidadeProduzida,
+            $quantidadeRefugo,
+            $horasMod,
+            $custoHoraMod,
+            $horasCif,
+            $custoHoraCif,
+            $observacoes,
+            $responsavel
+        ) {
+            if ($op->status === 'CONCLUIDA' || $op->status === 'CANCELADA') {
+                throw new Exception("Não é permitido apontar em uma OP com status {$op->status}.");
+            }
+
+            $estruturas = EstruturaItem::where('produto_pai_id', $op->produto_id)->with('insumo')->get();
+
+            if ($estruturas->isEmpty()) {
+                throw new Exception("O produto acabado não possui ficha técnica (BOM) cadastrada.");
+            }
+
+            $custoInsumosTotal = 0.00;
+            $totalFabricadoNesteLote = $quantidadeProduzida + $quantidadeRefugo;
+            $loteAcabado = $op->lote_produzido ?? ('LOTE-' . date('ymd') . '-' . substr($op->id, 0, 4));
+
+            // 1. Consumir insumos proporcionalmente ao lote apontado
+            foreach ($estruturas as $est) {
+                $fatorPerda = 1 + ((float) $est->percentual_perda_estimada / 100);
+                $qtdConsumidaInsumo = ((float) $est->quantidade_necessaria * $totalFabricadoNesteLote) * $fatorPerda;
+
+                $insumo = $est->insumo;
+                $custoUnitarioInsumo = (float) ($insumo->preco_custo > 0 ? $insumo->preco_custo : $insumo->custo_medio);
+                $custoInsumosTotal += ($qtdConsumidaInsumo * $custoUnitarioInsumo);
+
+                // Baixar proporção da reserva
+                $saldoReserva = EstoqueDeposito::where('deposito_id', $op->deposito_origem_id)
+                    ->where('item_id', $est->insumo_filho_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($saldoReserva) {
+                    $saldoReserva->decrement('quantidade_reservada', min((float) $saldoReserva->quantidade_reservada, $qtdConsumidaInsumo));
+                }
+
+                // Sugestão de lote FEFO/FIFO do insumo
+                $loteInsumo = EstoqueService::resolverLoteFefo($op->deposito_origem_id, $est->insumo_filho_id, $qtdConsumidaInsumo)?->lote;
+
+                // Saída física definitiva do WMS
+                EstoqueService::movimentar(
+                    $op->deposito_origem_id,
+                    $est->insumo_filho_id,
+                    $qtdConsumidaInsumo,
+                    'SAIDA_PRODUCAO',
+                    $responsavel?->id,
+                    'producao',
+                    $op->id,
+                    $loteInsumo,
+                    $custoUnitarioInsumo
+                );
+
+                // Gravação da genealogia de rastreabilidade
+                PcpLoteRastreabilidade::create([
+                    'tenant_id' => $op->tenant_id,
+                    'ordem_producao_id' => $op->id,
+                    'insumo_id' => $est->insumo_filho_id,
+                    'lote_insumo' => $loteInsumo,
+                    'quantidade_consumida' => $qtdConsumidaInsumo,
+                    'lote_acabado_gerado' => $loteAcabado,
+                ]);
+            }
+
+            // 2. Cálculo dos custos de Mão de Obra Direta e CIF
+            $totalMod = $horasMod * $custoHoraMod;
+            $totalCif = $horasCif * $custoHoraCif;
+            $custoTotalApontamento = $custoInsumosTotal + $totalMod + $totalCif;
+
+            // 3. Entrada física do produto acabado aprovado
+            $novoTotalProduzido = (float) $op->quantidade_produzida + $quantidadeProduzida;
+            $novoCustoRealAcumulado = (float) $op->custo_total_real + $custoTotalApontamento;
+            $custoUnitarioAcabado = ($novoCustoRealAcumulado > 0 && $novoTotalProduzido > 0) 
+                ? ($novoCustoRealAcumulado / $novoTotalProduzido) 
+                : 0.00;
+
+            if ($quantidadeProduzida > 0) {
+                EstoqueService::movimentar(
+                    $op->deposito_destino_id,
+                    $op->produto_id,
+                    $quantidadeProduzida,
+                    'ENTRADA_PRODUCAO',
+                    $responsavel?->id,
+                    'producao',
+                    $op->id,
+                    $loteAcabado,
+                    $custoUnitarioAcabado
+                );
+            }
+
+            // 4. Gravar o Apontamento
+            $apontamento = PcpApontamento::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $op->tenant_id,
+                'ordem_producao_id' => $op->id,
+                'operador_id' => $responsavel?->id,
+                'quantidade_produzida' => $quantidadeProduzida,
+                'quantidade_refugo' => $quantidadeRefugo,
+                'horas_mod' => $horasMod,
+                'custo_hora_mod' => $custoHoraMod,
+                'custo_total_mod' => $totalMod,
+                'horas_cif' => $horasCif,
+                'custo_hora_cif' => $custoHoraCif,
+                'custo_total_cif' => $totalCif,
+                'custo_insumos' => $custoInsumosTotal,
+                'custo_total_apontamento' => $custoTotalApontamento,
+                'observacoes' => $observacoes,
+                'created_at' => now(),
+            ]);
+
+            // 5. Cálculo do OEE (Disponibilidade * Performance * Qualidade)
+            $qualidade = ($novoTotalProduzido + (float) $quantidadeRefugo) > 0 
+                ? ($novoTotalProduzido / ($novoTotalProduzido + (float) $quantidadeRefugo)) * 100 
+                : 100.00;
+            $performance = (float) $op->quantidade_planejada > 0 
+                ? min(100.00, ($novoTotalProduzido / (float) $op->quantidade_planejada) * 100) 
+                : 100.00;
+            $oee = round(($performance * $qualidade) / 100, 2);
+
+            $statusFinal = ($novoTotalProduzido >= (float) $op->quantidade_planejada) ? 'CONCLUIDA' : 'EM_PRODUCAO';
+
+            $dadosUpdate = [
+                'status' => $statusFinal,
+                'quantidade_produzida' => $novoTotalProduzido,
+                'custo_total_real' => $novoCustoRealAcumulado,
+                'lote_produzido' => $loteAcabado,
+                'oee_percentual' => $oee,
+            ];
+
+            if ($op->status === 'PLANEJADA') {
+                $dadosUpdate['data_inicio_real'] = now();
+            }
+
+            if ($statusFinal === 'CONCLUIDA') {
+                $dadosUpdate['data_fim_real'] = now();
+            }
+
+            $op->update($dadosUpdate);
+
+            return $apontamento;
+        });
+    }
+
+    /**
+     * Motor MRP: Analisa OPs planejadas e calcula a necessidade líquida de compras
+     */
+    public static function executarCalculoMrp(string $tenantId, string $empresaId, string $usuarioId): array
+    {
+        $opsPlanejadas = OrdemProducao::where('tenant_id', $tenantId)
+            ->whereIn('status', ['PLANEJADA', 'EM_PRODUCAO', 'EM_ANDAMENTO'])
+            ->get();
+
+        $necessidades = [];
+
+        foreach ($opsPlanejadas as $op) {
+            $estruturas = EstruturaItem::where('produto_pai_id', $op->produto_id)->with('insumo')->get();
+
+            foreach ($estruturas as $est) {
+                $saldoAtual = EstoqueDeposito::where('deposito_id', $op->deposito_origem_id)
+                    ->where('item_id', $est->insumo_filho_id)
+                    ->sum('quantidade_saldo') ?? 0.00;
+
+                $qtdPendente = max(0, (float) $op->quantidade_planejada - (float) $op->quantidade_produzida);
+                $qtdNecessaria = $qtdPendente * (float) $est->quantidade_necessaria;
+
+                if (!isset($necessidades[$est->insumo_filho_id])) {
+                    $necessidades[$est->insumo_filho_id] = [
+                        'item_id' => $est->insumo_filho_id,
+                        'nome' => $est->insumo->nome,
+                        'sku' => $est->insumo->codigo_sku,
+                        'unidade' => $est->insumo->unidade_medida,
+                        'saldo_atual' => (float) $saldoAtual,
+                        'demanda_total' => 0.00,
+                        'deposito_id' => $op->deposito_origem_id,
+                    ];
+                }
+
+                $necessidades[$est->insumo_filho_id]['demanda_total'] += $qtdNecessaria;
+            }
+        }
+
+        $itensParaComprar = [];
+        foreach ($necessidades as $itemId => $nec) {
+            $defict = $nec['demanda_total'] - $nec['saldo_atual'];
+            if ($defict > 0) {
+                $itensParaComprar[] = array_merge($nec, ['quantidade_sugerida' => $defict]);
+            }
+        }
+
+        return $itensParaComprar;
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\TenantProvisioningService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\Assinatura;
+use App\Models\Deposito;
+use App\Models\Empresa;
+use App\Models\Perfil;
+use App\Models\Permissao;
+use App\Models\Plano;
+use App\Models\Tenant;
+use App\Models\User;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+
+class TenantProvisioningService
+{
+    public static function provisionar(array $dados): array
+    {
+        return DB::transaction(function () use ($dados) {
+            $tenantId = (string) Str::uuid();
+
+            // 1. Criar Tenant
+            $tenant = Tenant::create([
+                'id' => $tenantId,
+                'nome_fantasia' => $dados['tenant_nome_fantasia'],
+                'razao_social' => $dados['tenant_razao_social'],
+                'documento' => preg_replace('/[^0-9]/', '', $dados['tenant_documento']),
+                'status' => 'ativo',
+                'configuracoes' => [
+                    'plano_nome' => $dados['plano_slug'] ?? 'pro',
+                    'criado_por_master' => true
+                ],
+            ]);
+
+            // 2. Criar Empresa Matriz
+            $empresaId = (string) Str::uuid();
+            $empresa = Empresa::create([
+                'id' => $empresaId,
+                'tenant_id' => $tenantId,
+                'nome_fantasia' => $dados['tenant_nome_fantasia'],
+                'razao_social' => $dados['tenant_razao_social'],
+                'cnpj' => $dados['tenant_documento'],
+                'regime_tributario' => $dados['regime_tributario'] ?? 'simples_nacional',
+                'is_matriz' => true,
+            ]);
+
+            // 3. Criar Perfil Administrador do Tenant (com is_admin = true)
+            $perfilAdmin = Perfil::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'nome' => 'Administrador',
+                'slug' => 'administrador-' . substr($tenantId, 0, 4),
+                'descricao' => 'Acesso total e irrestrito a todas as operações do tenant',
+                'is_admin' => true,
+                'is_sistema' => true,
+            ]);
+
+            // 4. Criar Usuário Superadmin do Tenant
+            $superAdmin = User::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_padrao_id' => $empresaId,
+                'perfil_id' => $perfilAdmin->id,
+                'name' => $dados['admin_name'],
+                'email' => $dados['admin_email'],
+                'password' => $dados['admin_password'], // Removido o Hash::make()                'telefone' => $dados['admin_telefone'] ?? null,
+                'is_ativo' => true,
+                'is_master' => false,
+            ]);
+
+            // 5. Criar Depósito Central Padrão do WMS
+            Deposito::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'nome' => 'Depósito Central / Matriz',
+                'codigo' => 'DEP-01',
+                'descricao' => 'Almoxarifado Geral de Operações',
+                'is_padrao' => true,
+                'is_ativo' => true,
+            ]);
+
+            // 6. Vincular Assinatura e Plano
+            $plano = Plano::where('slug', $dados['plano_slug'] ?? 'pro')->first()
+                  ?? Plano::firstOrCreate(
+                      ['slug' => 'pro'],
+                      [
+                          'id' => (string) Str::uuid(),
+                          'nome' => 'Plano Pro (PMEs)',
+                          'valor_mensal' => 199.00,
+                          'limite_usuarios' => 10,
+                          'limite_empresas' => 2,
+                          'cota_storage_bytes' => 21474836480, // 20 GB
+                          'is_ativo' => true
+                      ]
+                  );
+
+            $assinatura = Assinatura::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'plano_id' => $plano->id,
+                'status' => 'ATIVO',
+                'data_inicio' => now()->toDateString(),
+                'data_proximo_vencimento' => now()->addDays(30)->toDateString(),
+                'storage_utilizado_bytes' => 0,
+            ]);
+
+            return [
+                'tenant' => $tenant,
+                'empresa' => $empresa,
+                'admin_user' => $superAdmin,
+                'assinatura' => $assinatura->load('plano'),
+            ];
+        });
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\TotpService.php
+========================================
+<?php
+
+namespace App\Services;
+
+class TotpService
+{
+    private const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+    public static function gerarSecret(int $tamanho = 16): string
+    {
+        $secret = '';
+        for ($i = 0; $i < $tamanho; $i++) {
+            $secret .= self::BASE32_CHARS[random_int(0, 31)];
+        }
+        return $secret;
+    }
+
+    public static function gerarQrCodeUrl(string $usuarioEmail, string $secret, string $emissor = 'Scalle ERP'): string
+    {
+        $otpauth = sprintf(
+            'otpauth://totp/%s:%s?secret=%s&issuer=%s&algorithm=SHA1&digits=6&period=30',
+            rawurlencode($emissor),
+            rawurlencode($usuarioEmail),
+            $secret,
+            rawurlencode($emissor)
+        );
+
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' . urlencode($otpauth);
+    }
+
+    public static function validarCodigo(string $secret, string $codigo, int $janelaTolerancia = 1): bool
+    {
+        $timeSlice = floor(time() / 30);
+
+        for ($i = -$janelaTolerancia; $i <= $janelaTolerancia; $i++) {
+            $codigoCalculado = self::calcularTotp($secret, $timeSlice + $i);
+            if (hash_equals($codigoCalculado, str_pad($codigo, 6, '0', STR_PAD_LEFT))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function calcularTotp(string $secret, int $timeSlice): string
+    {
+        $secretKey = self::base32Decode($secret);
+        $timeBytes = pack('N*', 0) . pack('N*', $timeSlice);
+
+        $hmac = hash_hmac('sha1', $timeBytes, $secretKey, true);
+        $offset = ord(substr($hmac, -1)) & 0x0F;
+
+        $hashPart = substr($hmac, $offset, 4);
+        $value = unpack('N', $hashPart)[1] & 0x7FFFFFFF;
+
+        return str_pad((string) ($value % 1000000), 6, '0', STR_PAD_LEFT);
+    }
+
+    private static function base32Decode(string $base32): string
+    {
+        $base32 = strtoupper(trim($base32));
+        $buffer = 0;
+        $bufferBits = 0;
+        $output = '';
+
+        for ($i = 0; $i < strlen($base32); $i++) {
+            $char = $base32[$i];
+            $val = strpos(self::BASE32_CHARS, $char);
+            if ($val === false) continue;
+
+            $buffer = ($buffer << 5) | $val;
+            $bufferBits += 5;
+
+            if ($bufferBits >= 8) {
+                $bufferBits -= 8;
+                $output .= chr(($buffer >> $bufferBits) & 0xFF);
+            }
+        }
+
+        return $output;
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\ValidadorDocumentoService.php
+========================================
+<?php
+
+namespace App\Services;
+
+class ValidadorDocumentoService
+{
+    public static function validar(string $documento): bool
+    {
+        $doc = preg_replace('/[^0-9]/', '', $documento);
+
+        if (strlen($doc) === 11) {
+            return self::validarCPF($doc);
+        }
+
+        if (strlen($doc) === 14) {
+            return self::validarCNPJ($doc);
+        }
+
+        return false;
+    }
+
+    private static function validarCPF(string $cpf): bool
+    {
+        if (preg_match('/(\d)\1{10}/', $cpf)) {
+            return false;
+        }
+
+        for ($t = 9; $t < 11; $t++) {
+            for ($d = 0, $c = 0; $c < $t; $c++) {
+                $d += $cpf[$c] * (($t + 1) - $c);
+            }
+            $d = ((10 * $d) % 11) % 10;
+            if ($cpf[$c] != $d) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static function validarCNPJ(string $cnpj): bool
+    {
+        if (preg_match('/(\d)\1{13}/', $cnpj)) {
+            return false;
+        }
+
+        for ($i = 0, $j = 5, $soma = 0; $i < 12; $i++) {
+            $soma += $cnpj[$i] * $j;
+            $j = ($j == 2) ? 9 : $j - 1;
+        }
+        $resto = $soma % 11;
+        if ($cnpj[12] != ($resto < 2 ? 0 : 11 - $resto)) {
+            return false;
+        }
+
+        for ($i = 0, $j = 6, $soma = 0; $i < 13; $i++) {
+            $soma += $cnpj[$i] * $j;
+            $j = ($j == 2) ? 9 : $j - 1;
+        }
+        $resto = $soma % 11;
+        return $cnpj[13] == ($resto < 2 ? 0 : 11 - $resto);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\VendaService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\AlcadaAprovacao;
+use App\Models\ContaFinanceira;
+use App\Models\Empresa;
+use App\Models\EstoqueDeposito;
+use App\Models\Item;
+use App\Models\MovimentacaoExtrato;
+use App\Models\PedidoVenda;
+use App\Models\PedidoVendaItem;
+use App\Models\PedidoVendaPagamento;
+use App\Models\Pessoa;
+use App\Models\TituloFinanceiro;
+use App\Models\User;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class VendaService
+{
+    public static function faturarVenda(
+        string $empresaId,
+        string $clienteId,
+        string $depositoId,
+        User $vendedor,
+        array $itensPayload,
+        array $pagamentosPayload,
+        float $descontoGeral = 0.00,
+        string $tipoDocumento = 'PDV'
+    ): PedidoVenda {
+        return DB::transaction(function () use (
+            $empresaId,
+            $clienteId,
+            $depositoId,
+            $vendedor,
+            $itensPayload,
+            $pagamentosPayload,
+            $descontoGeral,
+            $tipoDocumento
+        ) {
+            $tenantId = $vendedor->tenant_id;
+            $pedidoId = (string) Str::uuid();
+            $subtotalItens = 0.00;
+
+            $cliente = Pessoa::findOrFail($clienteId);
+
+            $ultimoNumero = PedidoVenda::where('empresa_id', $empresaId)->max('numero_pedido') ?? 1000;
+            $numeroPedido = $ultimoNumero + 1;
+
+            foreach ($itensPayload as $itemData) {
+                $subtotalItens += ((float) $itemData['quantidade'] * (float) $itemData['preco_unitario']);
+            }
+
+            $totalLiquidoPedido = max(0.00, $subtotalItens - $descontoGeral);
+            $percentualDesconto = $subtotalItens > 0 ? ($descontoGeral / $subtotalItens) * 100 : 0.00;
+
+            // 1. Trava de Limite de Crédito para pagamentos a prazo
+            $formasPrazo = ['BOLETO', 'CREDIARIO', 'A_PRAZO', 'FATURADO'];
+            $temPagamentoPrazo = collect($pagamentosPayload)->contains(
+                fn($p) => in_array(strtoupper($p['forma_pagamento'] ?? ''), $formasPrazo)
+            );
+
+            if ($temPagamentoPrazo && (float) ($cliente->limite_credito ?? 0) > 0) {
+                $saldoDevedorAberto = TituloFinanceiro::where('pessoa_id', $cliente->id)
+                    ->where('natureza', 'RECEBER')
+                    ->whereIn('status', ['ABERTO', 'PARCIAL'])
+                    ->sum('valor_saldo_aberto') ?? 0.00;
+
+                if (($saldoDevedorAberto + $totalLiquidoPedido) > (float) $cliente->limite_credito) {
+                    $disponivel = max(0.00, (float) $cliente->limite_credito - $saldoDevedorAberto);
+                    throw new Exception("Limite de crédito excedido. Limite: R$ {$cliente->limite_credito} | Disponível: R$ {$disponivel} | Solicitado: R$ {$totalLiquidoPedido}");
+                }
+            }
+
+            // 2. Validação de Alçada de Desconto
+            $validacaoAlcada = MotorAlcadaService::validarDesconto(
+                $vendedor,
+                'pedidos',
+                $pedidoId,
+                $percentualDesconto,
+                $descontoGeral
+            );
+
+            $statusInicial = $validacaoAlcada['requer_aprovacao'] ? 'AGUARDANDO_APROVACAO' : 'FATURADO';
+
+            // 3. Cálculo de Comissão do Vendedor (2.5% padrão)
+            $pctComissao = 2.50;
+            $valorComissao = $statusInicial === 'FATURADO' ? round($totalLiquidoPedido * ($pctComissao / 100), 2) : 0.00;
+
+            $pedido = PedidoVenda::create([
+                'id' => $pedidoId,
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'cliente_id' => $clienteId,
+                'vendedor_id' => $vendedor->id,
+                'deposito_saida_id' => $depositoId,
+                'tipo_documento' => $tipoDocumento,
+                'numero_pedido' => $numeroPedido,
+                'status' => $statusInicial,
+                'data_emissao' => now(),
+                'valor_subtotal_itens' => $subtotalItens,
+                'percentual_desconto' => $percentualDesconto,
+                'valor_desconto' => $descontoGeral,
+                'valor_total_liquido' => $totalLiquidoPedido,
+                'percentual_comissao_vendedor' => $pctComissao,
+                'valor_comissao_vendedor' => $valorComissao,
+            ]);
+
+            foreach ($itensPayload as $itemData) {
+                $quantidade = (float) $itemData['quantidade'];
+                $precoUnitario = (float) $itemData['preco_unitario'];
+                $descontoItem = (float) ($itemData['desconto_unitario'] ?? 0.00);
+                $precoFinal = max(0.00, $precoUnitario - $descontoItem);
+
+                PedidoVendaItem::create([
+                    'id' => (string) Str::uuid(),
+                    'pedido_id' => $pedido->id,
+                    'item_id' => $itemData['item_id'],
+                    'quantidade' => $quantidade,
+                    'preco_tabela_unitario' => $precoUnitario,
+                    'valor_desconto_unitario' => $descontoItem,
+                    'preco_venda_unitario' => $precoFinal,
+                    'valor_total_bruto' => $quantidade * $precoUnitario,
+                    'valor_total_liquido' => $quantidade * $precoFinal,
+                    'lote' => $itemData['lote'] ?? null,
+                ]);
+
+                if (!$validacaoAlcada['requer_aprovacao']) {
+                    EstoqueService::movimentar(
+                        $depositoId,
+                        $itemData['item_id'],
+                        $quantidade,
+                        'SAIDA_VENDA',
+                        $vendedor->id,
+                        'vendas',
+                        $pedido->id,
+                        $itemData['lote'] ?? null,
+                        $precoFinal
+                    );
+                }
+            }
+
+            foreach ($pagamentosPayload as $pagamentoData) {
+                $valorPago = (float) $pagamentoData['valor_pago'];
+
+                PedidoVendaPagamento::create([
+                    'id' => (string) Str::uuid(),
+                    'pedido_id' => $pedido->id,
+                    'forma_pagamento' => $pagamentoData['forma_pagamento'],
+                    'parcelas' => $pagamentoData['parcelas'] ?? 1,
+                    'valor_pago' => $valorPago,
+                    'valor_troco' => (float) ($pagamentoData['valor_troco'] ?? 0.00),
+                    'status' => $validacaoAlcada['requer_aprovacao'] ? 'PENDENTE' : 'CONFIRMADO',
+                ]);
+            }
+
+            if (!$validacaoAlcada['requer_aprovacao']) {
+                self::gerarFinanceiroVenda($pedido, $pagamentosPayload, $totalLiquidoPedido, $vendedor);
+            }
+
+            return $pedido;
+        });
+    }
+
+    public static function criarOrcamento(
+        string $empresaId,
+        string $clienteId,
+        string $depositoId,
+        User $vendedor,
+        array $itensPayload,
+        float $descontoGeral = 0.00,
+        ?string $dataValidade = null
+    ): PedidoVenda {
+        return DB::transaction(function () use (
+            $empresaId,
+            $clienteId,
+            $depositoId,
+            $vendedor,
+            $itensPayload,
+            $descontoGeral,
+            $dataValidade
+        ) {
+            $tenantId = $vendedor->tenant_id;
+            $pedidoId = (string) Str::uuid();
+            $subtotalItens = 0.00;
+
+            $ultimoNumero = PedidoVenda::where('empresa_id', $empresaId)->max('numero_pedido') ?? 1000;
+            $numeroPedido = $ultimoNumero + 1;
+
+            foreach ($itensPayload as $itemData) {
+                $subtotalItens += ((float) $itemData['quantidade'] * (float) $itemData['preco_unitario']);
+            }
+
+            $totalLiquido = max(0.00, $subtotalItens - $descontoGeral);
+            $percentualDesconto = $subtotalItens > 0 ? ($descontoGeral / $subtotalItens) * 100 : 0.00;
+
+            $orcamento = PedidoVenda::create([
+                'id' => $pedidoId,
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'cliente_id' => $clienteId,
+                'vendedor_id' => $vendedor->id,
+                'deposito_saida_id' => $depositoId,
+                'tipo_documento' => 'ORCAMENTO',
+                'numero_pedido' => $numeroPedido,
+                'status' => 'ORCAMENTO',
+                'data_emissao' => now(),
+                'data_validade_orcamento' => $dataValidade ?? now()->addDays(7)->toDateString(),
+                'valor_subtotal_itens' => $subtotalItens,
+                'percentual_desconto' => $percentualDesconto,
+                'valor_desconto' => $descontoGeral,
+                'valor_total_liquido' => $totalLiquido,
+            ]);
+
+            foreach ($itensPayload as $itemData) {
+                $quantidade = (float) $itemData['quantidade'];
+                $precoUnitario = (float) $itemData['preco_unitario'];
+                $descontoItem = (float) ($itemData['desconto_unitario'] ?? 0.00);
+                $precoFinal = max(0.00, $precoUnitario - $descontoItem);
+
+                PedidoVendaItem::create([
+                    'id' => (string) Str::uuid(),
+                    'pedido_id' => $orcamento->id,
+                    'item_id' => $itemData['item_id'],
+                    'quantidade' => $quantidade,
+                    'preco_tabela_unitario' => $precoUnitario,
+                    'valor_desconto_unitario' => $descontoItem,
+                    'preco_venda_unitario' => $precoFinal,
+                    'valor_total_bruto' => $quantidade * $precoUnitario,
+                    'valor_total_liquido' => $quantidade * $precoFinal,
+                    'lote' => $itemData['lote'] ?? null,
+                ]);
+
+                // Reserva atômica de saldo no WMS
+                $estoque = EstoqueDeposito::where('deposito_id', $depositoId)
+                    ->where('item_id', $itemData['item_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($estoque) {
+                    $estoque->increment('quantidade_reservada', $quantidade);
+                }
+            }
+
+            return $orcamento;
+        });
+    }
+
+    public static function converterOrcamento(PedidoVenda $orcamento, array $pagamentosPayload, User $usuario): PedidoVenda
+    {
+        return DB::transaction(function () use ($orcamento, $pagamentosPayload, $usuario) {
+            if ($orcamento->status === 'FATURADO') {
+                throw new Exception("Este orçamento já foi convertido e faturado anteriormente.");
+            }
+
+            foreach ($orcamento->itens as $item) {
+                // Estorno de reserva
+                $estoque = EstoqueDeposito::where('deposito_id', $orcamento->deposito_saida_id)
+                    ->where('item_id', $item->item_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($estoque) {
+                    $estoque->decrement('quantidade_reservada', min((float) $estoque->quantidade_reservada, (float) $item->quantidade));
+                }
+
+                // Baixa física definitiva
+                EstoqueService::movimentar(
+                    $orcamento->deposito_saida_id,
+                    $item->item_id,
+                    (float) $item->quantidade,
+                    'SAIDA_VENDA',
+                    $usuario->id,
+                    'vendas',
+                    $orcamento->id,
+                    $item->lote,
+                    (float) $item->preco_venda_unitario
+                );
+            }
+
+            foreach ($pagamentosPayload as $pagamentoData) {
+                PedidoVendaPagamento::create([
+                    'id' => (string) Str::uuid(),
+                    'pedido_id' => $orcamento->id,
+                    'forma_pagamento' => $pagamentoData['forma_pagamento'],
+                    'parcelas' => $pagamentoData['parcelas'] ?? 1,
+                    'valor_pago' => (float) $pagamentoData['valor_pago'],
+                    'valor_troco' => (float) ($pagamentoData['valor_troco'] ?? 0.00),
+                    'status' => 'CONFIRMADO',
+                ]);
+            }
+
+            // Comissão e Financeiro
+            $pctComissao = 2.50;
+            $valorComissao = round((float) $orcamento->valor_total_liquido * ($pctComissao / 100), 2);
+
+            self::gerarFinanceiroVenda($orcamento, $pagamentosPayload, (float) $orcamento->valor_total_liquido, $usuario);
+
+            $orcamento->update([
+                'tipo_documento' => 'PEDIDO',
+                'status' => 'FATURADO',
+                'percentual_comissao_vendedor' => $pctComissao,
+                'valor_comissao_vendedor' => $valorComissao,
+            ]);
+
+            return $orcamento;
+        });
+    }
+
+    public static function cancelarVenda(PedidoVenda $pedido, string $motivo, User $usuario): PedidoVenda
+    {
+        return DB::transaction(function () use ($pedido, $motivo, $usuario) {
+            if ($pedido->status === 'CANCELADO') {
+                throw new Exception("Esta venda já se encontra cancelada.");
+            }
+
+            if ($pedido->status === 'FATURADO') {
+                foreach ($pedido->itens as $item) {
+                    EstoqueService::movimentar(
+                        $pedido->deposito_saida_id,
+                        $item->item_id,
+                        (float) $item->quantidade,
+                        'ENTRADA_COMPRA',
+                        $usuario->id,
+                        'vendas',
+                        $pedido->id,
+                        $item->lote,
+                        (float) $item->preco_venda_unitario
+                    );
+                }
+
+                TituloFinanceiro::where('origem_tipo', 'vendas')
+                    ->where('origem_id', $pedido->id)
+                    ->update(['status' => 'CANCELADO', 'historico' => "Cancelado: {$motivo}"]);
+            } elseif ($pedido->status === 'ORCAMENTO') {
+                foreach ($pedido->itens as $item) {
+                    $estoque = EstoqueDeposito::where('deposito_id', $pedido->deposito_saida_id)
+                        ->where('item_id', $item->item_id)
+                        ->first();
+
+                    if ($estoque) {
+                        $estoque->decrement('quantidade_reservada', min((float) $estoque->quantidade_reservada, (float) $item->quantidade));
+                    }
+                }
+            }
+
+            $pedido->update([
+                'status' => 'CANCELADO',
+                'observacoes' => ($pedido->observacoes ? $pedido->observacoes . ' | ' : '') . "Cancelado: {$motivo}",
+            ]);
+
+            return $pedido;
+        });
+    }
+
+    private static function gerarFinanceiroVenda(PedidoVenda $pedido, array $pagamentos, float $totalLiquido, User $vendedor): void
+    {
+        $contaPadrao = ContaFinanceira::where('tenant_id', $pedido->tenant_id)->where('is_ativo', true)->first();
+
+        $titulo = TituloFinanceiro::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $pedido->tenant_id,
+            'empresa_id' => $pedido->empresa_id,
+            'pessoa_id' => $pedido->cliente_id,
+            'conta_padrao_id' => $contaPadrao?->id,
+            'natureza' => 'RECEBER',
+            'documento_numero' => "VENDA-{$pedido->numero_pedido}",
+            'parcela_numero' => 1,
+            'total_parcelas' => 1,
+            'origem_tipo' => 'vendas',
+            'origem_id' => $pedido->id,
+            'data_emissao' => now(),
+            'data_vencimento' => now()->toDateString(),
+            'data_liquidacao' => now(),
+            'valor_original' => $totalLiquido,
+            'valor_desconto' => (float) $pedido->valor_desconto,
+            'valor_pago_acumulado' => $totalLiquido,
+            'valor_saldo_aberto' => 0.00,
+            'status' => 'LIQUIDADO',
+            'historico' => "Recebimento da Venda #{$pedido->numero_pedido}",
+        ]);
+
+        if ($contaPadrao) {
+            $saldoAnterior = (float) $contaPadrao->saldo_atual;
+            $saldoPosterior = $saldoAnterior + $totalLiquido;
+            $contaPadrao->update(['saldo_atual' => $saldoPosterior]);
+
+            MovimentacaoExtrato::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $pedido->tenant_id,
+                'conta_financeira_id' => $contaPadrao->id,
+                'titulo_id' => $titulo->id,
+                'usuario_id' => $vendedor->id,
+                'tipo_movimento' => 'ENTRADA',
+                'valor' => $totalLiquido,
+                'saldo_anterior' => $saldoAnterior,
+                'saldo_posterior' => $saldoPosterior,
+                'forma_pagamento' => $pagamentos[0]['forma_pagamento'] ?? 'DINHEIRO',
+                'data_movimento' => now()->toDateString(),
+                'descricao' => "Entrada Venda #{$pedido->numero_pedido}",
+                'created_at' => now(),
+            ]);
+        }
+    }
+    public function sincronizarLoteOffline(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'vendas' => 'required|array|min:1',
+            'vendas.*.offline_id' => 'required|string',
+            'vendas.*.payload' => 'required|array',
+        ]);
+
+        $vendedor = $request->user();
+        $processadas = [];
+        $erros = [];
+
+        foreach ($validated['vendas'] as $vendaItem) {
+            $offlineId = $vendaItem['offline_id'];
+            $payload = $vendaItem['payload'];
+
+            // Idempotência: verifica se o lote offline já foi sincronizado
+            $jaExiste = PedidoVenda::where('pdv_offline_uuid', $offlineId)->first();
+            if ($jaExiste) {
+                $processadas[] = ['offline_id' => $offlineId, 'numero_pedido' => $jaExiste->numero_pedido];
+                continue;
+            }
+
+            try {
+                $clienteId = self::resolverClienteId($payload['cliente_id'] ?? null, $vendedor->tenant_id);
+                $empresaId = $vendedor->empresa_padrao_id ?? Empresa::where('tenant_id', $vendedor->tenant_id)->first()->id;
+
+                $pedido = VendaService::faturarVenda(
+                    $empresaId,
+                    $clienteId,
+                    $payload['deposito_id'],
+                    $vendedor,
+                    $payload['itens'],
+                    $payload['pagamentos'],
+                    (float) ($payload['desconto_geral'] ?? 0.00),
+                    'PDV_OFFLINE'
+                );
+
+                $pedido->update([
+                    'pdv_offline_uuid' => $offlineId,
+                    'sincronizado_em' => now(),
+                ]);
+
+                $processadas[] = ['offline_id' => $offlineId, 'numero_pedido' => $pedido->numero_pedido];
+            } catch (Exception $e) {
+                $erros[] = ['offline_id' => $offlineId, 'erro' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'processadas' => $processadas,
+                'erros' => $erros,
+                'total_sincronizadas' => count($processadas),
+            ]
+        ]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\WmsLayoutService.php
+========================================
+<?php
+
+namespace App\Services;
+
+use App\Models\EstoqueDeposito;
+
+class WmsLayoutService
+{
+    /**
+     * Sugere o melhor endereço (Rua, Prédio, Nível, Vão) para armazenagem (Putaway)
+     */
+    public static function sugerirEnderecoPutaway(string $depositoId, string $itemId): array
+    {
+        // Prioriza o mesmo corredor/rua onde já existem lotes do mesmo item
+        $existente = EstoqueDeposito::where('deposito_id', $depositoId)
+            ->where('item_id', $itemId)
+            ->whereNotNull('localizacao_rua')
+            ->first();
+
+        if ($existente) {
+            return [
+                'rua' => $existente->localizacao_rua,
+                'predio' => $existente->localizacao_predio,
+                'nivel' => $existente->localizacao_nivel,
+                'vao' => $existente->localizacao_vao,
+            ];
+        }
+
+        // Endereço padrão de recepção caso não haja histórico
+        return [
+            'rua' => 'R01',
+            'predio' => 'P01',
+            'nivel' => 'N01',
+            'vao' => 'V01',
+        ];
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Fiscal\FiscalDriverFactory.php
+========================================
+<?php
+
+namespace App\Services\Fiscal;
+
+use App\Services\Fiscal\Contracts\FiscalDriverInterface;
+use Exception;
+
+class FiscalDriverFactory
+{
+    /**
+     * Instancia o Driver correto baseado no modelo do documento fiscal (55=NFe, 65=NFCe, NFS-e)
+     */
+    public static function make(string $modeloDocumento): FiscalDriverInterface
+    {
+        return match ($modeloDocumento) {
+            //'55' => app(Drivers\NfeDriver::class),
+            //'65' => app(Drivers\NfceDriver::class),
+            //'NFS-e' => app(Drivers\NfseDriver::class),
+            default => throw new Exception("Modelo fiscal {$modeloDocumento} ainda não possui um driver implementado."),
+        };
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Fiscal\NfePhpDriver.php
+========================================
+<?php
+
+namespace App\Services\Fiscal;
+
+use App\Interfaces\FiscalDriverInterface;
+use App\Models\DocumentoFiscal;
+use NFePHP\Common\Certificate;
+use NFePHP\NFe\Tools;
+use NFePHP\NFe\Make;
+use NFePHP\NFe\Common\Standardize;
+use Illuminate\Support\Str;
+use Exception;
+
+class NfePhpDriver implements FiscalDriverInterface
+{
+    private Tools $tools;
+    private array $config;
+
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = '', string $razaoSocial = ''): self
+    {
+        $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
+        if (empty($cnpjLimpo) || strlen($cnpjLimpo) !== 14) {
+            $cnpjLimpo = str_pad($cnpjLimpo, 14, '0', STR_PAD_LEFT);
+        }
+
+        $this->config = [
+            "atualizacao" => now()->format('Y-m-d H:i:s'),
+            "tpAmb" => $tpAmb,
+            "razaosocial" => empty($razaoSocial) ? "Empresa Emissora" : substr($razaoSocial, 0, 60),
+            "siglaUF" => $uf,
+            "cnpj" => $cnpjLimpo,
+            "schemes" => "PL_009_V4",
+            "versao" => "4.00",
+            "tokenIBPT" => "",
+            // Mock do Token CSC (Obrigatório para gerar o QR Code da NFC-e Modelo 65)
+            "CSC" => "GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E",
+            "CSCid" => "000001"
+        ];
+
+        $jsonConfig = json_encode($this->config);
+        $certificado = Certificate::readPfx($certificadoBinario, $senha);
+
+        $this->tools = new Tools($jsonConfig, $certificado);
+        return $this;
+    }
+
+    public function verificarStatusSefaz(string $uf, int $tpAmb = 2): array
+    {
+        try {
+            $this->tools->model('55');
+            $response = $this->tools->sefazStatus($uf, $tpAmb);
+            $standardize = new Standardize();
+            $std = $standardize->toStd($response);
+
+            return [
+                'status_code' => (int) ($std->cStat ?? 0),
+                'motivo' => (string) ($std->xMotivo ?? 'Sem resposta decodificável'),
+                'tempo_medio' => (int) ($std->tMed ?? 0),
+                'ambiente' => ((string) ($std->tpAmb ?? '')) === '1' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'
+            ];
+        } catch (Exception $e) {
+            return ['status_code' => 500, 'motivo' => 'Falha de Comunicação SEFAZ: ' . $e->getMessage()];
+        }
+    }
+
+    public function emitir(array $dadosEmissao): DocumentoFiscal
+    {
+        // 1. Avisa o NFePHP se é modelo 55 (NF-e) ou 65 (NFC-e) para acionar o gerador de QR Code
+        $modeloDoc = $dadosEmissao['modelo'] ?? '55';
+        $this->tools->model($modeloDoc);
+
+        $nfe = new Make();
+        try {
+            // 0. Inicialização
+            $stdInfNFe = new \stdClass();
+            $stdInfNFe->versao = '4.00';
+            $stdInfNFe->Id = '';
+            $stdInfNFe->pk_nItem = null;
+            $nfe->taginfNFe($stdInfNFe);
+
+            // 1. Identificação da NFe (<ide>)
+            $stdIde = new \stdClass();
+            $stdIde->cUF = 33; // RJ
+            $stdIde->cNF = rand(11111111, 99999999);
+            $stdIde->natOp = 'Venda de Mercadorias';
+            $stdIde->mod = $modeloDoc;
+            $stdIde->serie = 1;
+            $stdIde->nNF = $dadosEmissao['numero'];
+            $stdIde->dhEmi = now()->format('Y-m-d\TH:i:sP');
+            $stdIde->tpNF = 1; // Saída
+            $stdIde->idDest = 1; // Operação Interna
+            $stdIde->cMunFG = 3300456; // Belford Roxo
+            $stdIde->tpImp = 4; // DANFE NFC-e
+            $stdIde->tpEmis = 1; // Emissão Normal
+            $stdIde->tpAmb = $this->config['tpAmb'];
+            $stdIde->finNFe = 1; // Normal
+            $stdIde->indFinal = 1; // Consumidor Final
+            $stdIde->indPres = 1; // Operação Presencial
+            $stdIde->procEmi = 0; // Aplicativo Contribuinte
+            $stdIde->verProc = '1.0';
+            $nfe->tagide($stdIde);
+
+            // 2. Emitente (<emit>)
+            $stdEmit = new \stdClass();
+            $stdEmit->xNome = $dadosEmissao['emitente']['razao_social'] ?? 'EMPRESA TESTE';
+            $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'] ?? 'FANTASIA TESTE';
+            $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
+            $stdEmit->CRT = 1; // Simples Nacional
+            $stdEmit->CNPJ = $this->config['cnpj']; // Forçado do certificado
+            $nfe->tagemit($stdEmit);
+
+            $stdEnderEmit = new \stdClass();
+            $stdEnderEmit->xLgr = 'Rua de Teste';
+            $stdEnderEmit->nro = '123';
+            $stdEnderEmit->xBairro = 'Centro';
+            $stdEnderEmit->cMun = 3300456;
+            $stdEnderEmit->xMun = 'Belford Roxo';
+            $stdEnderEmit->UF = 'RJ';
+            $stdEnderEmit->CEP = '26110000';
+            $stdEnderEmit->cPais = 1058;
+            $stdEnderEmit->xPais = 'Brasil';
+            $nfe->tagenderEmit($stdEnderEmit);
+
+            // 3. Destinatário (<dest>)
+            $stdDest = new \stdClass();
+            $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'Consumidor Final';
+            $stdDest->indIEDest = 9; // Não Contribuinte
+
+            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
+            if (empty($docDestino)) {
+                $stdDest->CPF = '00000000000';
+            } elseif (strlen($docDestino) > 11) {
+                $stdDest->CNPJ = str_pad($docDestino, 14, '0', STR_PAD_LEFT);
+            } else {
+                $stdDest->CPF = str_pad($docDestino, 11, '0', STR_PAD_LEFT);
+            }
+            $nfe->tagdest($stdDest);
+
+            $stdEnderDest = new \stdClass();
+            $stdEnderDest->xLgr = 'Rua do Cliente';
+            $stdEnderDest->nro = 'SN';
+            $stdEnderDest->xBairro = 'Centro';
+            $stdEnderDest->cMun = 3300456;
+            $stdEnderDest->xMun = 'Belford Roxo';
+            $stdEnderDest->UF = 'RJ';
+            $stdEnderDest->CEP = '26110000';
+            $stdEnderDest->cPais = 1058;
+            $stdEnderDest->xPais = 'Brasil';
+            $nfe->tagenderDest($stdEnderDest);
+
+            // 4. Produtos e Impostos (<det>)
+            $totais = 0.00;
+            foreach ($dadosEmissao['itens'] as $idx => $item) {
+                $nItem = $idx + 1;
+                $valorTotalItem = (float) $item['valor_total'];
+                $totais += $valorTotalItem;
+
+                $stdProd = new \stdClass();
+                $stdProd->item = $nItem;
+                $stdProd->cProd = 'PRD' . str_pad($nItem, 3, '0', STR_PAD_LEFT);
+                $stdProd->cEAN = 'SEM GTIN';
+                $stdProd->xProd = 'PRODUTO DE TESTE ' . $nItem;
+                $stdProd->NCM = '94039090';
+                $stdProd->CFOP = '5102'; // Venda
+                $stdProd->uCom = 'UN';
+                $stdProd->qCom = 1.0000;
+                $stdProd->vUnCom = $valorTotalItem;
+                $stdProd->vProd = $valorTotalItem;
+                $stdProd->cEANTrib = 'SEM GTIN';
+                $stdProd->uTrib = 'UN';
+                $stdProd->qTrib = 1.0000;
+                $stdProd->vUnTrib = $valorTotalItem;
+                $stdProd->indTot = 1;
+                $nfe->tagprod($stdProd);
+
+                $stdImposto = new \stdClass();
+                $stdImposto->item = $nItem;
+                $nfe->tagimposto($stdImposto);
+
+                $stdIcms = new \stdClass();
+                $stdIcms->item = $nItem;
+                $stdIcms->orig = 0;
+                $stdIcms->CSOSN = '102'; // Simples Nacional
+                $nfe->tagICMSSN($stdIcms);
+
+                $stdPis = new \stdClass();
+                $stdPis->item = $nItem;
+                $stdPis->CST = '07';
+                $nfe->tagPIS($stdPis);
+
+                $stdCofins = new \stdClass();
+                $stdCofins->item = $nItem;
+                $stdCofins->CST = '07';
+                $nfe->tagCOFINS($stdCofins);
+            }
+
+            // 5. Totalizadores (<total>)
+            $stdIcmsTot = new \stdClass();
+            $stdIcmsTot->vBC = 0.00;
+            $stdIcmsTot->vICMS = 0.00;
+            $stdIcmsTot->vICMSDeson = 0.00;
+            $stdIcmsTot->vFCP = 0.00;
+            $stdIcmsTot->vBCST = 0.00;
+            $stdIcmsTot->vST = 0.00;
+            $stdIcmsTot->vFCPST = 0.00;
+            $stdIcmsTot->vFCPSTRet = 0.00;
+            $stdIcmsTot->vProd = $totais;
+            $stdIcmsTot->vFrete = 0.00;
+            $stdIcmsTot->vSeg = 0.00;
+            $stdIcmsTot->vDesc = 0.00;
+            $stdIcmsTot->vII = 0.00;
+            $stdIcmsTot->vIPI = 0.00;
+            $stdIcmsTot->vIPIDevol = 0.00;
+            $stdIcmsTot->vPIS = 0.00;
+            $stdIcmsTot->vCOFINS = 0.00;
+            $stdIcmsTot->vOutro = 0.00;
+            $stdIcmsTot->vNF = $totais;
+            $nfe->tagICMSTot($stdIcmsTot);
+
+            // 6. Transporte e Pagamento (<transp>, <pag>)
+            $stdTransp = new \stdClass();
+            $stdTransp->modFrete = 9; // Sem frete
+            $nfe->tagtransp($stdTransp);
+
+            $stdPag = new \stdClass();
+            $stdPag->vTroco = 0.00;
+            $nfe->tagpag($stdPag);
+
+            $stdDetPag = new \stdClass();
+            $stdDetPag->tPag = '01'; // Dinheiro
+            $stdDetPag->vPag = $totais;
+            $nfe->tagdetPag($stdDetPag);
+
+            $xmlString = $nfe->getXML();
+
+            if (!empty($nfe->getErrors())) {
+                throw new Exception("Falha de validação do schema XML: " . implode(' | ', $nfe->getErrors()));
+            }
+
+            $xmlAssinado = $this->tools->signNFe($xmlString);
+
+            // CORREÇÃO MESTRA: Uso de setters explícitos para contornar o $fillable (Mass Assignment) do Laravel
+            $doc = new DocumentoFiscal();
+            $doc->id = (string) Str::uuid();
+            $doc->tenant_id = $dadosEmissao['tenant_id'];
+            $doc->empresa_id = $dadosEmissao['empresa_id'];
+            $doc->destinatario_id = $dadosEmissao['destinatario']['id'] ?? null;
+            $doc->modelo_documento = $modeloDoc;
+            $doc->numero_documento = $dadosEmissao['numero'];
+            $doc->serie = '1';
+            $doc->chave_acesso = $nfe->getChave();
+            $doc->status = 'PROCESSANDO';
+            $doc->xml_conteudo = $xmlAssinado; // Agora grava com certeza absoluta
+            $doc->data_emissao = now();
+            $doc->valor_total = $totais;
+            $doc->save();
+
+            return $doc;
+
+        } catch (Exception $e) {
+            $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
+            throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
+        }
+    }
+
+    public function cancelar(string $chaveAcesso, string $justificativa): bool { return false; }
+    public function consultar(string $chaveAcesso): array { return []; }
+    public function corrigir(string $chaveAcesso, string $correcao): bool { return false; }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Fiscal\SefazNfeDriver.php
+========================================
+<?php
+
+namespace App\Services\Fiscal;
+
+use App\Interfaces\FiscalDriverInterface;
+use App\Models\DocumentoFiscal;
+use NFePHP\NFe\Tools;
+use NFePHP\Common\Certificate;
+use NFePHP\NFe\Make;
+use Exception;
+
+class SefazNfeDriver implements FiscalDriverInterface
+{
+    protected ?Tools $tools = null;
+
+    public function __construct()
+    {
+        // Nasce limpo. Configurado dinamicamente via MotorFiscalService.
+    }
+
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2): self
+    {
+        $certificado = Certificate::readPfx($certificadoBinario, $senha);
+
+        $configJson = json_encode([
+            "atualizacao" => date('Y-m-d H:i:s'),
+            "tpAmb" => $tpAmb,
+            "razaosocial" => "Scalle Operacional LTDA",
+            "siglaUF" => $uf,
+            "cnpj" => "00000000000000",
+            "schemes" => "PL_009_V4",
+            "versao" => "4.00"
+        ]);
+
+        $this->tools = new Tools($configJson, $certificado);
+        $this->tools->model('55'); // Define NFe (Modelo 55)
+
+        return $this;
+    }
+
+    public function emitir(array $dadosEmissao): DocumentoFiscal
+    {
+        if (!$this->tools) {
+            throw new Exception("Driver Fiscal não configurado. Chame o método configurar() antes de emitir.");
+        }
+
+        $nfe = new Make();
+
+        // 0. Tag raiz <infNFe>
+        $stdInfNFe = new \stdClass();
+        $stdInfNFe->versao = '4.00';
+        $stdInfNFe->Id = '';
+        $stdInfNFe->pk_nItem = null;
+        $nfe->taginfNFe($stdInfNFe);
+
+        // 1. Tag <ide> (Identificação)
+        $stdIde = new \stdClass();
+        $stdIde->cUF = 33; // RJ
+        $stdIde->cNF = rand(11111111, 99999999);
+        $stdIde->natOp = 'VENDA DE MERCADORIAS';
+        $stdIde->mod = 55;
+        $stdIde->serie = 1;
+        $stdIde->nNF = rand(1000, 9999); // Numeração que virá do banco
+        $stdIde->dhEmi = date('Y-m-d\TH:i:sP');
+        $stdIde->tpNF = 1; // 1=Saída
+        $stdIde->idDest = 1; // 1=Interna, 2=Interestadual
+        $stdIde->cMunFG = 3300456; // Belford Roxo
+        $stdIde->tpImp = 1; // Danfe Retrato
+        $stdIde->tpEmis = 1; // Emissão Normal
+        $stdIde->tpAmb = 2; // Homologação
+        $stdIde->finNFe = 1; // 1=Normal
+        $stdIde->indFinal = 0; // 0=Normal, 1=Consumidor Final
+        $stdIde->indPres = 1; // 1=Presencial
+        $stdIde->procEmi = 0; // Emissão por aplicativo próprio
+        $stdIde->verProc = 'ScalleERP-1.0';
+        $nfe->tagide($stdIde);
+
+        // 2. Tag <emit> (Emitente)
+        $stdEmit = new \stdClass();
+        $stdEmit->xNome = 'SCALLE ENTERPRISE MATRIZ';
+        $stdEmit->xFant = 'SCALLE MATRIZ';
+        $stdEmit->IE = '12345678';
+        $stdEmit->CRT = 3; // 3=Regime Normal
+        $stdEmit->CNPJ = '00000000000191';
+        $nfe->tagemit($stdEmit);
+
+        // Endereço Emitente
+        $stdEnderEmit = new \stdClass();
+        $stdEnderEmit->xLgr = 'RUA PRINCIPAL';
+        $stdEnderEmit->nro = '100';
+        $stdEnderEmit->xBairro = 'CENTRO';
+        $stdEnderEmit->cMun = 3300456;
+        $stdEnderEmit->xMun = 'BELFORD ROXO';
+        $stdEnderEmit->UF = 'RJ';
+        $stdEnderEmit->CEP = '26110000';
+        $stdEnderEmit->cPais = 1058;
+        $stdEnderEmit->xPais = 'BRASIL';
+        $nfe->tagenderEmit($stdEnderEmit);
+
+        // 3. Tag <dest> (Destinatário)
+        $stdDest = new \stdClass();
+        $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'DISTRIBUIDORA DE PECAS LTDA';
+        $stdDest->indIEDest = 1; // 1=Contribuinte ICMS
+        $stdDest->IE = '98765432';
+
+        // Blindagem de CPF/CNPJ para aceitar apenas 11 ou 14
+        $doc = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
+        if (strlen($doc) === 14) {
+            $stdDest->CNPJ = $doc;
+        } elseif (strlen($doc) === 11) {
+            $stdDest->CPF = $doc;
+        } else {
+            // Fallback para não estourar erro XSD em banco de testes com dados sujos
+            $stdDest->CNPJ = '99999999000191'; // CNPJ universal de homologação SEFAZ
+        }
+        $nfe->tagdest($stdDest);
+
+        // Endereço Destinatário
+        $stdEnderDest = new \stdClass();
+        $stdEnderDest->xLgr = 'AVENIDA AUTOMOVEL CLUBE';
+        $stdEnderDest->nro = '1500';
+        $stdEnderDest->xBairro = 'CENTRO';
+        $stdEnderDest->cMun = 3300456;
+        $stdEnderDest->xMun = 'BELFORD ROXO';
+        $stdEnderDest->UF = 'RJ';
+        $stdEnderDest->CEP = '26110000';
+        $stdEnderDest->cPais = 1058;
+        $stdEnderDest->xPais = 'BRASIL';
+        $nfe->tagenderDest($stdEnderDest);
+
+        // 4. Tag <det> e <prod> (Itens da Nota)
+        $itemCount = 1;
+        $vTotalProdutos = 0.00;
+
+        foreach ($dadosEmissao['itens'] as $item) {
+            $stdProd = new \stdClass();
+            $stdProd->item = $itemCount++;
+            $stdProd->cProd = 'COMP-TERM-10K';
+            $stdProd->cEAN = 'SEM GTIN';
+            $stdProd->xProd = 'SENSOR DE TEMPERATURA TERMISTOR NTC 10K';
+            $stdProd->NCM = '90251990';
+            $stdProd->CFOP = '5102';
+            $stdProd->uCom = 'UN';
+            $stdProd->qCom = $item['quantidade'] ?? 1.0000;
+            $stdProd->vUnCom = $item['valor_unitario'] ?? 18.50;
+            $stdProd->vProd = $stdProd->qCom * $stdProd->vUnCom;
+            $stdProd->cEANTrib = 'SEM GTIN';
+            $stdProd->uTrib = 'UN';
+            $stdProd->qTrib = $stdProd->qCom;
+            $stdProd->vUnTrib = $stdProd->vUnCom;
+            $stdProd->indTot = 1;
+
+            $vTotalProdutos += $stdProd->vProd;
+            $nfe->tagprod($stdProd);
+
+            // Tributos (ICMS 00 - Tributado Integralmente)
+            $stdImposto = new \stdClass();
+            $stdImposto->item = $stdProd->item;
+            $nfe->tagimposto($stdImposto);
+
+            $stdICMS = new \stdClass();
+            $stdICMS->item = $stdProd->item;
+            $stdICMS->orig = 0;
+            $stdICMS->CST = '00';
+            $stdICMS->modBC = 3;
+            $stdICMS->vBC = $stdProd->vProd;
+            $stdICMS->pICMS = 18.00;
+            $stdICMS->vICMS = round($stdICMS->vBC * ($stdICMS->pICMS / 100), 2);
+            $nfe->tagICMS($stdICMS);
+        }
+
+        // 5. Totais
+        $stdTot = new \stdClass();
+        $stdTot->vBC = $vTotalProdutos;
+        $stdTot->vICMS = round($vTotalProdutos * 0.18, 2);
+        $stdTot->vICMSDeson = 0.00;
+        $stdTot->vFCP = 0.00;
+        $stdTot->vBCST = 0.00;
+        $stdTot->vST = 0.00;
+        $stdTot->vFCPST = 0.00;
+        $stdTot->vFCPSTRet = 0.00;
+        $stdTot->vProd = $vTotalProdutos;
+        $stdTot->vFrete = 0.00;
+        $stdTot->vSeg = 0.00;
+        $stdTot->vDesc = 0.00;
+        $stdTot->vII = 0.00;
+        $stdTot->vIPI = 0.00;
+        $stdTot->vIPIDevol = 0.00;
+        $stdTot->vPIS = 0.00;
+        $stdTot->vCOFINS = 0.00;
+        $stdTot->vOutro = 0.00;
+        $stdTot->vNF = $vTotalProdutos;
+        $nfe->tagICMSTot($stdTot);
+
+        // Inclusão da Tag <transp> antes do Pagamento
+        $stdTransp = new \stdClass();
+        $stdTransp->modFrete = 9; // 9 = Sem Ocorrência de Transporte
+        $nfe->tagtransp($stdTransp);
+
+        // 6. Pagamento
+        $stdPag = new \stdClass();
+        $nfe->tagpag($stdPag);
+
+        $stdDetPag = new \stdClass();
+        $stdDetPag->tPag = '15'; // Boleto Bancario
+        $stdDetPag->vPag = $vTotalProdutos;
+        $stdDetPag->indPag = 1; // A Prazo
+        $nfe->tagdetPag($stdDetPag);
+
+        // Gera o XML String
+        if (!$nfe->montaNFe()) {
+            throw new \Exception("Erro ao gerar XML da NFe: " . json_encode($nfe->getErrors()));
+        }
+        $xmlNãoAssinado = $nfe->getXML();
+
+        // Assinatura Criptográfica
+        $xmlAssinado = $this->tools->signNFe($xmlNãoAssinado);
+
+        // ========================================================
+        // TRANSMISSÃO PARA A SEFAZ (Síncrono)
+        // ========================================================
+        try {
+            // Envia o lote contendo 1 nota. O 3º parâmetro '1' força o processamento síncrono
+            $respostaSefaz = $this->tools->sefazEnviaLote([$xmlAssinado], $stdIde->nNF, 1);
+
+            // Padroniza o retorno XML da SEFAZ para um Objeto PHP legível
+            $stdRetorno = (new \NFePHP\NFe\Common\Standardize())->toStd($respostaSefaz);
+
+            $documentoFiscal = new DocumentoFiscal();
+            $documentoFiscal->xml_assinado = $xmlAssinado;
+            $documentoFiscal->status = 'REJEITADO'; // Status conservador por padrão
+
+            // cStat 104 = Lote processado. Precisamos olhar o cStat interno do protocolo da nota
+            if (isset($stdRetorno->protNFe->infProt)) {
+                $infProt = $stdRetorno->protNFe->infProt;
+
+                if ($infProt->cStat == 100) { // 100 = Autorizado o uso da NF-e
+                    $documentoFiscal->status = 'AUTORIZADO';
+                    $documentoFiscal->protocolo_autorizacao = $infProt->nProt;
+                    // MÁGICA: Anexa o protocolo da SEFAZ no final do nosso XML assinado
+                    $documentoFiscal->xml_autorizado = \NFePHP\NFe\Complements::toAuthorize($xmlAssinado, $respostaSefaz);
+                } else {
+                    // Rejeição mapeada pela SEFAZ
+                    throw new Exception("SEFAZ Rejeitou [cStat {$infProt->cStat}]: {$infProt->xMotivo}");
+                }
+            } else {
+                // Erro no lote inteiro
+                throw new Exception("Erro de Lote SEFAZ [cStat {$stdRetorno->cStat}]: {$stdRetorno->xMotivo}");
+            }
+
+            return $documentoFiscal;
+
+        } catch (\Exception $e) {
+            // Em caso de falha de conexão ou rejeição, devolve o erro mastigado
+            throw new Exception("Falha na Transmissão: " . $e->getMessage());
+        }
+    }
+
+    public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
+    public function consultar(string $chaveAcesso): array { return []; }
+    public function corrigir(string $chaveAcesso, string $correcao): bool { return true; }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Frota\FrotaOperacaoService.php
+========================================
+<?php
+
+namespace App\Services\Frota;
+
+use App\Models\FrotaVeiculo;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Exception;
+
+class FrotaOperacaoService
+{
+    /**
+     * Registra o abastecimento, gera despesa e audita manutenções
+     */
+    public static function registrarAbastecimento(array $dados, string $tenantId, string $empresaId)
+    {
+        return DB::transaction(function () use ($dados, $tenantId, $empresaId) {
+            $veiculo = FrotaVeiculo::where('tenant_id', $tenantId)->findOrFail($dados['veiculo_id']);
+
+            // 1. Blindagem de KM
+            if ($dados['km_marcador'] <= $veiculo->km_atual) {
+                throw new Exception("Erro de Hodômetro: O KM informado ({$dados['km_marcador']}) deve ser maior que o KM atual do veículo ({$veiculo->km_atual}).");
+            }
+
+            // 2. Atualiza a KM da frota
+            $veiculo->km_atual = $dados['km_marcador'];
+            $veiculo->save();
+
+            // 3. Integração Financeira: Cria Título a Pagar
+            $tituloId = (string) Str::uuid();
+            DB::table('fin_titulos_financeiros')->insert([
+                'id' => $tituloId,
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => $dados['posto_id'], // Fornecedor
+                'tipo_titulo' => 'DESPESA',
+                'descricao' => "Abastecimento - Veículo {$veiculo->placa}",
+                'valor_original' => $dados['valor_total'],
+                'data_vencimento' => $dados['data_abastecimento'],
+                'is_pago' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // 4. Registra o Abastecimento
+            $abastecimentoId = (string) Str::uuid();
+            DB::table('fro_abastecimentos')->insert([
+                'id' => $abastecimentoId,
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'veiculo_id' => $veiculo->id,
+                'motorista_id' => $dados['motorista_id'],
+                'posto_id' => $dados['posto_id'],
+                'data_abastecimento' => $dados['data_abastecimento'],
+               

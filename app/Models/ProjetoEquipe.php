@@ -1,13 +1,16 @@
 <?php
+
 namespace App\Models;
 
+use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ProjetoEquipe extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, BelongsToTenant;
 
     protected $table = 'prj_projeto_equipe';
     protected $keyType = 'string';
@@ -16,4 +19,9 @@ class ProjetoEquipe extends Model
     protected $fillable = [
         'id', 'tenant_id', 'projeto_id', 'usuario_id', 'papel_id', 'custo_hora'
     ];
+
+    public function usuario(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'usuario_id');
+    }
 }
