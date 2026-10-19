@@ -1,0 +1,2720 @@
+﻿          <button onClick={() => setFeedback(null)} className="cursor-pointer hover:text-white"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Cards de Status */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        {/* Card 1: Certificado Digital */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex items-center gap-2">
+              <div className={`p-2 rounded-lg ${certificado ? (certificado.is_expirado ? 'bg-rose-950 text-rose-400' : 'bg-emerald-950 text-emerald-400') : 'bg-slate-800 text-slate-400'}`}>
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Certificado Digital (e-CNPJ A1)</h2>
+                <p className="text-[11px] text-slate-400">Armazenamento Criptografado (AES-256)</p>
+              </div>
+            </div>
+            {certificado && (
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${certificado.ambiente_emissao === 'PRODUCAO' ? 'bg-indigo-950 border-indigo-800 text-indigo-300' : 'bg-amber-950 border-amber-800 text-amber-300'}`}>
+                {certificado.ambiente_emissao}
+              </span>
+            )}
+          </div>
+
+          {certificado ? (
+            <div className="space-y-3 border-t border-slate-800 pt-4">
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase">Razão Social Vinculada</p>
+                <p className="text-sm font-bold text-slate-200">{certificado.razao_social}</p>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">CNPJ: {certificado.cnpj_certificado?.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5") || 'N/A'}</p>
+              </div>
+              <div className="flex justify-between items-end">
+                <div>
+                  <p className="text-xs text-slate-500 font-semibold uppercase">Validade ICP-Brasil</p>
+                  <p className={`text-sm font-mono font-bold ${certificado.is_expirado ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {new Date(certificado.valido_ate).toLocaleDateString('pt-BR')} {new Date(certificado.valido_ate).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                  </p>
+                </div>
+                {certificado.is_expirado && <span className="text-[10px] font-bold text-rose-500 bg-rose-950/40 px-2 py-1 rounded">EXPIRADO</span>}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-6 text-slate-500 border-t border-slate-800 border-dashed mt-2">
+              <Lock className="h-8 w-8 mb-2 opacity-50" />
+              <p className="text-xs font-semibold">Nenhum Certificado Ativo</p>
+              <p className="text-[10px] mt-1 text-center px-4">Faça o upload do arquivo .pfx para habilitar o Motor Fiscal e as assinaturas.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Card 2: Status da SEFAZ */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex items-center gap-2">
+              <div className={`p-2 rounded-lg ${sefazStatus?.status_code == 107 ? 'bg-emerald-950 text-emerald-400' : (sefazStatus ? 'bg-rose-950 text-rose-400' : 'bg-slate-800 text-slate-400')}`}>
+                <Server className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Webservice SEFAZ</h2>
+                <p className="text-[11px] text-slate-400">Monitoramento de Disponibilidade</p>
+              </div>
+            </div>
+            <button
+              onClick={pingSefaz}
+              disabled={testandoSefaz || !certificado}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-sky-400 text-xs font-bold rounded-lg transition cursor-pointer"
+            >
+              <Activity className={`h-3.5 w-3.5 ${testandoSefaz ? 'animate-pulse' : ''}`} />
+              {testandoSefaz ? 'Ping...' : 'Testar Conexão'}
+            </button>
+          </div>
+
+          <div className="border-t border-slate-800 pt-4 flex-1 flex flex-col justify-center">
+            {sefazStatus ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-semibold uppercase">cStat (Código)</span>
+                  <span className={`font-mono font-bold text-sm ${sefazStatus.status_code == 107 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {sefazStatus.status_code}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-semibold uppercase">Retorno Sefaz</span>
+                  <span className="text-xs font-bold text-white truncate max-w-[200px]" title={sefazStatus.motivo}>
+                    {sefazStatus.motivo}
+                  </span>
+                </div>
+                {sefazStatus.tempo_medio > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-semibold uppercase">Tempo de Resposta (tMed)</span>
+                    <span className="text-xs font-mono text-sky-400 font-bold">{sefazStatus.tempo_medio} seg</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center text-slate-500">
+                <p className="text-xs font-semibold">Status Desconhecido</p>
+                <p className="text-[10px] mt-1">Clique em "Testar Conexão" para realizar um ping assinado nos servidores estaduais.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Tabela de Documentos Fiscais */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm mt-6">
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Últimos Documentos Fiscais (NF-e / NFC-e)</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[800px]">
+            <thead className="bg-slate-950/80 border-b border-slate-800 text-[10px] sm:text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">Modelo/Série</th>
+                <th className="py-3 px-4">Número</th>
+                <th className="py-3 px-4">Destinatário</th>
+                <th className="py-3 px-4">Emissão</th>
+                <th className="py-3 px-4 text-right">Valor Total</th>
+                <th className="py-3 px-4 text-center">Status Sefaz</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 font-mono">
+              {documentos.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="text-center py-10 text-slate-500 font-sans text-xs">
+                    Nenhum documento fiscal emitido ainda. Fature uma Venda ou Ordem de Serviço.
+                  </td>
+                </tr>
+              ) : (
+                documentos.map((doc) => (
+                  <tr key={doc.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-bold text-indigo-400">
+                      Mod {doc.modelo_documento} / {doc.serie}
+                    </td>
+                    <td className="py-3 px-4 text-white font-bold">{doc.numero_documento || '-'}</td>
+                    <td className="py-3 px-4 font-sans text-slate-300 truncate max-w-[200px]">
+                      {doc.destinatario?.nome_razao_social || 'Consumidor Final'}
+                    </td>
+                    <td className="py-3 px-4 text-slate-400">
+                      {new Date(doc.created_at).toLocaleDateString('pt-BR')} {new Date(doc.created_at).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
+                    </td>
+                    <td className="py-3 px-4 text-right text-emerald-400 font-bold">
+                      R$ {parseFloat(doc.valor_total || 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-center font-sans">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        doc.status === 'AUTORIZADO' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                        doc.status === 'PROCESSANDO' ? 'bg-indigo-950 text-indigo-300 border border-indigo-800 animate-pulse' :
+                        doc.status === 'CANCELADO' ? 'bg-slate-800 text-slate-400 border border-slate-700' :
+                        'bg-rose-950 text-rose-300 border border-rose-800'
+                      }`}>
+                        {doc.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal Upload Certificado */}
+      {modalUpload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-indigo-400" />
+                Importar Certificado A1 (.pfx)
+              </h2>
+              <button onClick={() => setModalUpload(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="h-5 w-5" /></button>
+            </div>
+
+            <form onSubmit={handleUploadCertificado} className="p-6 space-y-5 text-xs text-slate-300">
+              <div className="bg-amber-950/30 border border-amber-800/50 p-3 rounded-xl text-[11px] text-amber-400 flex items-start gap-2">
+                <Lock className="h-4 w-4 shrink-0 mt-0.5" />
+                <p>O arquivo e a senha são criptografados com o algoritmo <strong>AES-256-CBC</strong> antes de irem para o banco de dados. Nós não armazenamos a sua senha em texto puro.</p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-400 mb-1">Arquivo do Certificado (*.pfx / *.p12)</label>
+                <input
+                  type="file"
+                  accept=".pfx,.p12"
+                  required
+                  onChange={(e) => setFormCertificado({ ...formCertificado, arquivo: e.target.files[0] })}
+                  className="w-full text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-white cursor-pointer border border-slate-800 rounded-lg bg-slate-950"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-400 mb-1">Senha de Instalação do Certificado</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••••••"
+                  value={formCertificado.senha}
+                  onChange={(e) => setFormCertificado({ ...formCertificado, senha: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500 font-medium tracking-widest"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-400 mb-1">Ambiente de Operação SEFAZ</label>
+                <select
+                  value={formCertificado.ambiente_emissao}
+                  onChange={(e) => setFormCertificado({ ...formCertificado, ambiente_emissao: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500 cursor-pointer font-bold"
+                >
+                  <option value="HOMOLOGACAO">Homologação (Sem Valor Fiscal - Testes)</option>
+                  <option value="PRODUCAO">Produção (Validade Jurídica)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalUpload(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={fazendoUpload} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-xl transition shadow-lg cursor-pointer flex items-center gap-2">
+                  {fazendoUpload ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                  {fazendoUpload ? 'Criptografando...' : 'Salvar Certificado Seguro'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\fiscal\FiscalTestScreen.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+
+export default function FiscalTestScreen() {
+  // Estados de Autenticação
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [token, setToken] = useState(localStorage.getItem('scalle_token') || '');
+  const [usuarioNome, setUsuarioNome] = useState('');
+
+  // Estados do Certificado
+  const [arquivo, setArquivo] = useState(null);
+  const [senhaCert, setSenhaCert] = useState('123456');
+  const [ambiente, setAmbiente] = useState('HOMOLOGACAO');
+
+  // Estados Auxiliares (Dropdowns)
+  const [depositosDisponiveis, setDepositosDisponiveis] = useState([]);
+  const [produtosDisponiveis, setProdutosDisponiveis] = useState([]);
+  const [clientesDisponiveis, setClientesDisponiveis] = useState([]);
+
+  // Estados do PDV (Simulação de Venda)
+  const [depositoId, setDepositoId] = useState('');
+  const [itemId, setItemId] = useState('');
+  const [clienteId, setClienteId] = useState('');
+  const [valorTotal, setValorTotal] = useState('180.50');
+
+  // Estado do PDF URL (agora será um Blob URL)
+  const [cupomPdf, setCupomPdf] = useState(null);
+
+  // Log
+  const [log, setLog] = useState('');
+
+  const addLog = (message) => {
+    setLog((prev) => prev + '\n[' + new Date().toLocaleTimeString() + '] ' + message);
+  };
+
+  useEffect(() => {
+    if (token) {
+      carregarListasFixas();
+    }
+  }, [token]);
+
+  const carregarListasFixas = async () => {
+    try {
+      const resDep = await fetch('/api/wms/depositos', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resDep.ok) {
+        const dataDep = await resDep.json();
+        setDepositosDisponiveis(dataDep.data || []);
+        if (dataDep.data?.length > 0) setDepositoId(dataDep.data[0].id);
+      }
+
+      const resItens = await fetch('/api/itens?tipo=PRODUTO', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resItens.ok) {
+        const dataItens = await resItens.json();
+        const listaProdutos = dataItens.data || [];
+        setProdutosDisponiveis(listaProdutos);
+        if (listaProdutos.length > 0) {
+            setItemId(listaProdutos[0].id);
+            setValorTotal(listaProdutos[0].preco_venda || '10.00');
+        }
+      }
+
+      const resClientes = await fetch('/api/pessoas?tipo=CLIENTE', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (resClientes.ok) {
+        const dataClientes = await resClientes.json();
+        const listaClientes = dataClientes.data?.data || dataClientes.data || [];
+        setClientesDisponiveis(listaClientes);
+      }
+    } catch (err) {
+      addLog(`⚠️ Falha ao carregar listas dinâmicas: ${err.message}`);
+    }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    addLog('⏳ Tentando autenticação...');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setToken(data.data.token);
+        setUsuarioNome(data.data.user.name);
+        localStorage.setItem('scalle_token', data.data.token);
+        addLog(`✅ Login aprovado! Bem-vindo(a), ${data.data.user.name}.`);
+      } else {
+        addLog(`❌ Erro no Login: ${data.error?.message}`);
+      }
+    } catch (err) {
+      addLog(`❌ Falha na requisição: ${err.message}`);
+    }
+  };
+
+  const handleLogout = () => {
+    setToken('');
+    setUsuarioNome('');
+    setDepositosDisponiveis([]);
+    setProdutosDisponiveis([]);
+    setClientesDisponiveis([]);
+    setCupomPdf(null);
+    localStorage.removeItem('scalle_token');
+    addLog('👋 Logout realizado. Sessão encerrada.');
+  };
+
+  const handleUploadCertificado = async (e) => {
+    e.preventDefault();
+    if (!arquivo) return addLog('❌ Erro: Selecione o arquivo .pfx!');
+    addLog('⏳ Enviando certificado para o cofre do Tenant...');
+
+    const formData = new FormData();
+    formData.append('certificado', arquivo);
+    formData.append('senha', senhaCert);
+    formData.append('ambiente_emissao', ambiente);
+
+    try {
+      const response = await fetch('/api/fiscal/certificado/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        body: formData
+      });
+      const data = await response.json();
+      if (response.ok) {
+        addLog(`✅ Sucesso: Certificado ${data.data.certificado.razao_social} importado!`);
+      } else {
+        addLog(`❌ Erro Upload: ${data.error?.message}`);
+      }
+    } catch (err) {
+      addLog(`❌ Falha na requisição: ${err.message}`);
+    }
+  };
+
+  const handleFaturarPdv = async (e) => {
+    e.preventDefault();
+    if (!depositoId || !itemId) return addLog('❌ Erro: Selecione o Depósito e o Produto!');
+
+    addLog('⏳ Faturando venda no PDV e gerando Cupom Fiscal (NFC-e)...');
+    setCupomPdf(null);
+
+    const payload = {
+      deposito_id: depositoId,
+      cliente_id: clienteId || null,
+      itens: [
+        {
+          item_id: itemId,
+          quantidade: 1,
+          preco_unitario: parseFloat(valorTotal)
+        }
+      ],
+      pagamentos: [
+        {
+          forma_pagamento: 'DINHEIRO',
+          valor_pago: parseFloat(valorTotal)
+        }
+      ],
+      emitir_cupom_fiscal: true
+    };
+
+    try {
+      const response = await fetch('/api/vendas/faturar', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        addLog(`✅ Venda Faturada! Caixa alimentado. Status Fiscal: ${data.data.documento_fiscal?.status}`);
+
+        if (data.data.cupom_termico_base64) {
+            addLog('🖨️ DANFE NFC-e processado. Gerando blob para impressão...');
+
+            // CONVERSÃO PARA BLOB (Resolve o erro de Security/CORS)
+            const byteCharacters = atob(data.data.cupom_termico_base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(blob);
+
+            setCupomPdf(blobUrl);
+        }
+      } else {
+        addLog(`❌ Erro PDV: ${data.error?.message || JSON.stringify(data)}`);
+      }
+    } catch (err) {
+      addLog(`❌ Falha na requisição PDV: ${err.message}`);
+    }
+  };
+
+  const handlePrintIframe = () => {
+    const iframe = document.getElementById('print-iframe');
+    if (iframe) {
+        // Agora o navegador confia na origem do arquivo
+        iframe.contentWindow.print();
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-200 p-8 font-sans">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <h1 className="text-3xl font-bold text-indigo-400">Scalle ERP - Laboratório Fiscal & PDV</h1>
+
+        {!token ? (
+          <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
+            <h2 className="text-xl font-semibold mb-4 text-white">1. Login no ERP</h2>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-sm mb-1 text-slate-400">E-mail</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-indigo-500" required />
+              </div>
+              <div>
+                <label className="block text-sm mb-1 text-slate-400">Senha</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-indigo-500" required />
+              </div>
+              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded transition-colors">Entrar no Sistema</button>
+            </form>
+          </div>
+        ) : (
+          <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex justify-between items-center">
+            <div>
+              <span className="text-emerald-400 font-bold">● Conectado</span>
+              <span className="ml-2 text-sm text-slate-400">Operador: {usuarioNome}</span>
+            </div>
+            <button onClick={handleLogout} className="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded">Sair</button>
+          </div>
+        )}
+
+        {token && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
+              <h2 className="text-xl font-semibold mb-4 text-emerald-400">2. Cofre do Certificado</h2>
+              <form onSubmit={handleUploadCertificado} className="space-y-4">
+                <div>
+                  <input type="file" accept=".pfx,.p12" onChange={(e) => setArquivo(e.target.files[0])} className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer" />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1 text-slate-400">Senha</label>
+                  <input type="password" value={senhaCert} onChange={(e) => setSenhaCert(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-emerald-500" />
+                </div>
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-4 rounded transition-colors">Salvar no Tenant</button>
+              </form>
+            </div>
+
+            <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
+              <h2 className="text-xl font-semibold mb-4 text-blue-400">3. Emissão PDV (NFC-e)</h2>
+              <form onSubmit={handleFaturarPdv} className="space-y-4">
+
+                <div className="grid grid-cols-2 gap-2">
+                    <div>
+                        <label className="block text-xs mb-1 text-slate-400">Depósito de Saída</label>
+                        <select
+                            value={depositoId}
+                            onChange={(e) => setDepositoId(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs focus:outline-none focus:border-blue-500"
+                            required
+                        >
+                            {depositosDisponiveis.length === 0 && <option value="">Carregando...</option>}
+                            {depositosDisponiveis.map(dep => (
+                                <option key={dep.id} value={dep.id}>{dep.nome}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs mb-1 text-slate-400">Produto</label>
+                        <select
+                            value={itemId}
+                            onChange={(e) => {
+                                setItemId(e.target.value);
+                                const prod = produtosDisponiveis.find(p => p.id === e.target.value);
+                                if(prod) setValorTotal(prod.preco_venda);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs focus:outline-none focus:border-blue-500"
+                            required
+                        >
+                            {produtosDisponiveis.length === 0 && <option value="">Carregando...</option>}
+                            {produtosDisponiveis.map(prod => (
+                                <option key={prod.id} value={prod.id}>{prod.nome} (R$ {prod.preco_venda})</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1 text-slate-400">Cliente (Destinatário)</label>
+                  <select
+                      value={clienteId}
+                      onChange={(e) => setClienteId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-blue-500"
+                  >
+                      <option value="">Consumidor Final (Sem Cadastro)</option>
+                      {clientesDisponiveis.map(cli => (
+                          <option key={cli.id} value={cli.id}>{cli.nome_razao_social} ({cli.cpf_cnpj})</option>
+                      ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1 text-slate-400">Valor Pago (R$)</label>
+                  <input type="number" step="0.01" value={valorTotal} onChange={(e) => setValorTotal(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 focus:outline-none focus:border-blue-500" />
+                </div>
+                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition-colors">Cobrar e Emitir Cupom</button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {cupomPdf && (
+            <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-semibold text-amber-400">🧾 DANFE NFC-e (Bobina 80mm)</h2>
+                    <button onClick={handlePrintIframe} className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded text-sm font-bold">
+                        🖨️ Imprimir
+                    </button>
+                </div>
+                <div className="flex justify-center bg-gray-300 p-4 rounded overflow-hidden">
+                    <iframe
+                        id="print-iframe"
+                        src={`${cupomPdf}#toolbar=0&navpanes=0`}
+                        className="w-80 h-96 border border-gray-400 shadow-lg bg-white"
+                        title="Cupom Fiscal"
+                    />
+                </div>
+            </div>
+        )}
+
+        <div className="bg-black p-4 rounded-lg border border-slate-700 h-48 overflow-y-auto font-mono text-sm">
+          <h3 className="text-slate-500 mb-2 border-b border-slate-800 pb-1">Terminal de Logs</h3>
+          <pre className="whitespace-pre-wrap text-green-400">{log || 'Aguardando ações...'}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\frota\FrotaDashboard.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import ModalAbastecimento from './ModalAbastecimento';
+import ModalNovoVeiculo from './ModalNovoVeiculo';
+
+export default function FrotaDashboard() {
+    const [veiculos, setVeiculos] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    // 👇 O ESTADO FICA AQUI EM CIMA!
+    const [isModalNovoOpen, setIsModalNovoOpen] = useState(false);
+    const [veiculoSelecionado, setVeiculoSelecionado] = useState(null);
+
+    const carregarVeiculos = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get('/frota/veiculos');
+            const lista = response.data?.data?.data || response.data?.data || [];
+            setVeiculos(Array.isArray(lista) ? lista : []);
+        } catch (error) {
+            console.error('Erro ao buscar frota:', error);
+            setVeiculos([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        carregarVeiculos();
+    }, []);
+
+    const abrirModalAbastecimento = (veiculo) => {
+        setVeiculoSelecionado(veiculo);
+        setIsModalOpen(true);
+    };
+
+    if (loading) return <div className="p-8 text-center text-slate-500 font-medium">Carregando frota da base...</div>;
+
+    return (
+        <div className="p-2 sm:p-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <h1 className="text-2xl font-bold text-slate-100">Gestão de Frotas</h1>
+                {/* 👇 O BOTÃO AGORA CHAMA O MODAL NOVO! */}
+                <button
+                    onClick={() => setIsModalNovoOpen(true)}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition font-medium cursor-pointer"
+                >
+                    + Novo Veículo
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {veiculos.map(v => (
+                    <div key={v.id} className="bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-800 flex flex-col">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-100">{v.marca} {v.modelo}</h3>
+                                <p className="text-sm text-slate-400 font-mono bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 inline-block mt-2">
+                                    {v.placa}
+                                </p>
+                            </div>
+                            <span className="text-xs font-bold px-2 py-1 rounded-lg text-emerald-400 bg-emerald-400/10 border border-emerald-400/20">
+                                {v.status?.nome || 'Ativo'}
+                            </span>
+                        </div>
+
+                        <div className="text-sm text-slate-400 mb-6 flex-grow space-y-1">
+                            <p><strong className="text-slate-300">KM Atual:</strong> {v.km_atual}</p>
+                            <p><strong className="text-slate-300">Ano:</strong> {v.ano_fabricacao}/{v.ano_modelo}</p>
+                        </div>
+
+                        <button
+                            onClick={() => abrirModalAbastecimento(v)}
+                            className="w-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold py-2.5 rounded-xl hover:bg-indigo-500/20 hover:text-indigo-300 transition cursor-pointer"
+                        >
+                            ⛽ Registrar Abastecimento
+                        </button>
+                    </div>
+                ))}
+
+                {veiculos.length === 0 && (
+                    <div className="col-span-full p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/50">
+                        Nenhum veículo cadastrado na frota.
+                    </div>
+                )}
+            </div>
+
+            {isModalOpen && (
+                <ModalAbastecimento
+                    veiculo={veiculoSelecionado}
+                    onClose={() => setIsModalOpen(false)}
+                    onSuccess={carregarVeiculos}
+                />
+            )}
+
+            {/* 👇 O COMPONENTE DO MODAL FICA RENDERIZADO AQUI! */}
+            {isModalNovoOpen && (
+                <ModalNovoVeiculo
+                    onClose={() => setIsModalNovoOpen(false)}
+                    onSuccess={carregarVeiculos}
+                />
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\frota\ModalAbastecimento.jsx
+========================================
+import React, { useState } from 'react';
+import { api } from '../../services/api';
+export default function ModalAbastecimento({ veiculo, onClose, onSuccess }) {
+    const [formData, setFormData] = useState({
+        km_marcador: '',
+        litros: '',
+        valor_total: '',
+        data_abastecimento: new Date().toISOString().split('T')[0],
+        motorista_id: '',
+        posto_id: '',
+    });
+    const [erro, setErro] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setErro('');
+        setLoading(true);
+
+        try {
+            const payload = {
+                veiculo_id: veiculo.id,
+                ...formData,
+                // Mockando IDs para não estourar erro de validação até você plugar os Selects reais
+                motorista_id: formData.motorista_id || '9d6bf378-00b8-4c9f-b98a-784f1837f48a', // Substitua depois
+                posto_id: formData.posto_id || '9d6bf378-00b8-4c9f-b98a-784f1837f48a'         // Substitua depois
+            };
+
+            await api.post('/frota/abastecimentos', payload);
+
+            alert('Golaço! Abastecimento registrado com sucesso no Financeiro.');
+            onSuccess();
+            onClose();
+        } catch (err) {
+            // Pega o erro mastigado que criamos lá no Laravel Controller
+            setErro(err.response?.data?.error?.message || err.message || 'Erro interno ao registrar abastecimento.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-slate-100">Abastecer <span className="text-indigo-400">{veiculo.placa}</span></h2>
+                    <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-2xl cursor-pointer">&times;</button>
+                </div>
+
+                {erro && (
+                    <div className="mb-6 p-3.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-sm font-medium">
+                        ❌ {erro}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1.5">Data do Abastecimento</label>
+                        <input type="date" required
+                            className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition"
+                            value={formData.data_abastecimento}
+                            onChange={(e) => setFormData({...formData, data_abastecimento: e.target.value})}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Odômetro (KM)</label>
+                            <input type="number" step="0.1" required
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none transition"
+                                placeholder={`Atual: ${veiculo.km_atual}`}
+                                value={formData.km_marcador}
+                                onChange={(e) => setFormData({...formData, km_marcador: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Litros</label>
+                            <input type="number" step="0.01" required
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none transition"
+                                placeholder="0.00"
+                                value={formData.litros}
+                                onChange={(e) => setFormData({...formData, litros: e.target.value})}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1.5">Valor Total Pago (R$)</label>
+                        <input type="number" step="0.01" required
+                            className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none transition"
+                            placeholder="0.00"
+                            value={formData.valor_total}
+                            onChange={(e) => setFormData({...formData, valor_total: e.target.value})}
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition mt-6 disabled:opacity-50 cursor-pointer"
+                    >
+                        {loading ? 'Processando transação...' : 'Confirmar Lançamento'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\frota\ModalNovoVeiculo.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+
+export default function ModalNovoVeiculo({ onClose, onSuccess }) {
+    const [formData, setFormData] = useState({
+        placa: '',
+        chassi: '',
+        marca: '',
+        modelo: '',
+        ano_fabricacao: new Date().getFullYear(),
+        ano_modelo: new Date().getFullYear(),
+        km_atual: 0,
+        tipo_combustivel_id: '',
+        status_id: ''
+    });
+
+    const [dominios, setDominios] = useState({ status_veiculo: [], tipos_combustivel: [] });
+    const [erro, setErro] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    // Busca as listas suspensas dinâmicas ao abrir o modal
+    useEffect(() => {
+        const carregarDominios = async () => {
+            try {
+                const response = await api.get('/frota/dominios');
+                setDominios(response.data?.data || { status_veiculo: [], tipos_combustivel: [] });
+            } catch (err) {
+                console.error("Erro ao carregar domínios:", err);
+            }
+        };
+        carregarDominios();
+    }, []);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setErro('');
+        setLoading(true);
+
+        try {
+            await api.post('/frota/veiculos', formData);
+            onSuccess();
+            onClose();
+        } catch (err) {
+            setErro(err.response?.data?.error?.message || err.message || 'Erro ao cadastrar veículo.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto scrollbar-thin">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-slate-100">Cadastrar Novo Veículo</h2>
+                    <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-2xl cursor-pointer">&times;</button>
+                </div>
+
+                {erro && (
+                    <div className="mb-6 p-3.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-sm font-medium">
+                        ❌ {erro}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Placa *</label>
+                            <input type="text" required maxLength="10"
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none uppercase"
+                                placeholder="ABC-1234 ou ABC1D23"
+                                value={formData.placa}
+                                onChange={(e) => setFormData({...formData, placa: e.target.value.toUpperCase()})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Chassi</label>
+                            <input type="text" maxLength="50"
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none uppercase"
+                                placeholder="Opcional"
+                                value={formData.chassi}
+                                onChange={(e) => setFormData({...formData, chassi: e.target.value.toUpperCase()})}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Marca *</label>
+                            <input type="text" required maxLength="50"
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none"
+                                placeholder="Ex: Fiat, Chevrolet, Scania"
+                                value={formData.marca}
+                                onChange={(e) => setFormData({...formData, marca: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Modelo *</label>
+                            <input type="text" required maxLength="100"
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none"
+                                placeholder="Ex: Uno Mille 1.0"
+                                value={formData.modelo}
+                                onChange={(e) => setFormData({...formData, modelo: e.target.value})}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Ano Fabricação *</label>
+                            <input type="number" required min="1900"
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none"
+                                value={formData.ano_fabricacao}
+                                onChange={(e) => setFormData({...formData, ano_fabricacao: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Ano Modelo *</label>
+                            <input type="number" required min="1900"
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none"
+                                value={formData.ano_modelo}
+                                onChange={(e) => setFormData({...formData, ano_modelo: e.target.value})}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Hodômetro Inicial (KM)</label>
+                            <input type="number" step="0.1" min="0"
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none"
+                                value={formData.km_atual}
+                                onChange={(e) => setFormData({...formData, km_atual: e.target.value})}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Combustível</label>
+                            <select
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none cursor-pointer"
+                                value={formData.tipo_combustivel_id}
+                                onChange={(e) => setFormData({...formData, tipo_combustivel_id: e.target.value})}
+                            >
+                                <option value="">Selecione...</option>
+                                {dominios.tipos_combustivel.map(c => (
+                                    <option key={c.id} value={c.id}>{c.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-slate-400 mb-1.5">Status Inicial</label>
+                            <select
+                                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 focus:border-indigo-500 outline-none cursor-pointer"
+                                value={formData.status_id}
+                                onChange={(e) => setFormData({...formData, status_id: e.target.value})}
+                            >
+                                <option value="">Padrão do Sistema</option>
+                                {dominios.status_veiculo.map(s => (
+                                    <option key={s.id} value={s.id}>{s.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-4">
+                        <button type="button" onClick={onClose}
+                            className="flex-1 bg-slate-800 text-slate-300 font-bold py-3.5 rounded-xl hover:bg-slate-700 transition cursor-pointer"
+                        >
+                            Cancelar
+                        </button>
+                        <button type="submit" disabled={loading}
+                            className="flex-1 bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition disabled:opacity-50 cursor-pointer"
+                        >
+                            {loading ? 'Salvando...' : 'Salvar Veículo'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\Ged\CofreDigitalPage.jsx
+========================================
+import React, { useState, useEffect, useRef } from 'react';
+import { api } from '../../services/api';
+import {
+  Folder, FileText, Upload, Plus, ChevronRight,
+  HardDrive, ShieldCheck, Image as ImageIcon,
+  FileArchive, FileSpreadsheet, File, X, AlertTriangle, CheckCircle2,
+  Download
+} from 'lucide-react';
+
+export default function CofreDigitalPage() {
+  const [pastaAtual, setPastaAtual] = useState(null);
+  const [caminho, setCaminho] = useState([]);
+  const [pastas, setPastas] = useState([]);
+  const [documentos, setDocumentos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  const [modalNovaPasta, setModalNovaPasta] = useState(false);
+  const [nomePasta, setNomePasta] = useState('');
+  const fileInputRef = useRef(null);
+
+  const carregarCofre = async (pastaId = null) => {
+    setLoading(true);
+    try {
+      const res = await api.get('/ged/listar', { params: { pasta_id: pastaId } });
+      const { caminho: novoCaminho, pastas: novasPastas, documentos: novosDocs } = res.data.data;
+
+      setCaminho(novoCaminho || []);
+      setPastas(novasPastas || []);
+      setDocumentos(novosDocs || []);
+      setPastaAtual(pastaId);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao carregar o diretório do Cofre Digital.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarCofre();
+  }, []);
+
+  const handleCriarPasta = async (e) => {
+    e.preventDefault();
+    if (!nomePasta.trim()) return;
+    try {
+      await api.post('/ged/pastas', { nome: nomePasta, pasta_pai_id: pastaAtual });
+      setModalNovaPasta(false);
+      setNomePasta('');
+      setFeedback({ tipo: 'sucesso', msg: 'Pasta corporativa criada com sucesso!' });
+      carregarCofre(pastaAtual);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao criar pasta.' });
+    }
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Bloqueio preventivo no Frontend antes do Middleware (20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      setFeedback({ tipo: 'erro', msg: 'O arquivo excede o limite máximo de 20MB.' });
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('arquivo', file);
+    if (pastaAtual) {
+      formData.append('pasta_id', pastaAtual);
+    }
+
+    try {
+      await api.post('/ged/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setFeedback({ tipo: 'sucesso', msg: 'Arquivo criptografado e armazenado no Cofre!' });
+      carregarCofre(pastaAtual);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao enviar o arquivo. Verifique a cota do seu plano.' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const getFileIcon = (mimeType) => {
+    if (mimeType.includes('image')) return <ImageIcon className="h-8 w-8 text-emerald-400" />;
+    if (mimeType.includes('pdf')) return <FileText className="h-8 w-8 text-rose-400" />;
+    if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) return <FileSpreadsheet className="h-8 w-8 text-emerald-500" />;
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return <FileArchive className="h-8 w-8 text-amber-500" />;
+    return <File className="h-8 w-8 text-slate-400" />;
+  };
+
+  const formatBytes = (bytes, decimals = 2) => {
+    if (!+bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+  };
+
+  return (
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 text-slate-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <ShieldCheck className="h-6 w-6 text-indigo-500" />
+            Cofre Digital (GED)
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">Gestão Eletrônica de Documentos corporativos e anexos</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setModalNovaPasta(true)}
+            className="flex items-center gap-2 bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200 font-bold py-2 px-4 rounded-xl transition cursor-pointer"
+          >
+            <Folder className="h-4 w-4" /> Nova Pasta
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-xl shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+          >
+            <Upload className="h-4 w-4" /> {uploading ? 'Enviando...' : 'Fazer Upload'}
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleUpload}
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3.5 rounded-xl flex items-center justify-between text-sm font-medium shadow-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+            {feedback.msg}
+          </div>
+          <button onClick={() => setFeedback(null)} className="hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Navegação / Breadcrumbs */}
+      <div className="flex items-center gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800 overflow-x-auto text-sm font-semibold whitespace-nowrap shadow-sm">
+        <button
+          onClick={() => carregarCofre(null)}
+          className={`flex items-center gap-1.5 cursor-pointer transition ${!pastaAtual ? 'text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <HardDrive className="h-4 w-4" /> Disco Raiz
+        </button>
+
+        {caminho.map((p, index) => (
+          <React.Fragment key={p.id}>
+            <ChevronRight className="h-4 w-4 text-slate-600 shrink-0" />
+            <button
+              onClick={() => carregarCofre(p.id)}
+              className={`cursor-pointer transition ${index === caminho.length - 1 ? 'text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              {p.nome}
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Explorer Area */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 min-h-[400px] shadow-sm">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-64 text-slate-500 space-y-3">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="font-bold">Acessando o cofre seguro...</p>
+          </div>
+        ) : pastas.length === 0 && documentos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-slate-500 border border-dashed border-slate-700 rounded-xl bg-slate-950/50">
+            <Folder className="h-12 w-12 text-slate-700 mb-3" />
+            <p className="font-bold">Esta pasta está vazia.</p>
+            <p className="text-xs mt-1">Crie uma nova subpasta ou faça upload de um arquivo.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {/* Pastas */}
+            {pastas.map((pasta) => (
+              <div
+                key={pasta.id}
+                onClick={() => carregarCofre(pasta.id)}
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/50 p-4 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition group shadow-sm"
+              >
+                <Folder className="h-10 w-10 text-indigo-400 group-hover:text-indigo-300 mb-2 transition" fill="currentColor" fillOpacity={0.2} />
+                <span className="text-xs font-bold text-slate-200 group-hover:text-white line-clamp-2 w-full px-1">{pasta.nome}</span>
+              </div>
+            ))}
+
+            {/* Documentos */}
+            {documentos.map((doc) => {
+              const urlBase = api.defaults.baseURL?.replace('/api', '') || '';
+              const docUrl = `${urlBase}/storage/${doc.caminho_s3}`;
+
+              return (
+                <a
+                  key={doc.id}
+                  href={docUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-600 p-4 rounded-xl flex flex-col items-center justify-between text-center cursor-pointer transition group shadow-sm relative h-32"
+                  title={`${doc.nome_original} \nEnviado por: ${doc.uploader?.name || 'Sistema'}`}
+                >
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
+                    <div className="bg-slate-800 p-1 rounded text-slate-300 hover:text-white">
+                      <Download className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex items-center justify-center mt-2">
+                    {getFileIcon(doc.mime_type)}
+                  </div>
+
+                  <div className="w-full mt-2">
+                    <span className="text-xs font-semibold text-slate-200 group-hover:text-white line-clamp-1 break-all px-1">
+                      {doc.nome_original}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">
+                      {formatBytes(doc.tamanho_bytes)}
+                    </span>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal Nova Pasta */}
+      {modalNovaPasta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 bg-slate-950/50">
+              <h3 className="font-bold text-white flex items-center gap-2">
+                <Folder className="h-5 w-5 text-indigo-400" /> Criar Nova Pasta
+              </h3>
+            </div>
+            <form onSubmit={handleCriarPasta} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1">Nome da Pasta</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="Ex: Contratos, Relatórios..."
+                  value={nomePasta}
+                  onChange={(e) => setNomePasta(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNovaPasta(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-md transition cursor-pointer"
+                >
+                  Criar Pasta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\master\AuditoriaE2EView.jsx
+========================================
+import React, { useState } from 'react';
+import { api } from '../../services/api';
+
+export default function AuditoriaE2EView() {
+    const [executando, setExecutando] = useState(false);
+    const [resultado, setResultado] = useState(null);
+    const [erro, setErro] = useState(null);
+
+    const dispararAuditoria = async () => {
+        setExecutando(true);
+        setErro(null);
+        try {
+            const res = await api.post('/master/executar-auditoria');
+            setResultado(res.data.data);
+        } catch (err) {
+            setErro(err.response?.data?.error?.message || err.message || 'Falha ao executar auditoria.');
+        } finally {
+            setExecutando(false);
+        }
+    };
+
+    const laudo = resultado?.laudo;
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-100">Auditoria Cirúrgica E2E</h1>
+                    <p className="text-sm text-slate-400">
+                        Executa testes transacionais de ponta a ponta com rollback automático no servidor.
+                    </p>
+                </div>
+                <button
+                    onClick={dispararAuditoria}
+                    disabled={executando}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-sm rounded-xl shadow transition flex items-center gap-2 cursor-pointer"
+                >
+                    {executando ? (
+                        <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            Auditando Sistema...
+                        </>
+                    ) : (
+                        'Executar Auditoria Geral'
+                    )}
+                </button>
+            </div>
+
+            {erro && (
+                <div className="p-4 bg-red-950/40 border border-red-800 text-red-300 rounded-xl">
+                    <p className="font-semibold">Erro na execução:</p>
+                    <p className="text-sm mt-1">{erro}</p>
+                </div>
+            )}
+
+            {laudo && (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                            <span className="text-xs uppercase text-slate-400">Total de Verificações</span>
+                            <p className="text-2xl font-bold text-white mt-1">{laudo.total_testes}</p>
+                        </div>
+                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                            <span className="text-xs uppercase text-emerald-400">Sucessos</span>
+                            <p className="text-2xl font-bold text-emerald-400 mt-1">{laudo.sucessos}</p>
+                        </div>
+                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                            <span className="text-xs uppercase text-red-400">Falhas</span>
+                            <p className="text-2xl font-bold text-red-400 mt-1">{laudo.falhas}</p>
+                        </div>
+                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                            <span className="text-xs uppercase text-slate-400">Duração</span>
+                            <p className="text-2xl font-bold text-slate-200 mt-1">{laudo.duracao_segundos}s</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="p-4 border-b border-slate-800">
+                            <h3 className="font-bold text-white">Resultados Detalhados</h3>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-950/60 text-slate-400 border-b border-slate-800">
+                                    <tr>
+                                        <th className="p-3">Módulo</th>
+                                        <th className="p-3">Cenário</th>
+                                        <th className="p-3 text-center">Status</th>
+                                        <th className="p-3">Diagnóstico</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                    {laudo.itens?.map((item, idx) => (
+                                        <tr key={idx} className="hover:bg-slate-800/40 transition">
+                                            <td className="p-3 font-semibold text-slate-300">{item.modulo}</td>
+                                            <td className="p-3 text-slate-200">{item.teste}</td>
+                                            <td className="p-3 text-center">
+                                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                                    item.status === 'PASS'
+                                                        ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                                        : 'bg-red-950 text-red-400 border border-red-800'
+                                                }`}>
+                                                    {item.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 text-xs text-slate-400">{item.detalhes}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\master\MasterPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { 
+  ShieldAlert, Building2, Users, CreditCard, Plus, Search, 
+  RefreshCw, CheckCircle2, AlertTriangle, X, Lock, Power
+} from 'lucide-react';
+
+export default function MasterDashboardPage() {
+  const [metricas, setMetricas] = useState(null);
+  const [tenants, setTenants] = useState([]);
+  const [planos, setPlanos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [modalNovoTenant, setModalNovoTenant] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  const [form, setForm] = useState({
+    tenant_nome_fantasia: '',
+    tenant_razao_social: '',
+    tenant_documento: '',
+    plano_slug: 'pro',
+    admin_name: '',
+    admin_email: '',
+    admin_password: '',
+    admin_telefone: '',
+  });
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      const [resMetricas, resTenants] = await Promise.all([
+        api.get('/master/metricas'),
+        api.get('/master/tenants', { params: { search } })
+      ]);
+      setMetricas(resMetricas.data.data);
+      setTenants(resTenants.data.data.tenants?.data || resTenants.data.data.tenants || []);
+      setPlanos(resTenants.data.data.planos || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, [search]);
+
+  const handleSalvarTenant = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/master/tenants', form);
+      setModalNovoTenant(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      setForm({
+        tenant_nome_fantasia: '',
+        tenant_razao_social: '',
+        tenant_documento: '',
+        plano_slug: 'pro',
+        admin_name: '',
+        admin_email: '',
+        admin_password: '',
+        admin_telefone: '',
+      });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || err.response?.data?.message || 'Falha ao provisionar tenant.' });
+    }
+  };
+
+  const handleAlterarStatus = async (tenantId, novoStatus) => {
+    try {
+      const res = await api.put(`/master/tenants/${tenantId}/status`, { status: novoStatus });
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao alterar status.' });
+    }
+  };
+
+  return (
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Header Master */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-950 pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
+            <ShieldAlert className="h-7 w-7 text-rose-500" />
+            Painel Master SaaS (Owner)
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Gestão global de contas contratantes, planos, provisionamento e governança
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalNovoTenant(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs sm:text-sm font-bold shadow-lg shadow-rose-600/30 cursor-pointer transition"
+        >
+          <Plus className="h-4 w-4" /> Provisionar Novo Tenant
+        </button>
+      </div>
+
+      {/* Cards de Métricas */}
+      {metricas && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+            <span className="text-xs font-semibold text-slate-400">Total de Tenants</span>
+            <div className="text-2xl font-black text-white font-mono mt-1">{metricas.total_tenants}</div>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+            <span className="text-xs font-semibold text-emerald-400">Tenants Ativos</span>
+            <div className="text-2xl font-black text-emerald-400 font-mono mt-1">{metricas.tenants_ativos}</div>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+            <span className="text-xs font-semibold text-indigo-400">Usuários na Plataforma</span>
+            <div className="text-2xl font-black text-indigo-400 font-mono mt-1">{metricas.total_usuarios}</div>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+            <span className="text-xs font-semibold text-amber-400">Assinaturas Ativas</span>
+            <div className="text-2xl font-black text-amber-400 font-mono mt-1">{metricas.total_assinaturas}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Toast */}
+      {feedback && (
+        <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span>{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Busca e Tabela */}
+      <div className="space-y-3">
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por Empresa, CNPJ..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-rose-500"
+          />
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">CONTRATANTE / TENANT</th>
+                <th className="py-3 px-4">DOCUMENTO</th>
+                <th className="py-3 px-4">FILIAIS</th>
+                <th className="py-3 px-4">USUÁRIOS</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+                <th className="py-3 px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
+              {loading ? (
+                <tr>
+                  <td colSpan="6" className="text-center py-10 text-slate-500 font-sans">
+                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-rose-500" />
+                    Carregando contas SaaS...
+                  </td>
+                </tr>
+              ) : tenants.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="text-center py-10 text-slate-500 font-sans">
+                    Nenhum tenant cadastrado.
+                  </td>
+                </tr>
+              ) : (
+                tenants.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-800/40 transition font-sans">
+                    <td className="py-3 px-4">
+                      <div className="font-bold text-white text-xs sm:text-sm">{t.nome_fantasia}</div>
+                      <span className="text-[11px] text-slate-500">{t.razao_social}</span>
+                    </td>
+                    <td className="py-3 px-4 font-mono text-slate-400">{t.documento}</td>
+                    <td className="py-3 px-4 font-mono">{t.empresas?.length || 1}</td>
+                    <td className="py-3 px-4 font-mono">{t.users?.length || 0}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        t.status === 'ativo' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                        t.status === 'soft_lock' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                        'bg-rose-950 text-rose-300 border border-rose-800'
+                      }`}>
+                        {t.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <select
+                        value={t.status}
+                        onChange={(e) => handleAlterarStatus(t.id, e.target.value)}
+                        className="bg-slate-950 border border-slate-800 text-[11px] text-slate-300 px-2 py-1 rounded-lg focus:outline-none focus:border-rose-500 cursor-pointer"
+                      >
+                        <option value="ativo">Ativo</option>
+                        <option value="soft_lock">Soft-Lock</option>
+                        <option value="suspenso">Suspenso</option>
+                        <option value="cancelado">Cancelado</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal Provisionar Tenant */}
+      {modalNovoTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-rose-400" />
+                Provisionar Novo Tenant & Superadmin
+              </h2>
+              <button type="button" onClick={() => setModalNovoTenant(false)} className="p-1 cursor-pointer"><X className="h-5 w-5 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarTenant} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm overflow-y-auto">
+              <div className="space-y-3">
+                <span className="text-xs font-bold text-rose-400 uppercase tracking-wider block border-b border-slate-800 pb-1">1. Dados da Empresa / Tenant</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Nome Fantasia *</label>
+                    <input type="text" required value={form.tenant_nome_fantasia} onChange={(e) => setForm({ ...form, tenant_nome_fantasia: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Razão Social *</label>
+                    <input type="text" required value={form.tenant_razao_social} onChange={(e) => setForm({ ...form, tenant_razao_social: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">CNPJ / CPF *</label>
+                    <input type="text" required value={form.tenant_documento} onChange={(e) => setForm({ ...form, tenant_documento: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Plano SaaS *</label>
+                    <select value={form.plano_slug} onChange={(e) => setForm({ ...form, plano_slug: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                      {planos.map(p => (
+                        <option key={p.slug} value={p.slug}>{p.nome} — R$ {parseFloat(p.valor_mensal).toFixed(2)}/mês</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <span className="text-xs font-bold text-rose-400 uppercase tracking-wider block border-b border-slate-800 pb-1">2. Superadmin do Tenant</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Nome do Gestor *</label>
+                    <input type="text" required value={form.admin_name} onChange={(e) => setForm({ ...form, admin_name: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">E-mail de Login *</label>
+                    <input type="email" required value={form.admin_email} onChange={(e) => setForm({ ...form, admin_email: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Senha Inicial de Acesso *</label>
+                    <input type="password" required value={form.admin_password} onChange={(e) => setForm({ ...form, admin_password: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoTenant(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold cursor-pointer">Provisionar Ecossistema</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\os\CanvasAssinatura.jsx
+========================================
+import React, { useRef, useState, useEffect } from 'react';
+import { RotateCcw, PenTool } from 'lucide-react';
+
+export default function CanvasAssinatura({ onSalvar, onLimpar }) {
+  const canvasRef = useRef(null);
+  const [desenhando, setDesenhando] = useState(false);
+  const [temAssinatura, setTemAssinatura] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.width = canvas.parentElement.offsetWidth || 400;
+      canvas.height = 200;
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#6366f1';
+    }
+  }, []);
+
+  const getPos = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
+
+  const startDraw = (e) => {
+    e.preventDefault();
+    setDesenhando(true);
+    const ctx = canvasRef.current.getContext('2d');
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  };
+
+  const draw = (e) => {
+    if (!desenhando) return;
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext('2d');
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    setTemAssinatura(true);
+  };
+
+  const stopDraw = () => {
+    if (desenhando) {
+      setDesenhando(false);
+      onSalvar(canvasRef.current.toDataURL('image/png'));
+    }
+  };
+
+  const limpar = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setTemAssinatura(false);
+    onLimpar();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <PenTool className="w-4 h-4 text-indigo-400" />
+          <span>Assinatura Digital do Cliente (MP 2.200-2)</span>
+        </label>
+        <button
+          type="button"
+          onClick={limpar}
+          className="text-xs text-rose-400 hover:underline flex items-center gap-1 cursor-pointer"
+        >
+          <RotateCcw className="w-3 h-3" />
+          <span>Limpar</span>
+        </button>
+      </div>
+
+      <div className="border border-slate-700 bg-slate-950 rounded-2xl overflow-hidden touch-none relative shadow-inner">
+        <canvas
+          ref={canvasRef}
+          onMouseDown={startDraw}
+          onMouseMove={draw}
+          onMouseUp={stopDraw}
+          onMouseLeave={stopDraw}
+          onTouchStart={startDraw}
+          onTouchMove={draw}
+          onTouchEnd={stopDraw}
+          className="w-full cursor-crosshair block"
+        />
+        {!temAssinatura && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-600 text-xs">
+            Assine ou colete a rubrica aqui com o dedo ou caneta touch
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\os\ModalConcluirOs.jsx
+========================================
+import React, { useState } from 'react';
+import { api } from '../../services/api';
+import CanvasAssinatura from './CanvasAssinatura';
+import { Wrench, CheckCircle2, AlertCircle, X, Check } from 'lucide-react';
+
+export default function ModalConcluirOs({ isOpen, os, onClose, onSucesso }) {
+  const [laudo, setLaudo] = useState('');
+  const [nomeResponsavel, setNomeResponsavel] = useState('');
+  const [docResponsavel, setDocResponsavel] = useState('');
+  const [assinaturaBase64, setAssinaturaBase64] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen || !os) return null;
+
+  const handleConcluir = async (e) => {
+    e.preventDefault();
+    if (!assinaturaBase64) {
+      setError('A assinatura digital do cliente é obrigatória para encerrar a OS.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      await api.post(`/ordens-servico/${os.id}/concluir`, {
+        laudo_tecnico: laudo,
+        nome_responsavel: nomeResponsavel,
+        documento_responsavel: docResponsavel,
+        assinatura_base64: assinaturaBase64,
+        itens: [
+          {
+            item_id: os.itens?.[0]?.item_id || '00000000-0000-0000-0000-000000000000',
+            tipo_item: 'SERVICO',
+            quantidade: 1,
+            valor_unitario: parseFloat(os.valor_total || 100.00)
+          }
+        ]
+      });
+
+      onSucesso();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Falha ao concluir a ordem de serviço.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl my-8">
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20">
+              <Wrench className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white tracking-tight">Finalizar OS #{os.numero_os}</h3>
+              <p className="text-xs text-slate-400">{os.equipamento_descricao}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl cursor-pointer">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleConcluir} className="p-6 space-y-5">
+          {error && (
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400 text-sm flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Diagnóstico / Laudo Técnico de Encerramento
+            </label>
+            <textarea
+              required
+              rows={3}
+              value={laudo}
+              onChange={(e) => setLaudo(e.target.value)}
+              placeholder="Descreva detalhadamente o serviço executado..."
+              className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                Nome do Recebedor / Cliente
+              </label>
+              <input
+                type="text"
+                required
+                value={nomeResponsavel}
+                onChange={(e) => setNomeResponsavel(e.target.value)}
+                placeholder="Ex: Carlos Eduardo"
+                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                CPF / Documento
+              </label>
+              <input
+                type="text"
+                value={docResponsavel}
+                onChange={(e) => setDocResponsavel(e.target.value)}
+                placeholder="000.000.000-00"
+                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          <CanvasAssinatura
+            onSalvar={(base64) => setAssinaturaBase64(base64)}
+            onLimpar={() => setAssinaturaBase64('')}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-3 rounded-xl text-slate-400 hover:bg-slate-800 text-sm font-medium transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              <span>{loading ? 'Salvando...' : 'Concluir e Assinar OS'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\os\OrdensServicoPage.jsx
+========================================
+import React, { useState, useEffect, useRef } from 'react';
+import { api } from '../../services/api';
+import { useHardwareStore } from '../../store/useHardwareStore';
+import { EscPosEncoder } from '../../utils/EscPosEncoder';
+import {
+  Wrench, Plus, Search, CheckCircle2, AlertTriangle,
+  X, Camera, PenTool, Printer, Clock, User, Building2, Upload,
+  Kanban, Calendar, ShieldCheck, Share2, Activity, Gauge, TrendingUp,
+  Settings, Edit, ToggleLeft, ToggleRight, Play, Pause, PackageCheck,
+  CheckSquare, FileText, ArrowRight, Package, Save, Lock
+} from 'lucide-react';
+
+function SlaTimerBadge({ os }) {
+  if (!os || !os.prazo_sla_resolucao) return null;
+
+  if (os.status === 'CONCLUIDA') {
+    const dataConclusao = os.data_conclusao ? new Date(os.data_conclusao) : new Date();
+    const prazoSla = new Date(os.prazo_sla_resolucao);
+    const entregueNoPrazo = dataConclusao <= prazoSla;
+
+    return entregueNoPrazo ? (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 shrink-0">
+        No Prazo
+      </span>
+    ) : (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+        Concluída c/ Atraso
+      </span>
+    );
+  }
+
+  const diffMs = new Date(os.prazo_sla_resolucao) - new Date();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (diffMs <= 0) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800 animate-pulse shrink-0">
+        SLA Estourado
+      </span>
+    );
+  }
+
+  if (diffHours < 2) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800 shrink-0">
+        Risco ({diffHours}h {diffMins}m)
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono shrink-0">
+      {diffHours}h {diffMins}m
+    </span>
+  );
+}
+
+export default function OrdensServicoPage() {
+  const [abaAtiva, setAbaAtiva] = useState('kanban');
+  const [ordens, setOrdens] = useState([]);
+  const [planosPmoc, setPlanosPmoc] = useState([]);
+  const [ativos, setAtivos] = useState([]);
+  const [prioridades, setPrioridades] = useState([]);
+  const [metricasCmms, setMetricasCmms] = useState({ mttr_horas: 0, mtbf_dias: 0, sla_conformidade_percent: 100, total_concluidas: 0, total_corretivas: 0 });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  // Hardware Store (Impressora Térmica)
+  const { impressoraConectada, conectarImpressora, imprimirCupom } = useHardwareStore();
+
+  // Modais
+  const [modalNovaOs, setModalNovaOs] = useState(false);
+  const [modalNovoPmoc, setModalNovoPmoc] = useState(false);
+  const [modalNovoAtivo, setModalNovoAtivo] = useState(false);
+  const [modalPrioridade, setModalPrioridade] = useState(false);
+  const [modalDetalhes, setModalDetalhes] = useState(false);
+  const [modalConcluir, setModalConcluir] = useState(false);
+  const [modalFoto, setModalFoto] = useState(false);
+  const [modalAddPeca, setModalAddPeca] = useState(false);
+  const [osSelecionada, setOsSelecionada] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+
+  // Auxiliares
+  const [clientes, setClientes] = useState([]);
+  const [tecnicos, setTecnicos] = useState([]);
+  const [depositos, setDepositos] = useState([]);
+  const [itensCatalogo, setItensCatalogo] = useState([]);
+
+  // Form Abertura OS
+  const [formOs, setFormOs] = useState({
+    cliente_id: '', ativo_id: '', tecnico_responsavel_id: '', deposito_saida_id: '',
+    equipamento_descricao: '', equipamento_marca_modelo: '', equipamento_numero_serie: '',
+    defeito_reclamado: '', prioridade: 'NORMAL', tipo_manutencao: 'CORRETIVA',
+  });
+
+  // Form Edição Técnica no Modal
+  const [formEdicaoTecnica, setFormEdicaoTecnica] = useState({
+    tecnico_responsavel_id: '',
+    diagnostico_tecnico: '',
+    prioridade: 'NORMAL',
+    prazo_sla_resolucao: '',
+    recalcular_sla: false,
+  });
+
+  // Form PMOC
+  const [formPmoc, setFormPmoc] = useState({
+    id: null, cliente_id: '', ativo_id: '', tecnico_padrao_id: '',
+    titulo_plano: '', frequencia: 'MENSAL', proxima_execucao: new Date().toISOString().substring(0, 10),
+    instrucoes_tecnicas: '',
+  });
+
+  // Form Ativo
+  const [formAtivo, setFormAtivo] = useState({
+    cliente_id: '', descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '',
+    localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10),
+  });
+
+  // Form Prioridade
+  const [formPrioridade, setFormPrioridade] = useState({
+    nome: '', codigo: '', cor_hex: '#3b82f6', horas_sla: 24, ordem_exibicao: 1, is_ativo: true
+  });
+  const [prioridadeEmEdicao, setPrioridadeEmEdicao] = useState(null);
+
+  // Form Peça
+  const [novaPeca, setNovaPeca] = useState({ item_id: '', quantidade: 1, valor_unitario: 0 });
+
+  // Form Conclusão
+  const [laudoTecnico, setLaudoTecnico] = useState('');
+  const [nomeResponsavel, setNomeResponsavel] = useState('');
+  const [docResponsavel, setDocResponsavel] = useState('');
+  const canvasRef = useRef(null);
+  const [desenhando, setDesenhando] = useState(false);
+
+  // Form Foto
+  const [tipoEtapaFoto, setTipoEtapaFoto] = useState('ANTES');
+  const [arquivoFoto, setArquivoFoto] = useState(null);
+  const [descFoto, setDescFoto] = useState('');
+
+  const carregarDadosIniciais = async () => {
+    setLoading(true);
+    try {
+      const resBootstrap = await api.get('/os/bootstrap', { params: { search } });
+      const data = resBootstrap.data?.data || {};
+
+      setOrdens(data.ordens || []);
+      setMetricasCmms(data.metricas || { mttr_horas: 0, mtbf_dias: 0, sla_conformidade_percent: 100, total_concluidas: 0, total_corretivas: 0 });
+      setPrioridades(data.prioridades || []);
+    } catch (err) {
+      try {
+        const resOs = await api.get('/os', { params: { search } });
+        const raw = resOs.data?.data;
+        setOrdens(Array.isArray(raw) ? raw : (raw?.data || []));
+      } catch (e) {}
+    } finally {
+      setLoading(false);
+    }
+
+    try {
+      const [resCli, resUsers, resDeps, resItens, resAtivos, resPmoc] = await Promise.all([
+        api.get('/pessoas', { params: { tipo: 'CLIENTE' } }).catch(() => ({ data: { data: [] } })),
+        api.get('/usuarios').catch(() => ({ data: { data: [] } })),
+        api.get('/wms/depositos').catch(() => ({ data: { data: [] } })),
+        api.get('/itens').catch(() => ({ data: { data: [] } })),
+        api.get('/ativos').catch(() => ({ data: { data: [] } })),
+        api.get('/os/planos-preventivos').catch(() => ({ data: { data: [] } }))
+      ]);
+
+      const cliList = resCli.data?.data || [];
+      const userList = resUsers.data?.data?.usuarios || resUsers.data?.data || [];
+      const depList = resDeps.data?.data || [];
+      const itList = resItens.data?.data || [];
+      const atList = resAtivos.data?.data || [];
+      const pmList = resPmoc.data?.data || [];
+
+      setClientes(cliList);
+      setTecnicos(userList);
+      setDepositos(depList);
+      setItensCatalogo(itList);
+      setAtivos(atList);
+      setPlanosPmoc(pmList);
+
+      if (depList.length > 0 && !formOs.deposito_saida_id) {
+        setFormOs(prev => ({ ...prev, deposito_saida_id: depList[0].id }));
+      }
+    } catch (err) {
+      console.warn('Carregamento secundário concluído com avisos:', err);
+    }
+  };
+
+  useEffect(() => {
+    const delay = setTimeout(() => {
+      carregarDadosIniciais();
+    }, 300);
+    return () => clearTimeout(delay);
+  }, [search]);
+
+  const atualizarOsLocal = (osAtualizada) => {
+    setOsSelecionada(osAtualizada);
+    setOrdens(prev => prev.map(o => o.id === osAtualizada.id ? osAtualizada : o));
+  };
+
+  const abrirPainelDetalhes = (os) => {
+    setOsSelecionada(os);
+    setFormEdicaoTecnica({
+      tecnico_responsavel_id: os.tecnico_responsavel_id || '',
+      diagnostico_tecnico: '',
+      prioridade: os.prioridade || 'NORMAL',
+      prazo_sla_resolucao: os.prazo_sla_resolucao ? os.prazo_sla_resolucao.substring(0, 16) : '',
+      recalcular_sla: false,
+    });
+    setModalDetalhes(true);
+  };
+
+  const handleSalvarEdicaoTecnica = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      const res = await api.put(`/os/${osSelecionada.id}/dados-tecnicos`, formEdicaoTecnica);
+      atualizarOsLocal(res.data.data.os);
+      setFormEdicaoTecnica(prev => ({...prev, diagnostico_tecnico: ''}));
+      setFeedback({ tipo: 'sucesso', msg: 'Parâmetros atualizados e salvos!' });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar parâmetros.' });
+    }
+  };
+
+  const handleSalvarAtivo = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        descricao: formAtivo.descricao,
+        codigo_patrimonio: formAtivo.codigo_patrimonio,
+        marca_modelo: formAtivo.marca_modelo || null,
+        numero_serie: formAtivo.numero_serie || null,
+        localizacao_fisica: formAtivo.localizacao_fisica || null,
+        cliente_id: formAtivo.cliente_id && formAtivo.cliente_id !== '' ? formAtivo.cliente_id : null,
+        valor_aquisicao: formAtivo.valor_aquisicao ? parseFloat(formAtivo.valor_aquisicao) : 0.00,
+        data_aquisicao: formAtivo.data_aquisicao || null,
+      };
+
+      const res = await api.post('/ativos', payload);
+      setAtivos([...ativos, res.data.data]);
+      setModalNovoAtivo(false);
+      setFormAtivo({ cliente_id: '', descricao: '', codigo_patrimonio: '', marca_modelo: '', numero_serie: '', localizacao_fisica: '', valor_aquisicao: '', data_aquisicao: new Date().toISOString().substring(0, 10) });
+      setFeedback({ tipo: 'sucesso', msg: 'Ativo patrimonial cadastrado com sucesso!' });
+    } catch (err) {
+      const msgErro = err.response?.data?.error?.message
+                   || (err.response?.data?.errors ? Object.values(err.response.data.errors).flat().join(', ') : 'Erro ao cadastrar ativo.');
+      setFeedback({ tipo: 'erro', msg: msgErro });
+    }
+  };
+
+  const handleMudarStatusOs = async (novoStatus) => {
+    try {
+      const res = await api.put(`/os/${osSelecionada.id}/status`, { status: novoStatus });
+      atualizarOsLocal(res.data.data.os);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao transitar status da OS.' });
+    }
+  };
+
+  const handleAdicionarPecaEmAndamento = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post(`/os/${osSelecionada.id}/pecas`, novaPeca);
+      atualizarOsLocal(res.data.data.os);
+      setModalAddPeca(false);
+      setNovaPeca({ item_id: '', quantidade: 1, valor_unitario: 0 });
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao requisitar peça ao almoxarifado.' });
+    }
+  };
+
+  const handleTratarPecaAlmox = async (itemId, novoStatus) => {
+    try {
+      const res = await api.put(`/os/${osSelecionada.id}/pecas/${itemId}/almoxarifado`, { status_requisicao: novoStatus });
+      atualizarOsLocal(res.data.data.os);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao atualizar status da peça no almoxarifado.' });
+    }
+  };
+
+  const handleSalvarOs = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/os', formOs);
+
+      const novaOs = res.data.data.os;
+
+      setModalNovaOs(false);
+      setFormOs({
+        cliente_id: '', ativo_id: '', tecnico_responsavel_id: '', deposito_saida_id: formOs.deposito_saida_id,
+        equipamento_descricao: '', equipamento_marca_modelo: '', equipamento_numero_serie: '',
+        defeito_reclamado: '', prioridade: 'NORMAL', tipo_manutencao: 'CORRETIVA',
+      });
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDadosIniciais();
+
+      // Dispara a impressão térmica de entrada automaticamente (se ligada)
+      if (impressoraConectada) {
+        imprimirTicketEntrada(novaOs);
+      }
+
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao abrir OS.' });
+    }
+  };
+
+  const handleSalvarPmoc = async (e) => {
+    e.preventDefault();
+    try {
+      if (formPmoc.id) {
+        await api.put(`/os/planos-preventivos/${formPmoc.id}`, formPmoc);
+        setFeedback({ tipo: 'sucesso', msg: 'Plano PMOC atualizado com sucesso!' });
+      } else {
+        await api.post('/os/planos-preventivos', formPmoc);
+        setFeedback({ tipo: 'sucesso', msg: 'Plano PMOC cadastrado com sucesso!' });
+      }
+      setModalNovoPmoc(false);
+      setFormPmoc({ id: null, cliente_id: '', ativo_id: '', tecnico_padrao_id: '', titulo_plano: '', frequencia: 'MENSAL', proxima_execucao: new Date().toISOString().substring(0, 10), instrucoes_tecnicas: '' });
+      carregarDadosIniciais();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao salvar PMOC.' });
+    }
+  };
+
+  const handleToggleStatusPmoc = async (id) => {
+    try {
+      await api.put(`/os/planos-preventivos/${id}/status`);
+      carregarDadosIniciais();
+      setFeedback({ tipo: 'sucesso', msg: 'Status do plano PMOC alterado!' });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao alterar status do PMOC.' });
+    }
+  };
+
+  const handleSalvarPrioridade = async (e) => {
+    e.preventDefault();
+    try {
+      if (prioridadeEmEdicao) {
+        await api.put(`/os/prioridades/${prioridadeEmEdicao.id}`, formPrioridade);
+        setFeedback({ tipo: 'sucesso', msg: 'Regra de SLA atualizada!' });
+      } else {
+        await api.post('/os/prioridades', formPrioridade);
+        setFeedback({ tipo: 'sucesso', msg: 'Nova prioridade cadastrada!' });
+      }
+      setModalPrioridade(false);
+      setPrioridadeEmEdicao(null);
+      carregarDadosIniciais();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao salvar regra de SLA.' });
+    }
+  };
+
+  // Canvas Handlers
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000000';
+    ctx.beginPath();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    ctx.moveTo(clientX - rect.left, clientY - rect.top);
+    setDesenhando(true);
+  };
+
+  const draw = (e) => {
+    if (!desenhando) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    ctx.lineTo(clientX - rect.left, clientY - rect.top);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => setDesenhando(false);
+  const limparCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleConcluirOs = async (e) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const assinaturaBase64 = canvas ? canvas.toDataURL('image/png') : '';
+
+    if (!assinaturaBase64 || assinaturaBase64.length < 1000) {
+      alert('É obrigatório coletar a assinatura do cliente para concluir a OS.');
+      return;
+    }
+
+    try {
+      const payload = {
+        laudo_tecnico: laudoTecnico,
+        nome_responsavel: nomeResponsavel,
+        documento_responsavel: docResponsavel,
+        assinatura_base64: assinaturaBase64,
+        itens: [],
+      };
+
+      const res = await api.post(`/os/${osSelecionada.id}/concluir`, payload);
+      atualizarOsLocal(res.data.data.os);
+      setModalConcluir(false);
+      setModalDetalhes(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao concluir OS.' });
+    }
+  };
+
+  const handleUploadFoto = async (e) => {
+    e.preventDefault();
+    if (!arquivoFoto) return;
+
+    const data = new FormData();
+    data.append('foto', arquivoFoto);
+    data.append('tipo_etapa', tipoEtapaFoto);
+    data.append('descricao', descFoto || `Evidência (${tipoEtapaFoto})`);
+
+    try {
+      const res = await api.post(`/os/${osSelecionada.id}/fotos`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setModalFoto(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      const resUpdated = await api.get(`/os/${osSelecionada.id}`);
+      atualizarOsLocal(resUpdated.data.data);
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao enviar foto.' });
+    }
+  };
+
+  const handleBaixarPdf = async () => {
+    try {
+      setFeedback({ tipo: 'sucesso', msg: 'Gerando PDF Oficial, aguarde...' });
+      const response = await api.get(`/os/${osSelecionada.id}/pdf`, {
+        responseType: 'blob'
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Laudo_Tecnico_OS_${osSelecionada.numero_os}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setFeedback({ tipo: 'sucesso', msg: 'PDF baixado com sucesso!' });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao gerar o PDF. Verifique o console.' });
+    }
+  };
+
+  // --- NOVA FUNÇÃO: Recibo Térmico ---
+  const imprimirTicketEntrada = async (osInfo) => {
+    if (!impressoraConectada) {
+      alert('A impressora térmica não está conectada!');
+      return;
+    }
+
+    try {
+      const dataAbertura = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR').substring(0,5);
+      const clienteNome = osInfo.cliente?.nome_razao_social || 'Cliente não identificado';
+      const clienteDoc = osInfo.cliente?.cpf_cnpj || 'Nao informado';
+      const equipamento = osInfo.equipamento_descricao || 'Equipamento genérico';
+      const marcaModelo = osInfo.equipamento_marca_modelo || 'N/A';
+      const serie = osInfo.equipamento_numero_serie || 'N/A';
+
+      const comandos = [
+        EscPosEncoder.init(),
+        EscPosEncoder.align(1),
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("SCALLE ERP - ORDEM DE SERVICO\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`OS #${osInfo.numero_os} - Entrada: ${dataAbertura}\n`),
+        EscPosEncoder.text("--------------------------------\n"),
+        EscPosEncoder.align(0),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("DADOS DO CLIENTE:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${clienteNome.substring(0, 32)}\n`),
+        EscPosEncoder.text(`Doc: ${clienteDoc}\n\n`),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("EQUIPAMENTO:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${equipamento.substring(0, 32)}\n`),
+        EscPosEncoder.text(`Marca/Mod: ${marcaModelo.substring(0, 21)}\n`),
+        EscPosEncoder.text(`Série: ${serie.substring(0, 24)}\n\n`),
+
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("DEFEITO RECLAMADO:\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text(`${(osInfo.defeito_reclamado || '').substring(0, 96)}\n\n`),
+
+        EscPosEncoder.text("--------------------------------\n"),
+        EscPosEncoder.align(1),
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("TERMO DE RESPONSABILIDADE\n"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.align(0),
+        EscPosEncoder.text("Declaro ter deixado o equipamento acima descrito para avaliacao tecnica. Aprovacoes de orcamento e acompanhamento serao realizados via Portal do Cliente.\n\n\n\n"),
+        EscPosEncoder.align(1),
+        EscPosEncoder.text("________________________________\n"),
+        EscPosEncoder.text("Assinatura do Cliente\n\n\n\n"),
+        EscPosEncoder.cut()
+      ];
+
+      await imprimirCupom(EscPosEncoder.build(comandos));
+    } catch (e) {
+      console.error("Erro ao imprimir ticket da OS", e);
+    }
+  };
+
+  const colunasKanban = [
+    { id: 'ABERTA', titulo: 'Triagem / Novas', cor: 'border-blue-500' },
+    { id: 'EM_EXECUCAO', titulo: 'Em Execução / Campo', cor: 'border-indigo-500' },
+    { id: 'AGUARDANDO_PECA', titulo: 'Aguardando Peça (Almox)', cor: 'border-amber-500' },
+    { id: 'MATERIAL_DISPONIVEL', titulo: 'Material Disponível', cor: 'border-purple-500' },
+    { id: 'CONCLUIDA', titulo: 'Concluídas & Faturadas', cor: 'border-emerald-500' },
+  ];
+
+  const emExecucaoOuPosterior = osSelecionada && (
+    osSelecionada.status === 'EM_EXECUCAO' ||
+    osSelecionada.status === 'EM_ANDAMENTO' ||
+    osSelecionada.status === 'AGUARDANDO_PECA' ||
+    osSelecionada.status === 'MATERIAL_DISPONIVEL'
+  );
+
+  return (
+    <div className="p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5 max-w-7xl mx-auto text-slate-200">
+      {/* Header Responsivo */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-b border-slate-800 pb-3 sm:pb-4">
+        <div>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white flex items-center gap-2">
+            <Wrench className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-500 shrink-0" />
+            Ordens de Serviço & CMMS
+          </h1>
+          <p className="text-[11px] sm:text-xs md:text-sm text-slate-400 mt-0.5">
+            Gestão de campo, apontamento de mão de obra e assinatura digital (MP 2.200-2)
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+
+          <button
+            type="button"
+            onClick={conectarImpressora}
+            className={`flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition cursor-pointer ${impressoraConectada ? 'bg-indigo-950/40 border-indigo-800 text-indigo-400 shadow-inner' : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border-slate-800'}`}
+          >
+            <Printer className="h-3.5 w-3.5" /> {impressoraConectada ? 'Impressora ON' : 'Ligar Impressora'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setModalNovoAtivo(true)}
+            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5 text-indigo-400" /> Ativo
+          </button>
+          <button
+            type="button"
+            onClick={() => { setFormPmoc({ id: null, cliente_id: '', ativo_id: '', tecnico_padrao_id: '', titulo_plano: '', frequencia: 'MENSAL', proxima_execucao: new Date().toISOString().substring(0, 10), instrucoes_tecnicas: '' }); setModalNovoPmoc(true); }}
+            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 text-xs font-bold transition cursor-pointer"
+          >
+            <Calendar className="h-3.5 w-3.5" /> PMOC
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalNovaOs(true)}
+            className="w-full sm:w-auto justify-center flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+          >
+            <Plus className="h-4 w-4" /> Abrir Chamado OS
+          </button>
+        </div>
+      </div>
+
+      {/* Cards de Métricas CMMS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-3.5 rounded-xl sm:rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 block">MTTR (Reparo)</span>
+            <span className="text-base sm:text-lg font-bold font-mono text-white">{metricasCmms.mttr_horas} <span className="text-[10px] sm:text-xs text-slate-500">h</span></span>
+          </div>
+          <div className="p-1.5 sm:p-2 bg-indigo-950/60 border border-indigo-800/60 rounded-lg sm:rounded-xl text-indigo-400 shrink-0"><Clock className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+        </div>
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-3.5 rounded-xl sm:rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 block">MTBF (Falhas)</span>
+            <span className="text-base sm:text-lg font-bold font-mono text-white">{metricasCmms.mtbf_dias} <span className="text-[10px] sm:text-xs text-slate-500">d</span></span>
+          </div>
+          <div className="p-1.5 sm:p-2 bg-emerald-950/60 border border-emerald-800/60 rounded-lg sm:rounded-xl text-emerald-400 shrink-0"><Activity className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+        </div>
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-3.5 rounded-xl sm:rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 block">Conformidade SLA</span>
+            <span className="text-base sm:text-lg font-bold font-mono text-emerald-400">{metricasCmms.sla_conformidade_percent}%</span>
+          </div>
+          <div className="p-1.5 sm:p-2 bg-amber-950/60 border border-amber-800/60 rounded-lg sm:rounded-xl text-amber-400 shrink-0"><Gauge className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+        </div>
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-3.5 rounded-xl sm:rounded-2xl flex items-center justify-between">
+          <div>
+            <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 block">Concluídas / Mês</span>
+            <span className="text-base sm:text-lg font-bold font-mono text-white">{metricasCmms.total_concluidas}</span>
+          </div>
+          <div className="p-1.5 sm:p-2 bg-blue-950/60 border border-blue-800/60 rounded-lg sm:rounded-xl text-blue-400 shrink-0"><TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+        </div>
+      </div>
+
+      {/* Navegação entre Abas */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 md:pb-0 scrollbar-thin">
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('kanban')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer ${
+              abaAtiva === 'kanban' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            <Kanban className="h-3.5 w-3.5" /> Kanban
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('lista')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer ${
+              abaAtiva === 'lista' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Lista
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('pmoc')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer ${
+              abaAtiva === 'pmoc' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" /> PMOC ({planosPmoc.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('ativos')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer ${
+              abaAtiva === 'ativos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            <Wrench className="h-3.5 w-3.5" /> Ativos ({ativos.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('slas')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer ${
+              abaAtiva === 'slas' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            <Settings className="h-3.5 w-3.5" /> SLAs ({prioridades.length})
+          </button>
+        </div>
+        <div className="relative w-full md:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por Nº OS, Cliente, Ativo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3 rounded-xl flex items-center justify-between text-xs ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span>{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Visualização 1: Kanban Responsivo */}
+      {abaAtiva === 'kanban' && (
+        <div className="flex lg:grid lg:grid-cols-5 gap-3 overflow-x-auto pb-4 pt-1 snap-x snap-mandatory">
+          {colunasKanban.map((col) => {
+            const ordensColuna = ordens.filter(o => o.status === col.id || (col.id === 'EM_EXECUCAO' && o.status === 'EM_ANDAMENTO'));
+            return (
+              <div
+                key={col.id}
+                className="min-w-[280px] sm:min-w-[300px] lg:min-w-0 flex-1 bg-slate-900/60 border border-slate-800 rounded-2xl p-3 flex flex-col min-h-[480px] snap-start"
+              >
+                <div className={`flex justify-between items-center pb-2 mb-2 border-b-2 ${col.cor}`}>
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">{col.titulo}</span>
+                  <span className="text-xs font-mono font-bold bg-slate-800 px-2 py-0.5 rounded-full text-slate-300">{ordensColuna.length}</span>
+                </div>
+
+                <div className="space-y-2.5 overflow-y-auto flex-1 pr-1">
+                  {ordensColuna.length === 0 ? (
+                    <div className="h-32 flex items-center justify-center text-slate-600 text-[11px] italic">Sem chamados</div>
+                  ) : (
+                    ordensColuna.map((os) => (
+                      <div
+                        key={os.id}
+                        onClick={() => abrirPainelDetalhes(os)}
+                        className="bg-slate-950 border border-slate-800/80 hover:border-indigo-500/50 p-3 rounded-xl cursor-pointer transition shadow-sm space-y-2 group active:scale-[0.99]"
+                      >
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-mono font-bold text-indigo-400">#{os.numero_os}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            <SlaTimerBadge os={os} />
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                              os.prioridade === 'URGENTE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+                              os.prioridade === 'ALTA' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                              'bg-slate-800 text-slate-300'
+                            }`}>
+                              {os.prioridade}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="font-bold text-white text-xs line-clamp-1">{os.equipamento_descricao}</div>
+                        <div className="text-[11px] text-slate-400 truncate">{os.cliente?.nome_razao_social}</div>
+
+                        <div className="pt-2 border-t border-slate-900 flex justify-between items-center text-[10px] text-slate-500">
+                          <span className="flex items-center gap-1 truncate max-w-[130px]"><User className="h-3 w-3 shrink-0" /> {os.tecnico?.name || 'Não atribuído'}</span>
+                          <span className="font-mono text-emerald-400 font-bold">R$ {parseFloat(os.valor_total || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Visualização 2: PMOC */}
+      {abaAtiva === 'pmoc' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+          <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[650px]">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-[10px] sm:text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-3 sm:px-4">PLANO PMOC</th>
+                <th className="py-3 px-3 sm:px-4">CLIENTE / LOCAL</th>
+                <th className="py-3 px-3 sm:px-4">ATIVO</th>
+                <th className="py-3 px-3 sm:px-4">FREQUÊNCIA</th>
+                <th className="py-3 px-3 sm:px-4">PRÓXIMA EXECUÇÃO</th>
+                <th className="py-3 px-3 sm:px-4 text-center">STATUS</th>
+                <th className="py-3 px-3 sm:px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {planosPmoc.length === 0 ? (
+                <tr><td colSpan="7" className="text-center py-10 text-slate-500">Nenhum cronograma PMOC cadastrado.</td></tr>
+              ) : (
+                planosPmoc.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-3 sm:px-4 font-bold text-white">{p.titulo_plano}</td>
+                    <td className="py-3 px-3 sm:px-4 text-slate-300">{p.cliente?.nome_razao_social}</td>
+                    <td className="py-3 px-3 sm:px-4 text-indigo-400">{p.ativo?.descricao || 'Geral'}</td>
+                    <td className="py-3 px-3 sm:px-4 font-mono font-bold text-slate-300">{p.frequencia}</td>
+                    <td className="py-3 px-3 sm:px-4 font-mono text-emerald-400 font-bold">{new Date(p.proxima_execucao).toLocaleDateString('pt-BR')}</td>
+                    <td className="py-3 px-3 sm:px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.is_ativo ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-slate-800 text-slate-400'}`}>
+                        {p.is_ativo ? 'ATIVO' : 'INATIVO'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 sm:px-4 text-center">
+                      <div className="f

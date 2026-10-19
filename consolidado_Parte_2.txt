@@ -1,4 +1,50 @@
-﻿ CotacaoCompra::where('tenant_id', $tenantId)->with('itens.item')->findOrFail($cotacaoId);
+﻿osta = DB::transaction(function () use ($validated, $cotacao) {
+            $totalItens = 0.00;
+            foreach ($validated['itens'] as $i) {
+                $cotItem = CotacaoCompraItem::find($i['cotacao_item_id']);
+                $totalItens += ((float) $cotItem->quantidade * (float) $i['valor_unitario']);
+            }
+
+            $frete = (float) ($validated['valor_frete'] ?? 0.00);
+            $totalGeral = $totalItens + $frete;
+
+            $prop = CotacaoProposta::create([
+                'cotacao_id' => $cotacao->id,
+                'fornecedor_id' => $validated['fornecedor_id'],
+                'valor_total' => $totalGeral,
+                'valor_frete' => $frete,
+                'prazo_entrega_dias' => $validated['prazo_entrega_dias'],
+                'condicoes_pagamento' => $validated['condicoes_pagamento'] ?? null,
+                'observacoes' => $validated['observacoes'] ?? null,
+            ]);
+
+            foreach ($validated['itens'] as $i) {
+                $cotItem = CotacaoCompraItem::find($i['cotacao_item_id']);
+                $totItem = (float) $cotItem->quantidade * (float) $i['valor_unitario'];
+
+                CotacaoPropostaItem::create([
+                    'proposta_id' => $prop->id,
+                    'cotacao_item_id' => $i['cotacao_item_id'],
+                    'valor_unitario' => (float) $i['valor_unitario'],
+                    'valor_total' => $totItem,
+                ]);
+            }
+
+            return $prop;
+        });
+
+        return response()->json([
+            'data' => [
+                'message' => 'Proposta de fornecedor registrada no mapa comparativo!',
+                'proposta' => $proposta->load('fornecedor', 'itens'),
+            ]
+        ], 201);
+    }
+
+    public function aprovarPropostaVencedora(Request $request, string $cotacaoId, string $propostaId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $cotacao = CotacaoCompra::where('tenant_id', $tenantId)->with('itens.item')->findOrFail($cotacaoId);
         $proposta = CotacaoProposta::where('cotacao_id', $cotacao->id)->with('itens')->findOrFail($propostaId);
 
         if ($cotacao->status !== 'ABERTA') {
@@ -3202,55 +3248,4 @@ class ItemController extends Controller
                     EstoqueService::movimentar(
                         $transf->deposito_destino_id,
                         $transf->item_id,
-                        $qtdRecebida,
-                        'TRANSFERENCIA_ENTRADA',
-                        $userId,
-                        'transferencias',
-                        $transf->id,
-                        $transf->lote,
-                        0.00
-                    );
-                }
-
-                $statusFinal = ($qtdRecebida === $qtdEnviada) ? 'CONCLUIDA' : 'DIVERGENCIA';
-
-                $transf->update([
-                    'status' => $statusFinal,
-                    'quantidade_recebida' => $qtdRecebida,
-                    'recebedor_id' => $userId,
-                    'data_recebimento' => now(),
-                    'motivo_divergencia' => $validated['motivo_divergencia'] ?? null,
-                ]);
-            });
-
-            return response()->json([
-                'data' => [
-                    'message' => 'Transferência conferida e estoque de destino abastecido com sucesso!',
-                    'transferencia' => $transf->fresh(['origem', 'destino', 'item', 'recebedor']),
-                ]
-            ]);
-        } catch (Exception $e) {
-            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
-        }
-    }
-
-    public function relatorioCurvaAbc(Request $request): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-
-        $itens = Item::where('tenant_id', $tenantId)
-            ->where('tipo_item', '!=', 'SERVICO')
-            ->get();
-
-        $dadosAbc = [];
-        $valorTotalGeral = 0.00;
-
-        foreach ($itens as $item) {
-            $saidas = MovimentacaoEstoque::where('item_id', $item->id)
-                ->whereIn('tipo_movimento', ['SAIDA_VENDA', 'SAIDA_OS'])
-                ->where('created_at', '>=', now()->subDays(90))
-                ->sum('quantidade') ?? 0;
-
-            $preco = (float) ($item->preco_venda > 0 ? $item->preco_venda : $item->preco_custo);
-            $valorTotal = (float) $saidas * $preco;
-       
+                        

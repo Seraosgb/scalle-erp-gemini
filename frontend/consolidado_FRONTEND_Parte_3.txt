@@ -1,0 +1,2319 @@
+﻿                                             <span className="text-xs font-mono text-slate-300 uppercase">{formPipeline.cor_hex}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditandoPipeline(false)}
+                                            className="px-3 py-1 text-xs text-slate-400 hover:text-white cursor-pointer"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={salvando}
+                                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-bold cursor-pointer"
+                                        >
+                                            {salvando ? 'Salvando...' : 'Salvar Alterações'}
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+
+                            {/* Gerenciamento de Etapas */}
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Colunas / Etapas do Funil</h4>
+                                <div className="space-y-2">
+                                    {(pipelineSelecionado.etapas || []).map((et, idx) => (
+                                        <div key={et.id} className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        disabled={idx === 0}
+                                                        onClick={() => moverEtapaOrdem(idx, -1)}
+                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer text-[10px]"
+                                                        title="Mover para cima"
+                                                    >
+                                                        ▲
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={idx === pipelineSelecionado.etapas.length - 1}
+                                                        onClick={() => moverEtapaOrdem(idx, 1)}
+                                                        className="p-1 bg-slate-900 border border-slate-800 rounded hover:text-white disabled:opacity-30 cursor-pointer text-[10px]"
+                                                        title="Mover para baixo"
+                                                    >
+                                                        ▼
+                                                    </button>
+                                                </div>
+                                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: et.cor_hex || '#6366f1' }}></span>
+                                                <span className="font-bold text-slate-100 text-xs">{idx + 1}. {et.nome}</span>
+                                                <span className="bg-slate-900 text-purple-400 border border-slate-800 px-2 py-0.5 rounded text-[10px] font-mono">
+                                                    Forecast: {et.probabilidade_fechamento ?? 50}%
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setEtapaEmEdicao(et);
+                                                        setFormEtapa({
+                                                            nome: et.nome,
+                                                            probabilidade_fechamento: et.probabilidade_fechamento ?? 50,
+                                                            cor_hex: et.cor_hex || '#6366f1'
+                                                        });
+                                                    }}
+                                                    className="text-slate-400 hover:text-white text-xs px-2 py-1 bg-slate-900 rounded border border-slate-800 cursor-pointer"
+                                                >
+                                                    Editar
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => excluirEtapa(et.id)}
+                                                    className="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer"
+                                                >
+                                                    Excluir
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <form onSubmit={salvarEtapa} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                                    <h5 className="text-xs font-bold text-slate-300">
+                                        {etapaEmEdicao ? `Editando Etapa: ${etapaEmEdicao.nome}` : '+ Adicionar Nova Etapa'}
+                                    </h5>
+                                    <div className="grid grid-cols-12 gap-3">
+                                        <div className="col-span-6">
+                                            <label className="block text-[11px] text-slate-400 mb-1">Nome da Coluna *</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                placeholder="Ex: Demonstração Agendada"
+                                                value={formEtapa.nome}
+                                                onChange={(e) => setFormEtapa({ ...formEtapa, nome: e.target.value })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                        </div>
+                                        <div className="col-span-3">
+                                            <label className="block text-[11px] text-slate-400 mb-1">Probabilidade (%)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                required
+                                                value={formEtapa.probabilidade_fechamento}
+                                                onChange={(e) => setFormEtapa({ ...formEtapa, probabilidade_fechamento: parseInt(e.target.value) || 0 })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                        </div>
+                                        <div className="col-span-3">
+                                            <label className="block text-[11px] text-slate-400 mb-1">Cor</label>
+                                            <input
+                                                type="color"
+                                                value={formEtapa.cor_hex}
+                                                onChange={(e) => setFormEtapa({ ...formEtapa, cor_hex: e.target.value })}
+                                                className="w-full h-8 bg-slate-900 border border-slate-700 rounded cursor-pointer"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        {etapaEmEdicao && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEtapaEmEdicao(null);
+                                                    setFormEtapa({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
+                                                }}
+                                                className="px-3 py-1 text-xs text-slate-400 hover:text-white cursor-pointer"
+                                            >
+                                                Cancelar
+                                            </button>
+                                        )}
+                                        <button
+                                            type="submit"
+                                            disabled={salvando}
+                                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded text-xs font-bold cursor-pointer"
+                                        >
+                                            {etapaEmEdicao ? 'Atualizar Etapa' : 'Cadastrar Etapa'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Aba 3: Motivos de Perda (CRUD) */}
+            {tabAtiva === 'motivos_perda' && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-6">
+                    <div>
+                        <h2 className="text-sm font-bold text-slate-200">Motivos de Descarte / Perda de Oportunidades</h2>
+                        <p className="text-xs text-slate-400 mt-0.5">Parametrize as justificativas padronizadas que a equipe comercial seleciona ao marcar um deal como perdido.</p>
+                    </div>
+
+                    <form onSubmit={salvarMotivoPerda} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                        <h4 className="text-xs font-bold text-slate-300">{motivoEmEdicao ? `Editando Motivo: ${motivoEmEdicao.nome}` : '+ Novo Motivo de Perda'}</h4>
+                        <div className="grid grid-cols-12 gap-3">
+                            <div className="col-span-8">
+                                <label className="block text-[11px] text-slate-400 mb-1">Descrição do Motivo *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: Não atende requisitos técnicos"
+                                    value={formMotivo.nome}
+                                    onChange={(e) => setFormMotivo({ ...formMotivo, nome: e.target.value })}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                />
+                            </div>
+                            <div className="col-span-4">
+                                <label className="block text-[11px] text-slate-400 mb-1">Cor do Marcador</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="color"
+                                        value={formMotivo.cor_hex}
+                                        onChange={(e) => setFormMotivo({ ...formMotivo, cor_hex: e.target.value })}
+                                        className="w-10 h-8 bg-slate-900 border border-slate-700 rounded cursor-pointer p-0.5"
+                                    />
+                                    <span className="text-xs font-mono text-slate-300 uppercase">{formMotivo.cor_hex}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            {motivoEmEdicao && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setMotivoEmEdicao(null);
+                                        setFormMotivo({ nome: '', cor_hex: '#ef4444' });
+                                    }}
+                                    className="px-3 py-1 text-xs text-slate-400 hover:text-white cursor-pointer"
+                                >
+                                    Cancelar
+                                </button>
+                            )}
+                            <button
+                                type="submit"
+                                disabled={salvando}
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded text-xs font-bold cursor-pointer"
+                            >
+                                {motivoEmEdicao ? 'Atualizar Motivo' : 'Cadastrar Motivo'}
+                            </button>
+                        </div>
+                    </form>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {motivosPerda.map(m => (
+                            <div key={m.id} className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: m.cor_hex || '#ef4444' }}></span>
+                                    <div>
+                                        <p className="text-xs font-bold text-slate-200">{m.nome}</p>
+                                        <p className="text-[10px] text-slate-500 font-mono">{m.codigo}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMotivoEmEdicao(m);
+                                            setFormMotivo({ nome: m.nome, cor_hex: m.cor_hex || '#ef4444' });
+                                        }}
+                                        className="text-slate-400 hover:text-white text-xs px-2 py-1 bg-slate-900 rounded border border-slate-800 cursor-pointer"
+                                    >
+                                        Editar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => excluirMotivoPerda(m.id)}
+                                        className="text-rose-400 hover:text-rose-300 text-xs px-2 py-1 bg-rose-950/40 rounded border border-rose-900 cursor-pointer"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Novo Funil */}
+            {modalNovoFunil && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl text-slate-100 space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <h3 className="text-base font-bold text-white">Criar Novo Funil de Vendas</h3>
+                            <button
+                                type="button"
+                                onClick={() => setModalNovoFunil(false)}
+                                className="text-slate-400 hover:text-white font-bold text-base cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <form onSubmit={criarNovoFunil} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Funil *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formNovoPipe.nome}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, nome: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Contratos Recorrentes PMOC"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Descrição</label>
+                                <input
+                                    type="text"
+                                    value={formNovoPipe.descricao}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, descricao: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Venda consultiva corporativa"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Cor de Destaque</label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="color"
+                                        value={formNovoPipe.cor_hex}
+                                        onChange={(e) => setFormNovoPipe({ ...formNovoPipe, cor_hex: e.target.value })}
+                                        className="w-10 h-8 bg-slate-950 border border-slate-700 rounded-lg cursor-pointer p-0.5"
+                                    />
+                                    <span className="text-xs font-mono text-slate-300 uppercase">{formNovoPipe.cor_hex}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setModalNovoFunil(false)}
+                                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition disabled:opacity-50 cursor-pointer shadow-lg shadow-indigo-600/30"
+                                >
+                                    {salvando ? 'Criando...' : 'Criar Funil'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+========================================
+ARQUIVO: src\pages\Crm\CrmKanbanView.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import api from '../../services/api';
+
+export default function CrmKanbanView() {
+  const [boardData, setBoardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [movingCardId, setMovingCardId] = useState(null);
+
+  const carregarBoard = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/crm/board');
+      setBoardData(res.data.data);
+    } catch (err) {
+      console.error('Falha ao carregar CRM Board', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarBoard();
+  }, []);
+
+  const handleMoverEtapa = async (cardId, etapaDestinoId) => {
+    try {
+      setMovingCardId(cardId);
+      await api.patch(`/crm/oportunidades/${cardId}/mover`, {
+        etapa_id_destino: etapaDestinoId
+      });
+      await carregarBoard();
+    } catch (err) {
+      alert('Falha ao mover card de etapa.');
+    } finally {
+      setMovingCardId(null);
+    }
+  };
+
+  const handleConverterOrcamento = async (cardId) => {
+    if (!confirm('Deseja converter esta oportunidade em Orçamento comercial?')) return;
+    try {
+      const res = await api.post(`/crm/oportunidades/${cardId}/converter-orcamento`);
+      alert(res.data.data.message);
+      await carregarBoard();
+    } catch (err) {
+      alert('Erro na conversão: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  if (loading) {
+    return <div className="p-8 text-slate-400">Carregando Funil de Vendas...</div>;
+  }
+
+  const etapas = boardData?.pipeline?.etapas || [];
+
+  return (
+    <div className="p-6 bg-slate-950 min-h-screen text-slate-100 flex flex-col gap-6">
+      <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-indigo-400">
+            {boardData?.pipeline?.nome || 'CRM — Funil de Vendas'}
+          </h1>
+          <p className="text-sm text-slate-400">Arraste e avance negociações até a conversão em pedido.</p>
+        </div>
+        <button
+          onClick={carregarBoard}
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-sm font-semibold rounded-lg border border-slate-700 transition"
+        >
+          Sincronizar
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start overflow-x-auto pb-4">
+        {etapas.map((etapa) => (
+          <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl flex flex-col max-h-[85vh]">
+            <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/60 rounded-t-xl">
+              <span className="font-semibold text-sm text-slate-200">{etapa.nome}</span>
+              <span className="text-xs bg-slate-800 px-2 py-0.5 rounded-full text-indigo-300 font-mono">
+                {etapa.oportunidades?.length || 0}
+              </span>
+            </div>
+
+            <div className="p-3 flex flex-col gap-3 overflow-y-auto">
+              {etapa.oportunidades?.map((card) => (
+                <div
+                  key={card.id}
+                  className="bg-slate-800/90 border border-slate-700/60 rounded-lg p-3.5 shadow-sm hover:border-indigo-500/50 transition flex flex-col gap-2"
+                >
+                  <div className="flex justify-between items-start">
+                    <h3 className="text-sm font-medium text-slate-100">{card.titulo}</h3>
+                    <span className="text-xs font-bold text-emerald-400">
+                      R$ {Number(card.valor_estimado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-slate-400 flex flex-col gap-0.5">
+                    <span>👤 {card.nome_contato}</span>
+                    {card.telefone_contato && <span>📞 {card.telefone_contato}</span>}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-700/50 flex justify-between items-center gap-1">
+                    <select
+                      value={etapa.id}
+                      disabled={movingCardId === card.id}
+                      onChange={(e) => handleMoverEtapa(card.id, e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1 text-slate-300 focus:outline-none focus:border-indigo-500"
+                    >
+                      {etapas.map((opt) => (
+                        <option key={opt.id} value={opt.id}>{opt.nome}</option>
+                      ))}
+                    </select>
+
+                    <button
+                      onClick={() => handleConverterOrcamento(card.id)}
+                      title="Converter em Pedido de Venda"
+                      className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded transition"
+                    >
+                      Faturar ➔
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {(!etapa.oportunidades || etapa.oportunidades.length === 0) && (
+                <div className="p-4 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
+                  Nenhum card nesta etapa
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\dashboard\DashboardPage.jsx
+========================================
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../services/api';
+import { 
+  TrendingUp, 
+  DollarSign, 
+  Wrench, 
+  FileText, 
+  AlertTriangle, 
+  ArrowUpRight, 
+  ArrowDownRight,
+  Boxes,
+  Activity
+} from 'lucide-react';
+
+export default function DashboardPage() {
+  const { data: dashboardData, isLoading } = useQuery({
+    queryKey: ['dashboard-metricas'],
+    queryFn: async () => {
+      const res = await api.get('/dashboard/metricas');
+      return res.data.data;
+    },
+    refetchInterval: 1000 * 30, // Atualização a cada 30 segundos
+  });
+
+  const m = dashboardData || {
+    faturamento_hoje: 0,
+    faturamento_mes: 0,
+    total_a_receber: 0,
+    total_a_pagar: 0,
+    os_abertas: 0,
+    os_em_andamento: 0,
+    os_concluidas_mes: 0,
+    total_nfe_emitidas: 0,
+    itens_estoque_baixo: []
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
+            <Activity className="w-7 h-7 text-indigo-400" />
+            <span>Painel de Controle Executivo</span>
+          </h1>
+          <p className="text-sm text-slate-400">Visão consolidada em tempo real da operação do ERP</p>
+        </div>
+
+        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-2xl text-xs text-slate-400 font-mono">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Sincronização Ativa</span>
+        </div>
+      </div>
+
+      {/* Grid de KPIs Principais */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Faturamento Hoje */}
+        <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between shadow-xl">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Vendas de Hoje</p>
+            <h3 className="text-2xl font-mono font-bold text-white mt-1">
+              R$ {m.faturamento_hoje.toFixed(2)}
+            </h3>
+            <span className="text-xs text-emerald-400 font-medium">PDV & Pedidos Diretos</span>
+          </div>
+          <div className="p-3 bg-emerald-600/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 2: Contas a Receber */}
+        <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between shadow-xl">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total a Receber</p>
+            <h3 className="text-2xl font-mono font-bold text-emerald-400 mt-1">
+              R$ {m.total_a_receber.toFixed(2)}
+            </h3>
+            <span className="text-xs text-slate-500 font-medium">Títulos em Aberto</span>
+          </div>
+          <div className="p-3 bg-emerald-600/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+            <ArrowDownRight className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 3: Contas a Pagar */}
+        <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between shadow-xl">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total a Pagar</p>
+            <h3 className="text-2xl font-mono font-bold text-rose-400 mt-1">
+              R$ {m.total_a_pagar.toFixed(2)}
+            </h3>
+            <span className="text-xs text-slate-500 font-medium">Fornecedores & Despesas</span>
+          </div>
+          <div className="p-3 bg-rose-600/10 text-rose-400 rounded-xl border border-rose-500/20">
+            <ArrowUpRight className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 4: Ordens de Serviço Ativas */}
+        <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl flex items-center justify-between shadow-xl">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">OS em Atendimento</p>
+            <h3 className="text-2xl font-mono font-bold text-indigo-400 mt-1">
+              {m.os_abertas + m.os_em_andamento} ativas
+            </h3>
+            <span className="text-xs text-slate-400 font-medium">{m.os_concluidas_mes} concluídas no mês</span>
+          </div>
+          <div className="p-3 bg-indigo-600/10 text-indigo-400 rounded-xl border border-indigo-500/20">
+            <Wrench className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
+
+      {/* Grid Secundário: Alertas Operacionais */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Tabela de Itens com Estoque Baixo */}
+        <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <span>Itens com Estoque Baixo / Ruptura</span>
+            </h3>
+            <span className="text-xs text-slate-500">Saldo &le; 5 unidades</span>
+          </div>
+
+          {m.itens_estoque_baixo?.length === 0 ? (
+            <div className="text-center py-10 text-slate-500 text-sm">
+              Nenhum item com estoque crítico no momento.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {m.itens_estoque_baixo.map((saldo) => (
+                <div key={saldo.id} className="p-3.5 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{saldo.item?.nome}</p>
+                    <p className="text-xs text-slate-500 font-mono">
+                      SKU: {saldo.item?.codigo_sku} • Depósito: {saldo.deposito?.nome}
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg text-xs font-mono font-bold">
+                    {parseFloat(saldo.quantidade_saldo).toFixed(2)} {saldo.item?.unidade_medida}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Resumo Fiscal e Comercial */}
+        <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <FileText className="w-5 h-5 text-indigo-400" />
+            <span>Resumo Operacional do Mês</span>
+          </h3>
+
+          <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-xl space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">Faturamento Mensal Consolidado:</span>
+              <span className="font-mono font-bold text-white">R$ {m.faturamento_mes.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">Documentos Fiscais Autorizados:</span>
+              <span className="font-mono font-bold text-emerald-400">{m.total_nfe_emitidas} notas</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">Ordens de Serviço Concluídas:</span>
+              <span className="font-mono font-bold text-indigo-400">{m.os_concluidas_mes} OS</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\estoque\EstoquePage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { 
+  Boxes, Plus, Search, ArrowRightLeft, Upload, CheckCircle2, 
+  AlertTriangle, X, Check, TrendingUp, Warehouse, Package
+} from 'lucide-react';
+
+export default function EstoquePage() {
+  const [abaAtiva, setAbaAtiva] = useState('saldos'); // 'saldos' | 'transferencias' | 'depositos' | 'abc'
+  const [saldos, setSaldos] = useState([]);
+  const [depositos, setDepositos] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [transferencias, setTransferencias] = useState([]);
+  const [curvaAbc, setCurvaAbc] = useState({ valor_total_saidas_90d: 0, itens: [] });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [depositoFiltro, setDepositoFiltro] = useState('');
+  const [feedback, setFeedback] = useState(null);
+
+  // Modais
+  const [modalAjuste, setModalAjuste] = useState(false);
+  const [modalTransf, setModalTransf] = useState(false);
+  const [modalConferir, setModalConferir] = useState(false);
+  const [modalXml, setModalXml] = useState(false);
+  const [modalNovoDeposito, setModalNovoDeposito] = useState(false);
+  const [transfSelecionada, setTransfSelecionada] = useState(null);
+
+  // Formulários
+  const [formAjuste, setFormAjuste] = useState({ deposito_id: '', item_id: '', novo_saldo: '', motivo: 'Ajuste de Inventário', lote: '', data_validade: '' });
+  const [formTransf, setFormTransf] = useState({ deposito_origem_id: '', deposito_destino_id: '', item_id: '', quantidade: '', modalidade: 'EM_TRANSITO', lote: '', observacoes: '' });
+  const [formConferencia, setFormConferencia] = useState({ quantidade_recebida: '', motivo_divergencia: '' });
+  const [formDeposito, setFormDeposito] = useState({ nome: '', codigo: '', descricao: '', is_padrao: false });
+  const [arquivoXml, setArquivoXml] = useState(null);
+  const [depositoXml, setDepositoXml] = useState('');
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      const [resSaldos, resDeps, resItens, resTransfs, resAbc] = await Promise.all([
+        api.get('/wms/saldos', { params: { search, deposito_id: depositoFiltro } }),
+        api.get('/wms/depositos'),
+        api.get('/itens'),
+        api.get('/wms/transferencias').catch(() => ({ data: { data: [] } })),
+        api.get('/wms/curva-abc').catch(() => ({ data: { data: { valor_total_saidas_90d: 0, itens: [] } } }))
+      ]);
+
+      const rawSaldos = resSaldos.data?.data;
+      const listaSaldos = Array.isArray(rawSaldos) ? rawSaldos : (rawSaldos?.data || []);
+      setSaldos(listaSaldos);
+
+      const deps = resDeps.data?.data || [];
+      setDepositos(deps);
+
+      const rawItens = resItens.data?.data;
+      const listaItens = Array.isArray(rawItens) ? rawItens : (rawItens?.data || []);
+      setItens(listaItens);
+
+      setTransferencias(resTransfs.data?.data || []);
+      setCurvaAbc(resAbc.data?.data || { valor_total_saidas_90d: 0, itens: [] });
+
+      if (deps.length > 0 && !depositoXml) {
+        setDepositoXml(deps[0].id);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, [search, depositoFiltro]);
+
+  const handleSalvarAjuste = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/wms/ajustar-saldo', formAjuste);
+      setModalAjuste(false);
+      setFeedback({ tipo: 'sucesso', msg: 'Saldo de inventário ajustado com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao ajustar saldo.' });
+    }
+  };
+
+  const handleSalvarTransferencia = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/wms/transferir', formTransf);
+      setModalTransf(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao realizar transferência.' });
+    }
+  };
+
+  const handleConferirTransferencia = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.put(`/wms/transferencias/${transfSelecionada.id}/conferir`, formConferencia);
+      setModalConferir(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao conferir transferência.' });
+    }
+  };
+
+  const handleSalvarDeposito = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/wms/depositos', formDeposito);
+      setModalNovoDeposito(false);
+      setFormDeposito({ nome: '', codigo: '', descricao: '', is_padrao: false });
+      setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado cadastrado com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao cadastrar depósito.' });
+    }
+  };
+
+  const handleUploadXml = async (e) => {
+    e.preventDefault();
+    if (!arquivoXml) return;
+    const data = new FormData();
+    data.append('xml_file', arquivoXml);
+    data.append('deposito_id', depositoXml);
+
+    try {
+      const res = await api.post('/itens/importar-xml', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setModalXml(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Falha na importação do XML de NF-e.' });
+    }
+  };
+
+  return (
+    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto text-slate-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
+            <Boxes className="h-6 w-6 sm:h-7 sm:w-7 text-indigo-500" />
+            Almoxarifado & WMS
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Gestão de depósitos, transferências em trânsito com conferência cega, FEFO e Curva ABC
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalNovoDeposito(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4 text-indigo-400" /> Novo Almoxarifado
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalXml(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Upload className="h-4 w-4 text-indigo-400" /> Importar XML
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFormTransf({ deposito_origem_id: depositos[0]?.id || '', deposito_destino_id: '', item_id: '', quantidade: '', modalidade: 'EM_TRANSITO', lote: '', observacoes: '' });
+              setModalTransf(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <ArrowRightLeft className="h-4 w-4" /> Transferência
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFormAjuste({ deposito_id: depositos[0]?.id || '', item_id: '', novo_saldo: '', motivo: 'Inventário Físico', lote: '', data_validade: '' });
+              setModalAjuste(true);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4" /> Ajustar Saldo
+          </button>
+        </div>
+      </div>
+
+      {/* Navegação entre Abas */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('saldos')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'saldos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Posições de Estoque
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('transferencias')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'transferencias' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Transferências em Trânsito ({transferencias.filter(t => t.status === 'EM_TRANSITO').length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('depositos')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'depositos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Almoxarifados ({depositos.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('abc')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'abc' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Curva ABC (80/15/5)
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <select
+            value={depositoFiltro}
+            onChange={(e) => setDepositoFiltro(e.target.value)}
+            className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+          >
+            <option value="">Todos os Almoxarifados</option>
+            {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+          </select>
+          <div className="relative w-full sm:w-60">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar item, SKU, lote..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span>{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Aba 1: Posições de Estoque */}
+      {abaAtiva === 'saldos' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">ITEM / DESCRIÇÃO</th>
+                <th className="py-3 px-4">ALMOXARIFADO</th>
+                <th className="py-3 px-4">LOTE / VALIDADE (FEFO)</th>
+                <th className="py-3 px-4">ENDEREÇAMENTO</th>
+                <th className="py-3 px-4 text-right">SALDO ATUAL</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {saldos.length === 0 ? (
+                <tr><td colSpan="5" className="text-center py-10 text-slate-500">Nenhum item cadastrado no sistema.</td></tr>
+              ) : (
+                saldos.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-medium text-white">
+                      <div>{s.item?.nome}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">SKU: {s.item?.codigo_sku} | UN: {s.item?.unidade_medida}</div>
+                    </td>
+                    <td className="py-3 px-4 text-indigo-400 font-semibold">{s.deposito?.nome}</td>
+                    <td className="py-3 px-4 font-mono">
+                      {s.lote ? (
+                        <div>
+                          <span className="text-slate-200">Lote: {s.lote}</span>
+                          {s.data_validade && (
+                            <span className="block text-[10px] text-amber-400 font-bold">Val: {new Date(s.data_validade).toLocaleDateString('pt-BR')}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">Sem lote</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
+                      {s.localizacao_rua ? `Rua ${s.localizacao_rua} / Prédio ${s.localizacao_predio}` : '-'}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-sm font-bold text-emerald-400">
+                      {parseFloat(s.quantidade_saldo || 0).toFixed(2)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aba 2: Transferências em Trânsito */}
+      {abaAtiva === 'transferencias' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">ITEM TRANSFERIDO</th>
+                <th className="py-3 px-4">ORIGEM ➔ DESTINO</th>
+                <th className="py-3 px-4 text-center">QTD ENVIADA</th>
+                <th className="py-3 px-4 text-center">QTD RECEBIDA</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+                <th className="py-3 px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {transferencias.length === 0 ? (
+                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhuma transferência em trânsito.</td></tr>
+              ) : (
+                transferencias.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-medium text-white">{t.item?.nome}</td>
+                    <td className="py-3 px-4 text-slate-300">
+                      <span className="text-rose-400">{t.origem?.nome}</span> ➔ <span className="text-emerald-400 font-bold">{t.destino?.nome}</span>
+                    </td>
+                    <td className="py-3 px-4 text-center font-mono font-bold text-white">{parseFloat(t.quantidade_enviada).toFixed(2)}</td>
+                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-400">{t.quantidade_recebida !== null ? parseFloat(t.quantidade_recebida).toFixed(2) : '-'}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        t.status === 'CONCLUIDA' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                        t.status === 'DIVERGENCIA' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+                        'bg-amber-950 text-amber-300 border border-amber-800 animate-pulse'
+                      }`}>
+                        {t.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {t.status === 'EM_TRANSITO' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTransfSelecionada(t);
+                            setFormConferencia({ quantidade_recebida: t.quantidade_enviada, motivo_divergencia: '' });
+                            setModalConferir(true);
+                          }}
+                          className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer shadow-md"
+                        >
+                          Conferir & Receber
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aba 3: Almoxarifados Cadastrados */}
+      {abaAtiva === 'depositos' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">CÓDIGO</th>
+                <th className="py-3 px-4">NOME DO ALMOXARIFADO</th>
+                <th className="py-3 px-4">DESCRIÇÃO</th>
+                <th className="py-3 px-4 text-center">TIPO</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {depositos.map((d) => (
+                <tr key={d.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-4 font-mono font-bold text-indigo-400">{d.codigo}</td>
+                  <td className="py-3 px-4 font-medium text-white">{d.nome}</td>
+                  <td className="py-3 px-4 text-slate-400">{d.descricao || '-'}</td>
+                  <td className="py-3 px-4 text-center">
+                    {d.is_padrao ? (
+                      <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold text-[10px]">PADRÃO MATRIZ</span>
+                    ) : (
+                      <span className="text-slate-500 text-[11px]">Secundário</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">ATIVO</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aba 4: Curva ABC */}
+      {abaAtiva === 'abc' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm space-y-4 p-4">
+          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-white">Análise de Giro & Curva ABC (Últimos 90 Dias)</h2>
+              <p className="text-xs text-slate-400">Classificação financeira 80% (A), 15% (B) e 5% (C) com indicação de reposição crítica</p>
+            </div>
+            <div className="text-right font-mono">
+              <span className="text-xs text-slate-400 block">Total Movimentado:</span>
+              <span className="text-base font-bold text-emerald-400">R$ {parseFloat(curvaAbc.valor_total_saidas_90d || 0).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-2.5 px-3">CLASSE</th>
+                <th className="py-2.5 px-3">ITEM</th>
+                <th className="py-2.5 px-3 text-center">SAÍDAS (90D)</th>
+                <th className="py-2.5 px-3 text-right">VALOR TOTAL</th>
+                <th className="py-2.5 px-3 text-center">SALDO ATUAL</th>
+                <th className="py-2.5 px-3 text-center">STATUS REPOSIÇÃO</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {curvaAbc.itens?.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-2.5 px-3 font-bold">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      item.classe_abc === 'A' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                      item.classe_abc === 'B' ? 'bg-indigo-950 text-indigo-300 border border-indigo-800' :
+                      'bg-slate-800 text-slate-400'
+                    }`}>
+                      Classe {item.classe_abc}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 font-medium text-white">{item.nome}</td>
+                  <td className="py-2.5 px-3 text-center font-mono">{item.quantidade_saidas_90d}</td>
+                  <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">R$ {item.valor_movimentado_90d.toFixed(2)}</td>
+                  <td className="py-2.5 px-3 text-center font-mono">{item.saldo_atual}</td>
+                  <td className="py-2.5 px-3 text-center">
+                    {item.status_reposicao === 'CRITICO' ? (
+                      <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-bold animate-pulse">Estoque Baixo</span>
+                    ) : (
+                      <span className="text-slate-500 text-[11px]">Normal</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal Ajuste de Saldo */}
+      {modalAjuste && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Plus className="h-4 w-4 text-indigo-400" /> Ajuste Físico de Saldo</h3>
+              <button type="button" onClick={() => setModalAjuste(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarAjuste} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Almoxarifado *</label>
+                <select required value={formAjuste.deposito_id} onChange={(e) => setFormAjuste({ ...formAjuste, deposito_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Item / Produto *</label>
+                <select required value={formAjuste.item_id} onChange={(e) => setFormAjuste({ ...formAjuste, item_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  <option value="">Selecione o Item...</option>
+                  {itens.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Novo Saldo Físico *</label>
+                  <input type="number" step="0.01" min="0" required value={formAjuste.novo_saldo} onChange={(e) => setFormAjuste({ ...formAjuste, novo_saldo: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Lote</label>
+                  <input type="text" placeholder="Ex: LOT-2026" value={formAjuste.lote} onChange={(e) => setFormAjuste({ ...formAjuste, lote: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Data de Validade (FEFO)</label>
+                <input type="date" value={formAjuste.data_validade} onChange={(e) => setFormAjuste({ ...formAjuste, data_validade: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Motivo do Ajuste</label>
+                <input type="text" required value={formAjuste.motivo} onChange={(e) => setFormAjuste({ ...formAjuste, motivo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalAjuste(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Gravar Ajuste</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Despachar Transferência */}
+      {modalTransf && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><ArrowRightLeft className="h-4 w-4 text-indigo-400" /> Transferência entre Almoxarifados</h3>
+              <button type="button" onClick={() => setModalTransf(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarTransferencia} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Origem *</label>
+                  <select required value={formTransf.deposito_origem_id} onChange={(e) => setFormTransf({ ...formTransf, deposito_origem_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Destino *</label>
+                  <select required value={formTransf.deposito_destino_id} onChange={(e) => setFormTransf({ ...formTransf, deposito_destino_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="">Selecione...</option>
+                    {depositos.filter(d => d.id !== formTransf.deposito_origem_id).map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Item a Transferir *</label>
+                <select required value={formTransf.item_id} onChange={(e) => setFormTransf({ ...formTransf, item_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  <option value="">Selecione o Item...</option>
+                  {itens.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Quantidade *</label>
+                  <input type="number" step="0.01" min="0.01" required value={formTransf.quantidade} onChange={(e) => setFormTransf({ ...formTransf, quantidade: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Modalidade *</label>
+                  <select value={formTransf.modalidade} onChange={(e) => setFormTransf({ ...formTransf, modalidade: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                    <option value="EM_TRANSITO">Em Trânsito (Exige Conferência)</option>
+                    <option value="DIRETO">Direto (Entrada Imediata)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalTransf(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Despachar Transferência</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Conferência Cega */}
+      {modalConferir && transfSelecionada && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Check className="h-4 w-4 text-emerald-400" /> Conferência Física de Recebimento</h3>
+              <button type="button" onClick={() => setModalConferir(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleConferirTransferencia} className="space-y-3 text-xs">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                <span className="text-slate-400 block">Item: <strong className="text-white">{transfSelecionada.item?.nome}</strong></span>
+                <span className="text-slate-400 block">Qtd Despachada: <strong className="text-indigo-400 font-mono">{parseFloat(transfSelecionada.quantidade_enviada).toFixed(2)}</strong></span>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Quantidade Física Conferida *</label>
+                <input type="number" step="0.01" min="0" required value={formConferencia.quantidade_recebida} onChange={(e) => setFormConferencia({ ...formConferencia, quantidade_recebida: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono text-sm font-bold text-emerald-400" />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Justificativa em Caso de Divergência</label>
+                <textarea rows="2" placeholder="Descreva se faltou ou avariou mercadoria..." value={formConferencia.motivo_divergencia} onChange={(e) => setFormConferencia({ ...formConferencia, motivo_divergencia: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalConferir(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Confirmar Entrada no WMS</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Novo Almoxarifado */}
+      {modalNovoDeposito && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Warehouse className="h-4 w-4 text-indigo-400" /> Cadastrar Almoxarifado</h3>
+              <button type="button" onClick={() => setModalNovoDeposito(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarDeposito} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Nome do Almoxarifado / Depósito *</label>
+                <input type="text" required placeholder="Ex: Almoxarifado Central" value={formDeposito.nome} onChange={(e) => setFormDeposito({ ...formDeposito, nome: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Código Identificador (TAG) *</label>
+                <input type="text" required placeholder="Ex: DEP-02" value={formDeposito.codigo} onChange={(e) => setFormDeposito({ ...formDeposito, codigo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Descrição / Localização</label>
+                <input type="text" placeholder="Ex: Galpão Logístico Bloco B" value={formDeposito.descricao} onChange={(e) => setFormDeposito({ ...formDeposito, descricao: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoDeposito(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Cadastrar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Importar XML */}
+      {modalXml && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Upload className="h-4 w-4 text-indigo-400" /> Importador de XML NF-e</h3>
+              <button type="button" onClick={() => setModalXml(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleUploadXml} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Almoxarifado de Entrada *</label>
+                <select required value={depositoXml} onChange={(e) => setDepositoXml(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Arquivo XML da NF-e *</label>
+                <input type="file" accept=".xml" required onChange={(e) => setArquivoXml(e.target.files[0])} className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white" />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalXml(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Processar XML</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\exportacoes\ExportacoesPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { 
+  FileSpreadsheet, Download, Calendar, CheckCircle2, 
+  AlertTriangle, X, FileText, Database, ShieldCheck, DollarSign
+} from 'lucide-react';
+
+export default function ExportacoesPage() {
+  const [dataInicio, setDataInicio] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().substring(0, 10));
+  const [dataFim, setDataFim] = useState(new Date().toISOString().substring(0, 10));
+  const [formato, setFormato] = useState('DOMINIO');
+  const [metricas, setMetricas] = useState(null);
+  const [loadingMetricas, setLoadingMetricas] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  const carregarMetricas = async () => {
+    setLoadingMetricas(true);
+    try {
+      const res = await api.get('/exportacoes/metricas', {
+        params: { data_inicio: dataInicio, data_fim: dataFim }
+      });
+      setMetricas(res.data?.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMetricas(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarMetricas();
+  }, [dataInicio, dataFim]);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const response = await api.get('/exportacoes/download', {
+        params: { tipo_formato: formato, data_inicio: dataInicio, data_fim: dataFim },
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const extensao = formato === 'CSV_FINANCEIRO' ? 'csv' : 'txt';
+      link.setAttribute('download', `${formato.toLowerCase()}_${dataInicio}_${dataFim}.${extensao}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setFeedback({ tipo: 'sucesso', msg: 'Arquivo contábil gerado e baixado com sucesso!' });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao gerar arquivo contábil para o período selecionado.' });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const formatosDisponiveis = [
+    {
+      id: 'DOMINIO',
+      titulo: 'Domínio Sistemas (Lançamentos Contábeis TXT)',
+      descricao: 'Estruturação de partidas dobradas e liquidações de Contas a Pagar/Receber para importação na escrita contábil.',
+      icone: FileText,
+      badge: 'Contábil'
+    },
+    {
+      id: 'SPED_FISCAL',
+      titulo: 'SPED Fiscal ICMS/IPI (Blocos 0, C, E e 9)',
+      descricao: 'Arquivo EFD Fiscal oficial com notas autorizadas, catálogo de itens, participantes e apuração de tributos.',
+      icone: ShieldCheck,
+      badge: 'Fiscal Oficial'
+    },
+    {
+      id: 'CSV_FINANCEIRO',
+      titulo: 'Extrato Analítico Financeiro & Livro Caixa (CSV)',
+      descricao: 'Planilha analítica com separação de clientes, centros de custo, impostos e conferência bancária.',
+      icone: FileSpreadsheet,
+      badge: 'Gerencial'
+    }
+  ];
+
+  return (
+    <div className="p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5 max-w-7xl mx-auto text-slate-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white flex items-center gap-2">
+            <FileSpreadsheet className="h-6 w-6 text-indigo-500 shrink-0" />
+            Exportações Fiscais & Contábeis
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Ponte de integração para escritórios de contabilidade (SPED, Domínio Sistemas e Livro Caixa)
+          </p>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span>{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Cards de Prévia do Período */}
+      {metricas && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+            <span className="text-xs text-slate-400 font-semibold block">Títulos Liquidados no Período</span>
+            <span className="text-xl font-bold font-mono text-white mt-1 block">{metricas.total_titulos_liquidados}</span>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+            <span className="text-xs text-slate-400 font-semibold block">Documentos Fiscais Autorizados</span>
+            <span className="text-xl font-bold font-mono text-indigo-400 mt-1 block">{metricas.total_documentos_fiscais}</span>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+            <span className="text-xs text-slate-400 font-semibold block">Volume Financeiro Movimentado</span>
+            <span className="text-xl font-bold font-mono text-emerald-400 mt-1 block">
+              R$ {metricas.volume_financeiro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Painel de Parametrização e Download */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-5">
+        <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+          <Calendar className="h-4 w-4 text-indigo-400" /> Parâmetros de Competência & Filtros
+        </h2>
+
+        {/* Seleção de Datas */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1">Data Inicial *</label>
+            <input
+              type="date"
+              required
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono text-xs"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1">Data Final *</label>
+            <input
+              type="date"
+              required
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        {/* Seleção do Formato */}
+        <div className="space-y-2.5">
+          <label className="block text-xs font-semibold text-slate-400">Selecione o Leiaute Contábil / Fiscal Desejado:</label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {formatosDisponiveis.map((fmt) => {
+              const Icone = fmt.icone;
+              const isSelected = formato === fmt.id;
+              return (
+                <div
+                  key={fmt.id}
+                  onClick={() => setFormato(fmt.id)}
+                  className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between space-y-3 ${
+                    isSelected 
+                      ? 'bg-indigo-950/40 border-indigo-500 shadow-lg shadow-indigo-600/10' 
+                      : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-start">
+                      <div className={`p-2 rounded-lg ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                        <Icone className="h-5 w-5" />
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {fmt.badge}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-white text-xs">{fmt.titulo}</h3>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">{fmt.descricao}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Botão de Geração e Download */}
+        <div className="flex justify-end pt-3 border-t border-slate-800">
+          <button
+            type="button"
+            disabled={downloading}
+            onClick={handleDownload}
+            className="w-full sm:w-auto justify-center px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+          >
+            <Download className="h-4 w-4" />
+            {downloading ? 'Compilando Arquivo...' : 'Gerar & Baixar Arquivo Contábil'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\financeiro\ConciliacaoBancaria.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { RefreshCw, UploadCloud, CheckCircle2, AlertTriangle, FileText, ArrowRightLeft, Plus, X } from 'lucide-react';
+
+export default function ConciliacaoBancaria() {
+    const [contas, setContas] = useState([]);
+    const [planosContas, setPlanosContas] = useState([]);
+    const [centrosCustos, setCentrosCustos] = useState([]);
+
+    const [contaSelecionada, setContaSelecionada] = useState('');
+    const [arquivoOfx, setArquivoOfx] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [feedback, setFeedback] = useState(null);
+    const [extrato, setExtrato] = useState([]);
+    const [resumo, setResumo] = useState(null);
+    const [conciliandoId, setConciliandoId] = useState(null);
+
+    // Estado do Modal Avulso
+    const [modalAvulso, setModalAvulso] = useState(false);
+    const [transacaoAvulsa, setTransacaoAvulsa] = useState(null);
+    const [formAvulso, setFormAvulso] = useState({ plano_conta_id: '', centro_custo_id: '' });
+
+    useEffect(() => {
+        carregarBase();
+    }, []);
+
+    const carregarBase = async () => {
+        try {
+            const [resContas, resPlanos, resCentros] = await Promise.all([
+                api.get('/financeiro/contas'),
+                api.get('/controladoria/planos-contas'),
+                api.get('/controladoria/centros-custos')
+            ]);
+
+            setContas(resContas.data?.data || []);
+            if (resContas.data?.data?.length > 0) setContaSelecionada(resContas.data.data[0].id);
+
+            // Achatando a árvore para o select
+            const flattenTree = (nodes, prefix = '') => {
+                let result = [];
+                nodes.forEach(node => {
+                    result.push({ id: node.id, nome: `${prefix}${node.codigo} - ${node.nome}`, is_sintetico: node.is_sintetico });
+                    if (node.children) result = result.concat(flattenTree(node.children, prefix + '\u00A0\u00A0\u00A0\u00A0'));
+                });
+                return result;
+            };
+
+            setPlanosContas(flattenTree(resPlanos.data?.data || []));
+            setCentrosCustos(flattenTree(resCentros.data?.data || []));
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleUploadOfx = async (e) => {
+        e.preventDefault();
+        if (!arquivoOfx || !contaSelecionada) return;
+        setLoading(true); setFeedback(null);
+
+        const formData = new FormData();
+        formData.append('arquivo_ofx', arquivoOfx);
+        formData.append('conta_financeira_id', contaSelecionada);
+
+        try {
+            const res = await api.post('/conciliacao/ofx', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+            setExtrato(res.data?.data?.extrato_processado || []);
+            setResumo(res.data?.data);
+            setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message });
+        } catch (err) {
+            setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao processar OFX.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleConciliarAuto = async (transacao, tituloId) => {
+        setConciliandoId(transacao.id_transacao_banco);
+        try {
+            await api.post(`/financeiro/titulos/${tituloId}/liquidar`, {
+                conta_financeira_id: contaSelecionada,
+                valor_pago: transacao.valor_original,
+                forma_pagamento: 'TRANSFERENCIA',
+            });
+            marcarComoConciliado(transacao.id_transacao_banco);
+            setFeedback({ tipo: 'sucesso', msg: 'Transação conciliada e título liquidado com sucesso!' });
+        } catch (err) {
+            setFeedback({ tipo: 'erro', msg: 'Erro ao conciliar título existente.' });
+        } finally {
+            setConciliandoId(null);
+        }
+    };
+
+    const abrirModalAvulso = (transacao) => {
+        setTransacaoAvulsa(transacao);
+        setFormAvulso({ plano_conta_id: '', centro_custo_id: '' });
+        setModalAvulso(true);
+    };
+
+    const handleConciliarAvulso = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+
+        if (!formAvulso.plano_conta_id || !formAvulso.centro_custo_id) {
+            setFeedback({ tipo: 'erro', msg: 'Por favor, selecione o Plano de Contas e o Centro de Custo.' });
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const payload = {
+                conta_financeira_id: contaSelecionada,
+                plano_conta_id: formAvulso.plano_conta_id,
+                centro_custo_id: formAvulso.centro_custo_id,
+                descricao: transacaoAvulsa.descricao || 'Despesa/Receita Avulsa',
+                valor: parseFloat(transacaoAvulsa.valor),
+                natureza: transacaoAvulsa.natureza,
+                data_transacao: transacaoAvulsa.data,
+                id_transacao_banco: String(transacaoAvulsa.id_transacao_banco || Date.now())
+            };
+
+            const res = await api.post('/conciliacao/ofx/manual', payload);
+
+            marcarComoConciliado(transacaoAvulsa.id_transacao_banco);
+            setModalAvulso(false);
+            setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Lançamento avulso criado e conciliado!' });
+        } catch (err) {
+            const msg = err.response?.data?.message || err.response?.data?.error?.message || 'Erro ao processar lançamento manual.';
+            setFeedback({ tipo: 'erro', msg });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const marcarComoConciliado = (idBanco) => {
+        setExtrato(extrato.map(t => t.id_transacao_banco === idBanco ? { ...t, status_conciliacao: 'CONCILIADA' } : t));
+    };
+
+    return (
+        <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 text-slate-200">
+            <div className="border-b border-slate-800 pb-4">
+                <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+                    <RefreshCw className="h-6 w-6 text-indigo-500" /> Conciliação Bancária
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-400 mt-1">Sincronize o OFX do seu banco com o Contas a Pagar/Receber.</p>
+            </div>
+
+            {feedback && (
+                <div className={`p-4 rounded-xl flex items-center justify-between text-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+                    <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /><span className="font-medium">{feedback.msg}</span></div>
+                    <button type="button" onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
+                </div>
+            )}
+
+            <form onSubmit={handleUploadOfx} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col md:flex-row gap-4 items-end">
+                <div className="w-full md:w-1/3">
+                    <label className="block text-xs font-bold text-slate-400 mb-1">Conta Bancária *</label>
+                    <select required value={contaSelecionada} onChange={e => setContaSelecionada(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-white focus:border-indigo-500">
+                        {contas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                    </select>
+                </div>
+                <div className="w-full md:w-1/3">
+                    <label className="block text-xs font-bold text-slate-400 mb-1">Extrato (.OFX) *</label>
+                    <input type="file" accept=".ofx" required onChange={e => setArquivoOfx(e.target.files[0])} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-white cursor-pointer border border-slate-800 rounded-lg bg-slate-950" />
+                </div>
+                <button type="submit" disabled={loading} className="w-full md:w-auto px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition flex items-center justify-center gap-2">
+                    {loading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <UploadCloud className="h-5 w-5" />} Processar
+                </button>
+            </form>
+
+            {extrato.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col">
+                    <div className="p-4 border-b border-slate-800 bg-slate-950/40 font-bold text-white flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-indigo-400" /> Transações Lidas ({resumo?.total_transacoes_lidas})
+                    </div>
+                    <div className="divide-y divide-slate-800 max-h-[600px] overflow-y-auto">
+                        {extrato.map((t, idx) => (
+                            <div key={idx} className={`p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center ${t.status_conciliacao === 'CONCILIADA' ? 'bg-emerald-950/20' : 'hover:bg-slate-800/40'}`}>
+                                <div className="lg:col-span-5 space-y-1">
+                                    <div className="flex justify-between">
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${t.natureza === 'RECEBER' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}`}>
+                                            {t.natureza === 'RECEBER' ? 'ENTRADA' : 'SAÍDA'}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-mono">{t.data.split('-').reverse().join('/')}</span>
+                                    </div>
+                                    <p className="font-bold text-white text-sm">{t.descricao}</p>
+                                    <p className="text-lg font-mono font-bold text-slate-300">R$ {Number(t.valor).toFixed(2)}</p>
+                                </div>
+
+                                <div className="hidden lg:flex lg:col-span-2 justify-center">
+                                    {t.status_conciliacao === 'CONCILIADA' ? <CheckCircle2 className="h-8 w-8 text-emerald-500" /> : <ArrowRightLeft className="h-6 w-6 text-slate-600" />}
+                                </div>
+
+                                <div className="lg:col-span-5 flex flex-col justify-center">
+                                    {t.status_conciliacao === 'CONCILIADA' ? (
+                                        <div className="p-4 border border-emerald-800/50 bg-emerald-950/30 rounded-xl text-emerald-400 text-sm font-bold text-center">
+                                            Liquidado e Conciliado ✓
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {t.sugestoes && t.sugestoes.length > 0 ? (
+                                                t.sugestoes.slice(0, 1).map(sug => (
+                                                    <div key={sug.id} className="flex justify-between items-center bg-slate-950 border border-slate-700 p-2.5 rounded-xl">
+                                                        <div>
+                                                            <p className="text-xs font-bold text-slate-200">Encontrado: {sug.pessoa?.nome_razao_social || 'Sem Pessoa'}</p>
+                                                            <p className="text-[10px] text-slate-500">Doc: {sug.documento_numero}</p>
+                                                        </div>
+                                                        <button type="button" onClick={() => handleConciliarAuto(t, sug.id)} disabled={conciliandoId === t.id_transacao_banco} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-lg cursor-pointer">
+                                                            {conciliandoId === t.id_transacao_banco ? '...' : 'Auto-Conciliar'}
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="text-xs text-slate-500 text-center italic border border-dashed border-slate-700 p-2 rounded-xl">Nenhum título exato no ERP.</div>
+                                            )}
+
+                                            <button type="button" onClick={() => abrirModalAvulso(t)} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-bold rounded-xl transition border border-slate-700 cursor-pointer">
+                                                <Plus className="h-3 w-3" /> Criar Lançamento Avulso (DRE)
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Lançamento Avulso */}
+            {modalAvulso && transacaoAvulsa && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-2">Lançamento Avulso</h3>
+                            <button type="button" onClick={() => setModalAvulso(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
+                        </div>
+
+                        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
+                            <p className="text-slate-400">Banco: <strong className="text-white">{transacaoAvulsa.descricao}</strong></p>
+                            <p className="text-slate-400">Valor: <strong className={transacaoAvulsa.natureza === 'RECEBER' ? 'text-emerald-400' : 'text-rose-400'}>R$ {Number(transacaoAvulsa.valor).toFixed(2)}</strong></p>
+                        </div>
+
+                        <form onSubmit={handleConciliarAvulso} className="space-y-4 text-xs">
+                            <div>
+                                <label className="block font-bold text-slate-400 mb-1">Plano de Contas (DRE) *</label>
+                                <select required value={formAvulso.plano_conta_id} onChange={e => setFormAvulso({...formAvulso, plano_conta_id: e.target.value})} className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                                    <option value="">Selecione...</option>
+                                    {planosContas.map(p => <option key={p.id} value={p.id} disabled={p.is_sintetico}>{p.nome}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block font-bold text-slate-400 mb-1">Centro de Custo *</label>
+                                <select required value={formAvulso.centro_custo_id} onChange={e => setFormAvulso({...formAvulso, centro_custo_id: e.target.value})} className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                                    <option value="">Selecione...</option>
+                                    {centrosCustos.map(c => <option key={c.id} value={c.id} disabled={c.is_sintetico}>{c.nome}</option>)}
+                                </select>
+                            </div>
+                            <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                                <button type="button" onClick={() => setModalAvulso(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl cursor-pointer">
+                                    Cancelar
+                                </button>
+                                <button type="submit" disabled={loading} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl cursor-pointer">
+                                    {loading ? 'Salvando...' : 'Confirmar e Conciliar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\financeiro\FinanceiroPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { DollarSign, Plus, Building2, CreditCard, Wallet, CheckCircle2, AlertTriangle, X } from 'lucide-react';
+
+export default function FinanceiroPage() {
+    const [tabAtiva, setTabAtiva] = useState('TITULOS'); // TITULOS ou CONTAS
+    const [loading, setLoading] = useState(false);
+    const [feedback, setFeedback] = useState(null);
+
+    // Estados - Títulos
+    const [titulos, setTitulos] = useState([]);
+
+    // Estados - Contas
+    const [contas, setContas] = useState([]);
+    const [modalConta, setModalConta] = useState(false);
+    const [formConta, setFormConta] = useState({
+        nome: '', tipo_conta: 'BANCO', codigo_banco: '', agencia: '', numero_conta: '', saldo_inicial: 0
+    });
+
+    useEffect(() => {
+        if (tabAtiva === 'TITULOS') carregarTitulos();
+        if (tabAtiva === 'CONTAS') carregarContas();
+    }, [tabAtiva]);
+
+    const carregarTitulos = async () => {
+        setLoading(true);
+        try {
+            const res = await api.get('/financeiro/titulos');
+            setTitulos(res.data?.data || res.data?.data?.data || []); // Paginate ou array direto
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const carregarContas = async () => {
+        setLoading(true);
+        try {
+            const res = await api.get('/financeiro/contas');
+            setContas(res.data?.data || []);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSalvarConta = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            await api.post('/financeiro/contas', formConta);
+            setModalConta(false);
+            setFeedback({ tipo: 'sucesso', msg: 'Conta bancária adicionada com sucesso!' });
+            setFormConta({ nome: '', tipo_conta: 'BANCO', codigo_banco: '', agencia: '', numero_conta: '', saldo_inicial: 0 });
+            carregarContas();
+        } catch (error) {
+            setFeedback({ tipo: 'erro', msg: error.response?.data?.error?.message || 'Erro ao criar conta.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 text-slate-200">
+            {/* Cabeçalho */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+                <div>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+                        <DollarSign className="h-6 w-6 text-emerald-500" /> Gestão Financeira
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                        Controle de contas a pagar, a receber e saldos bancários.
+                    </p>
+                </div>
+            </div>
+
+            {feedback && (
+                <div className={`p-4 rounded-xl flex items-center justify-between text-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+                    <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /><span className="font-medium">{feedback.msg}</span></div>
+                    <button onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
+                </div>
+            )}
+
+            {/* Abas de Navegação */}
+            <div className="flex gap-2">
+                <button
+                    onClick={() => setTabAtiva('TITULOS')}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-sm cursor-pointer ${tabAtiva === 'TITULOS' ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}
+                >
+                    Títulos Financeiros
+                </button>
+                <button
+                    onClick={() => setTabAtiva('CONTAS')}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-sm cursor-pointer ${tabAtiva === 'CONTAS' ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'}`}
+                >
+                    Contas Bancárias & Caixas
+                </button>
+            </div>
+
+            {/* Aba Títulos */}
+            {tabAtiva === 'TITULOS' && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="p-4 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
+                        <h2 className="font-bold text-white">Contas a Pagar e Receber</h2>
+                        <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-md cursor-pointer flex items-center gap-1">
+                            <Plus size={14} /> Novo Título
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto p-4">
+                        {titulos.length === 0 ? (
+                            <div className="text-center py-8 text-slate-500 text-sm">Nenhum título financeiro encontrado no momento.</div>
+                        ) : (
+                            <table className="w-full text-left text-sm text-slate-300">
+                                <thead className="bg-slate-950 text-xs uppercase font-bold text-slate-500 border-b border-slate-800">
+                                    <tr>
+                                        <th className="py-3 px-4">Documento</th>
+                                        <th className="py-3 px-4">Pessoa</th>
+                                        <th className="py-3 px-4">Vencimento</th>
+                                        <th className="py-3 px-4 text-right">Valor</th>
+                                        <th className="py-3 px-4 text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/60">
+                                    {titulos.map(t => (
+                                        <tr key={t.id} className="hover:bg-slate-800/40">
+                                            <td className="py-3 px-4 font-mono font-bold text-indigo-400">{t.documento_numero}</td>
+                                            <td className="py-3 px-4 text-white">{t.pessoa?.nome_razao_social || 'Avulso'}</td>
+                                            <td className="py-3 px-4 font-mono">{t.data_vencimento?.split('-').reverse().join('/')}</td>
+                                            <td className={`py-3 px-4 text-right font-bold ${t.natureza === 'RECEBER' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                {t.natureza === 'RECEBER' ? '+' : '-'} R$ {Number(t.valor_original).toFixed(2)}
+                                            </td>
+                                            <td className="py-3 px-4 text-center">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.status === 'LIQUIDADO' ? 'bg-emerald-950 text-emerald-400' : 'bg-amber-950 text-amber-400'}`}>
+                                                    {t.status}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Aba Contas Bancárias */}
+            {tabAtiva === 'CONTAS' && (
+                <div className="space-y-4">
+                    <div className="flex justify-end">
+                        <button onClick={() => setModalConta(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-md cursor-pointer flex items-center gap-1">
+                            <Plus size={16} /> Adicionar Banco / Caixa
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {contas.length === 0 ? (
+                            <div className="col-span-full bg-slate-900 border border-slate-800 p-8 rounded-xl text-center text-slate-500">
+                                Nenhuma conta bancária cadastrada. Adicione uma conta para iniciar a conciliação OFX.
+                            </div>
+                        ) : (
+                            contas.map(c => (
+                                <div key={c.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-indigo-400">
+                                                {c.tipo_conta === 'BANCO' ? <Building2 size={20} /> : c.tipo_conta === 'CAIXA' ? <Wallet size={20} /> : <CreditCard size={20} />}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-white text-base">{c.nome}</h3>
+                                                <p className="text-[10px] text-slate-400">{c.tipo_conta} {c.codigo_banco ? `- Banco ${c.codigo_banco}` : ''}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-slate-400 space-y-1 bg-slate-950 p-2 rounded-lg border border-slate-800">
+                                        <p>Agência: <span className="font-mono text-slate-200">{c.agencia || '---'}</span></p>
+                                        <p>Conta: <span className="font-mono text-slate-200">{c.numero_conta || '---'}</span></p>
+                                    </div>
+                                    <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
+                                        <span className="text-xs font-semibold text-slate-400">Saldo Atual</span>
+                                        <span className={`text-lg font-bold font-mono ${Number(c.saldo_atual) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            R$ {Number(c.saldo_atual).toFixed(2)}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Nova Conta */}
+            {modalConta && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <form onSubmit={handleSalvarConta} className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-5 space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <h3 className="text-base font-bold text-white flex items-center gap-2">Nova Conta / Caixa</h3>
+                            <button type="button" onClick={() => setModalConta(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
+                        </div>
+
+                        <div className="space-y-3 text-xs">
+                            <div>
+                                <label className="block font-bold text-slate-400 mb-1">Nome de Identificação (Ex: Itaú Empresa) *</label>
+                                <input type="text" required value={formConta.nome} onChange={e => setFormConta({...formConta, nome: e.target.value})} className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:border-indigo-500" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block font-bold text-slate-400 mb-1">Tipo *</label>
+                                    <select required value={formConta.tipo_conta} onChange={e => setFormConta({...formConta, tipo_conta: e.target.value})} className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                                        <option value="BANCO">Banco Corrente</option>
+                                        <option value="CAIXA">Caixa Físico</option>
+                                        <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block font-bold text-slate-400 mb-1">Código do Banco</label>
+                                    <input type="text" value={formConta.codigo_banco} onChange={e => setFormConta({...formConta, codigo_banco: e.target.value})} placeholder="Ex: 341" className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block font-bold text-slate-400 mb-1">Agência</label>
+                                    <input type="text" value={formConta.agencia} onChange={e => setFormConta({...formConta, agencia: e.target.value})} className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                                </div>
+                                <div>
+                                    <label className="block font-bold text-slate-400 mb-1">Número da Conta</label>
+                                    <input type="text" value={formConta.numero_conta} onChange={e => setFormConta({...formConta, numero_conta: e.target.value})} className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block font-bold text-slate-400 mb-1">Saldo Inicial (R$)</label>
+                                <input type="number" step="0.01" required value={formConta.saldo_inicial} onChange={e => setFormConta({...formConta, saldo_inicial: parseFloat(e.target.value) || 0})} className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-800 flex justify-end gap-2">
+                            <button type="button" onClick={() => setModalConta(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg cursor-pointer">Cancelar</button>
+                            <button type="submit" disabled={loading} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg cursor-pointer">
+                                {loading ? 'Salvando...' : 'Salvar Conta'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\financeiro\ModalLiquidarTitulo.jsx
+========================================
+import React, { useState } from 'react';
+import { api } from '../../services/api';
+import { DollarSign, Check, X, AlertCircle } from 'lucide-react';
+
+export default function ModalLiquidarTitulo({ isOpen, titulo, contas, onClose, onSucesso }) {
+  const [contaId, setContaId] = useState(contas[0]?.id || '');
+  const [valorPago, setValorPago] = useState(titulo?.valor_saldo_aberto || 0);
+  const [formaPagamento, setFormaPagamento] = useState('PIX');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen || !titulo) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      await api.post(`/financeiro/titulos/${titulo.id}/liquidar`, {
+        conta_financeira_id: contaId || contas[0]?.id,
+        valor_pago: parseFloat(valorPago),
+        forma_pagamento: formaPagamento,
+      });
+
+      onSucesso();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Falha ao liquidar título.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-xs p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-emerald-600/10 text-emerald-400 border border-emerald-500/20">
+              <DollarSign className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white tracking-tight">Baixar Título #{titulo.documento_numero}</h3>
+              <p className="text-xs text-slate-400">{titulo.natureza === 'RECEBER' ? 'Recebimento' : 'Pagamento'}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Conta Bancária / Caixa
+            </label>
+            <select
+              value={contaId}
+              onChange={(e) => setContaId(e.target.value)}
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
+            >
+              {contas.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome} (Saldo: R$ {parseFloat(c.saldo_atual).toFixed(2)})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Valor da Baixa (R$)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              required
+              value={valorPago}
+              onChange={(e) => setValorPago(e.target.value)}
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 font-mono text-lg focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Forma de Liquidação
+            </label>
+            <select
+              value={formaPagamento}
+              onChange={(e) => setFormaPagamento(e.target.value)}
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
+            >
+              <option value="PIX">PIX Transferência</option>
+              <option value="BOLETO">Boleto Bancário</option>
+              <option value="CARTAO">Cartão</option>
+              <option value="DINHEIRO">Dinheiro</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800 text-sm font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-bold rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+            >
+              <Check className="w-4 h-4" />
+              <span>{loading ? 'Processando...' : 'Confirmar Baixa'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\fiscal\FiscalPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import {
+  FileText, ShieldCheck, Server, UploadCloud, RefreshCw,
+  CheckCircle2, AlertTriangle, X, Lock, KeyRound, Activity
+} from 'lucide-react';
+
+export default function FiscalPage() {
+  const [certificado, setCertificado] = useState(null);
+  const [sefazStatus, setSefazStatus] = useState(null);
+  const [documentos, setDocumentos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [testandoSefaz, setTestandoSefaz] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  // Modal de Upload do Certificado A1
+  const [modalUpload, setModalUpload] = useState(false);
+  const [formCertificado, setFormCertificado] = useState({
+    arquivo: null,
+    senha: '',
+    ambiente_emissao: 'HOMOLOGACAO'
+  });
+  const [fazendoUpload, setFazendoUpload] = useState(false);
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      // Tenta buscar o certificado ativo e os documentos
+      const [resCert, resDocs] = await Promise.allSettled([
+        api.get('/fiscal/certificado'),
+        api.get('/fiscal/documentos')
+      ]);
+
+      if (resCert.status === 'fulfilled' && resCert.value.data?.data) {
+        setCertificado(resCert.value.data.data);
+      } else {
+        setCertificado(null);
+      }
+
+      if (resDocs.status === 'fulfilled' && resDocs.value.data?.data) {
+        setDocumentos(resDocs.value.data.data);
+      }
+
+    } catch (error) {
+      console.error("Erro ao carregar módulo fiscal", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, []);
+
+  const pingSefaz = async () => {
+    if (!certificado) {
+      setFeedback({ tipo: 'erro', msg: 'Faça o upload do Certificado A1 antes de testar a SEFAZ.' });
+      return;
+    }
+
+    setTestandoSefaz(true);
+    setSefazStatus(null);
+    try {
+      const res = await api.get('/fiscal/status-sefaz');
+      setSefazStatus(res.data?.data?.sefaz);
+      setFeedback({ tipo: 'sucesso', msg: 'Comunicação com a SEFAZ estabelecida com sucesso!' });
+    } catch (err) {
+      setSefazStatus({ status_code: 500, motivo: err.response?.data?.error?.message || 'Falha de comunicação' });
+      setFeedback({ tipo: 'erro', msg: 'Falha ao comunicar com os servidores da SEFAZ.' });
+    } finally {
+      setTestandoSefaz(false);
+    }
+  };
+
+  const handleUploadCertificado = async (e) => {
+    e.preventDefault();
+    if (!formCertificado.arquivo) return;
+
+    setFazendoUpload(true);
+    const data = new FormData();
+    data.append('certificado', formCertificado.arquivo);
+    data.append('senha', formCertificado.senha);
+    data.append('ambiente_emissao', formCertificado.ambiente_emissao);
+
+    try {
+      const res = await api.post('/fiscal/certificado/upload', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Certificado importado com sucesso!' });
+      setModalUpload(false);
+      setFormCertificado({ arquivo: null, senha: '', ambiente_emissao: 'HOMOLOGACAO' });
+      await carregarDados();
+
+      // Auto-testa a SEFAZ após upload bem-sucedido
+      pingSefaz();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao descriptografar o certificado. Verifique a senha.' });
+    } finally {
+      setFazendoUpload(false);
+    }
+  };
+
+  return (
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 text-slate-200">
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <FileText className="h-6 w-6 text-indigo-500" /> Motor Fiscal & Mensageria SEFAZ
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Gestão de Certificados ICP-Brasil, NF-e, NFC-e e monitoramento do webservice.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={carregarDados}
+            className="p-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
+            title="Atualizar Dados"
+          >
+            <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={() => setModalUpload(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 cursor-pointer"
+          >
+            <UploadCloud className="h-4 w-4" /> Importar Certificado A1
+          </button>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-4 rounded-xl flex items-center justify-between text-sm shadow-sm ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <AlertTriangle className="h-5 w-5 shrink-0" />}
+            <span className="font-semibold">{feedback.msg}</span>
+          </div>
+

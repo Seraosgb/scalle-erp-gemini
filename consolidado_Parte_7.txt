@@ -1,4 +1,337 @@
-﻿         DB::statement('ALTER TABLE pat_bens ALTER COLUMN valor_aquisicao DROP NOT NULL;');
+﻿     $table->text('observacoes')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('rh_candidatos');
+        Schema::dropIfExists('rh_vagas');
+        Schema::dropIfExists('rh_pontos');
+        Schema::dropIfExists('rh_colaboradores');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_031012_create_saas_billing_and_planos_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Planos Comerciais da Plataforma
+        Schema::create('sis_planos', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('nome', 50); // MEI, Pro, Enterprise
+            $table->string('slug', 50)->unique();
+            $table->decimal('valor_mensal', 15, 2);
+            $table->integer('limite_usuarios')->default(1);
+            $table->integer('limite_empresas')->default(1);
+            $table->bigInteger('cota_storage_bytes'); // 3GB = 3221225472, 20GB = 21474836480
+            $table->jsonb('modulos_habilitados')->nullable(); // Lista de módulos permitidos
+            $table->boolean('is_ativo')->default(true);
+            $table->timestamps();
+        });
+
+        // 2. Tabela de Assinaturas dos Tenants
+        Schema::create('sis_assinaturas', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+            $table->foreignUuid('plano_id')->constrained('sis_planos')->cascadeOnDelete();
+            $table->string('status', 30)->default('TRIAL'); // TRIAL, ATIVA, PENDENTE, CANCELADA, SOFT_LOCK
+            $table->date('data_inicio');
+            $table->date('data_proximo_vencimento');
+            $table->bigInteger('storage_utilizado_bytes')->default(0);
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['tenant_id', 'status']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('sis_assinaturas');
+        Schema::dropIfExists('sis_planos');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_010000_add_is_master_to_users_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->boolean('is_master')->default(false)->after('is_ativo');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn('is_master');
+        });
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_020000_add_sla_and_geo_to_os_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('os_ordens_servico', function (Blueprint $table) {
+            $table->dateTime('prazo_sla_resposta')->nullable()->after('data_abertura');
+            $table->dateTime('prazo_sla_resolucao')->nullable()->after('prazo_sla_resposta');
+            $table->string('hash_assinatura_sha256', 64)->nullable()->after('assinado_em');
+            $table->string('ip_assinatura', 45)->nullable()->after('hash_assinatura_sha256');
+            $table->decimal('latitude_assinatura', 10, 8)->nullable()->after('ip_assinatura');
+            $table->decimal('longitude_assinatura', 11, 8)->nullable()->after('latitude_assinatura');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('os_ordens_servico', function (Blueprint $table) {
+            $table->dropColumn([
+                'prazo_sla_resposta',
+                'prazo_sla_resolucao',
+                'hash_assinatura_sha256',
+                'ip_assinatura',
+                'latitude_assinatura',
+                'longitude_assinatura'
+            ]);
+        });
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_030000_create_cmms_pmoc_and_ativos_tables.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Criar tabela de Bens Patrimoniais / Ativos se não existir
+        if (!Schema::hasTable('pat_bens')) {
+            Schema::create('pat_bens', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+                $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+                $table->foreignUuid('responsavel_atual_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->string('codigo_patrimonio', 50);
+                $table->string('descricao', 200);
+                $table->string('marca_modelo', 150)->nullable();
+                $table->string('numero_serie', 100)->nullable();
+                $table->string('qr_code_hash', 64)->nullable();
+                $table->date('data_aquisicao')->nullable();
+                $table->decimal('valor_aquisicao', 15, 2)->nullable();
+                $table->string('status', 30)->default('ATIVO');
+                $table->string('localizacao_fisica', 150)->nullable();
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+
+        // 2. Adicionar coluna ativo_id na OS se não existir
+        if (Schema::hasTable('os_ordens_servico') && !Schema::hasColumn('os_ordens_servico', 'ativo_id')) {
+            Schema::table('os_ordens_servico', function (Blueprint $table) {
+                $table->foreignUuid('ativo_id')->nullable()->after('deposito_saida_id')->constrained('pat_bens')->nullOnDelete();
+            });
+        }
+
+        // 3. Tabela de Planos Preventivos (PMOC)
+        if (!Schema::hasTable('os_planos_preventivos')) {
+            Schema::create('os_planos_preventivos', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
+                $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
+                $table->foreignUuid('cliente_id')->constrained('pes_pessoas')->cascadeOnDelete();
+                $table->foreignUuid('ativo_id')->nullable()->constrained('pat_bens')->nullOnDelete();
+                $table->foreignUuid('tecnico_padrao_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->string('titulo_plano', 150);
+                $table->string('frequencia', 30); // MENSAL, BIMESTRAL, TRIMESTRAL, SEMESTRAL, ANUAL
+                $table->date('proxima_execucao');
+                $table->date('ultima_execucao')->nullable();
+                $table->jsonb('checklist_itens')->nullable();
+                $table->text('instrucoes_tecnicas')->nullable();
+                $table->boolean('is_ativo')->default(true);
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('os_planos_preventivos');
+        if (Schema::hasColumn('os_ordens_servico', 'ativo_id')) {
+            Schema::table('os_ordens_servico', function (Blueprint $table) {
+                $table->dropForeign(['ativo_id']);
+                $table->dropColumn('ativo_id');
+            });
+        }
+        Schema::dropIfExists('pat_bens');
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_040000_add_cliente_id_to_pat_bens_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasTable('pat_bens') && !Schema::hasColumn('pat_bens', 'cliente_id')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->foreignUuid('cliente_id')->nullable()->after('empresa_id')->constrained('pes_pessoas')->nullOnDelete();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'cliente_id')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->dropForeign(['cliente_id']);
+                $table->dropColumn('cliente_id');
+            });
+        }
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_050000_create_os_apontamentos_e_workflow_pecas.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Tabela de Apontamentos de Mão de Obra / Jornada Técnica
+        if (!Schema::hasTable('os_apontamentos_horas')) {
+            Schema::create('os_apontamentos_horas', function (Blueprint $table) {
+                $table->uuid('id')->primary();
+                $table->uuid('tenant_id')->index();
+                $table->uuid('ordem_servico_id')->index();
+                $table->uuid('tecnico_id')->index();
+                $table->dateTime('data_hora_inicio');
+                $table->dateTime('data_hora_fim')->nullable();
+                $table->decimal('total_horas', 8, 2)->default(0.00);
+                $table->decimal('valor_hora', 10, 2)->default(0.00);
+                $table->decimal('valor_total', 10, 2)->default(0.00);
+                $table->text('descricao_atividades')->nullable();
+                $table->timestamps();
+
+                $table->foreign('ordem_servico_id')->references('id')->on('os_ordens_servico')->onDelete('cascade');
+                $table->foreign('tecnico_id')->references('id')->on('users')->onDelete('cascade');
+            });
+        }
+
+        // 2. Adicionar status do fluxo de almoxarifado nas peças da OS
+        if (Schema::hasTable('os_itens') && !Schema::hasColumn('os_itens', 'status_requisicao')) {
+            Schema::table('os_itens', function (Blueprint $table) {
+                $table->string('status_requisicao', 30)->default('RETIRADO')->after('lote'); // SOLICITADO, DISPONIVEL, RETIRADO
+                $table->uuid('almoxarife_id')->nullable()->after('status_requisicao');
+                $table->dateTime('atendido_em')->nullable()->after('almoxarife_id');
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('os_apontamentos_horas');
+        if (Schema::hasTable('os_itens') && Schema::hasColumn('os_itens', 'status_requisicao')) {
+            Schema::table('os_itens', function (Blueprint $table) {
+                $table->dropColumn(['status_requisicao', 'almoxarife_id', 'atendido_em']);
+            });
+        }
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_060000_alter_valor_aquisicao_on_pat_bens_table.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'valor_aquisicao')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->decimal('valor_aquisicao', 12, 2)->default(0.00)->nullable()->change();
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'valor_aquisicao')) {
+            Schema::table('pat_bens', function (Blueprint $table) {
+                $table->decimal('valor_aquisicao', 12, 2)->nullable(false)->change();
+            });
+        }
+    }
+};
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_070000_fix_pat_bens_valor_aquisicao_constraint.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+         if (Schema::hasTable('pat_bens') && DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE pat_bens ALTER COLUMN valor_aquisicao DROP NOT NULL;');
             DB::statement('ALTER TABLE pat_bens ALTER COLUMN valor_aquisicao SET DEFAULT 0.00;');
         }
     }
@@ -2972,6 +3305,94 @@ return new class extends Migration
 
 
 ========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_10_18_000001_saneamento_arquitetural_e_csc_empresa.php
+========================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // 1. Adicionar parâmetros de CSC (NFC-e) e Endereço Fiscal na Empresa
+        Schema::table('sis_empresas', function (Blueprint $table) {
+            if (!Schema::hasColumn('sis_empresas', 'csc_token')) {
+                $table->string('csc_token', 100)->nullable()->after('regime_tributario');
+            }
+            if (!Schema::hasColumn('sis_empresas', 'csc_id')) {
+                $table->string('csc_id', 20)->default('000001')->after('csc_token');
+            }
+            if (!Schema::hasColumn('sis_empresas', 'cep')) {
+                $table->string('cep', 10)->nullable();
+                $table->string('logradouro', 150)->nullable();
+                $table->string('numero', 20)->nullable();
+                $table->string('bairro', 100)->nullable();
+                $table->string('cidade', 100)->nullable();
+                $table->string('uf', 2)->default('RJ');
+                $table->string('codigo_ibge', 10)->default('3300456');
+            }
+        });
+
+        // 2. Unificar dados de prj_projeto_custos para prj_custos (Sem perda de dados)
+        if (Schema::hasTable('prj_projeto_custos') && Schema::hasTable('prj_custos')) {
+            $custosLegados = DB::table('prj_projeto_custos')->get();
+            foreach ($custosLegados as $c) {
+                $existe = DB::table('prj_custos')->where('id', $c->id)->exists();
+                if (!$existe && !empty($c->tenant_id)) {
+                    DB::table('prj_custos')->insert([
+                        'id' => $c->id,
+                        'tenant_id' => $c->tenant_id,
+                        'projeto_id' => $c->projeto_id,
+                        'descricao' => $c->descricao,
+                        'valor' => $c->valor,
+                        'data_custo' => $c->data_custo,
+                        'created_at' => $c->created_at ?? now(),
+                        'updated_at' => $c->updated_at ?? now(),
+                    ]);
+                }
+            }
+        }
+
+        // 3. Unificar dados de prj_projeto_entregaveis para prj_entregaveis (Sem perda de dados)
+        if (Schema::hasTable('prj_projeto_entregaveis') && Schema::hasTable('prj_entregaveis')) {
+            $entregaveisLegados = DB::table('prj_projeto_entregaveis')->get();
+            foreach ($entregaveisLegados as $e) {
+                $existe = DB::table('prj_entregaveis')->where('id', $e->id)->exists();
+                if (!$existe && !empty($e->tenant_id)) {
+                    DB::table('prj_entregaveis')->insert([
+                        'id' => $e->id,
+                        'tenant_id' => $e->tenant_id,
+                        'projeto_id' => $e->projeto_id,
+                        'titulo' => $e->titulo,
+                        'valor_faturamento' => $e->valor_faturamento,
+                        'data_prevista' => $e->data_prevista,
+                        'created_at' => $e->created_at ?? now(),
+                        'updated_at' => $e->updated_at ?? now(),
+                    ]);
+                }
+            }
+        }
+
+        // 4. Garantir coluna status em prj_entregaveis para compatibilidade
+        if (Schema::hasTable('prj_entregaveis') && !Schema::hasColumn('prj_entregaveis', 'status')) {
+            Schema::table('prj_entregaveis', function (Blueprint $table) {
+                $table->string('status', 30)->default('PENDENTE')->after('valor_faturamento');
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        // Migração não destrutiva (Padrão Gemini)
+    }
+};
+
+
+========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\DatabaseSeeder.php
 ========================================
 <?php
@@ -3003,303 +3424,4 @@ class DatabaseSeeder extends Seeder
             [
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $tenant->id,
-                'nome' => 'Depósito Central / Matriz',
-                'descricao' => 'Almoxarifado Geral de Operações',
-                'is_padrao' => true,
-                'is_ativo' => true,
-            ]
-        );
-
-        // 3. Permissões Granulares e Matriz de Acesso RBAC
-        $this->call([
-            PermissoesSeeder::class,
-        ]);
-
-        // 4. Tabelas de Domínio Dinâmicas (CRM & OS)
-        $motivosPerda = [
-            ['codigo' => 'PRECO_ALTO', 'nome' => 'Preço Acima do Orçamento', 'cor_hex' => '#ef4444'],
-            ['codigo' => 'CONCORRENTE', 'nome' => 'Fechou com Concorrente', 'cor_hex' => '#f97316'],
-            ['codigo' => 'SEM_RETORNO', 'nome' => 'Lead Parou de Responder', 'cor_hex' => '#64748b'],
-            ['codigo' => 'SEM_INTERESSE', 'nome' => 'Sem Interesse / Projeto Cancelado', 'cor_hex' => '#a855f7'],
-        ];
-
-        foreach ($motivosPerda as $idx => $m) {
-            TabelaDominio::firstOrCreate(
-                ['tenant_id' => $tenant->id, 'tipo_lista' => 'CRM_MOTIVO_PERDA', 'codigo' => $m['codigo']],
-                [
-                    'id' => (string) Str::uuid(),
-                    'nome' => $m['nome'],
-                    'cor_hex' => $m['cor_hex'],
-                    'ordem_exibicao' => $idx + 1,
-                    'is_ativo' => true,
-                    'is_sistema' => true,
-                ]
-            );
-        }
-
-        $prioridades = [
-            ['codigo' => 'BAIXA', 'nome' => 'Baixa (72h)', 'cor_hex' => '#64748b', 'sla' => 72],
-            ['codigo' => 'NORMAL', 'nome' => 'Normal (24h)', 'cor_hex' => '#3b82f6', 'sla' => 24],
-            ['codigo' => 'ALTA', 'nome' => 'Alta (12h)', 'cor_hex' => '#f59e0b', 'sla' => 12],
-            ['codigo' => 'URGENTE', 'nome' => 'Urgente (6h)', 'cor_hex' => '#ef4444', 'sla' => 6],
-        ];
-
-        foreach ($prioridades as $idx => $p) {
-            TabelaDominio::firstOrCreate(
-                ['tenant_id' => $tenant->id, 'tipo_lista' => 'PRIORIDADE_OS', 'codigo' => $p['codigo']],
-                [
-                    'id' => (string) Str::uuid(),
-                    'nome' => $p['nome'],
-                    'cor_hex' => $p['cor_hex'],
-                    'ordem_exibicao' => $idx + 1,
-                    'metadados' => ['horas_sla' => $p['sla']],
-                    'is_ativo' => true,
-                    'is_sistema' => true,
-                ]
-            );
-        }
-
-        // 5. Catálogo de Itens de Estoque e Serviços
-        $this->call([
-            ItemSeeder::class,
-        ]);
-    }
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\ItemSeeder.php
-========================================
-<?php
-
-namespace Database\Seeders;
-
-use App\Models\Item;
-use App\Models\Tenant;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
-
-class ItemSeeder extends Seeder
-{
-    public function run(): void
-    {
-        // Pega o primeiro tenant ativo ou cria um de exemplo se não existir
-        $tenantId = Tenant::first()?->id ?? (string) Str::uuid();
-
-        $itens = [
-            [
-                'nome' => 'Sensor de Temperatura Termistor NTC 10K',
-                'codigo_sku' => 'COMP-TERM-10K',
-                'codigo_barras_ean' => '7891234567890',
-                'tipo_item' => 'PRODUTO',
-                'preco_venda' => 45.90,
-                'preco_custo' => 18.50,
-                'unidade_medida' => 'UN',
-                'ncm' => '90251990',
-                'cfop_padrao' => '5102',
-                'controla_estoque' => true,
-                'estoque_minimo' => 5.0000,
-                'is_ativo' => true,
-            ],
-            [
-                'nome' => 'Fluido Refrigerante R-410A (Cilindro 11.3kg)',
-                'codigo_sku' => 'FLUIDO-R410A',
-                'codigo_barras_ean' => '7899876543210',
-                'tipo_item' => 'PRODUTO',
-                'preco_venda' => 850.00,
-                'preco_custo' => 520.00,
-                'unidade_medida' => 'UN',
-                'ncm' => '38247800',
-                'cfop_padrao' => '5102',
-                'controla_estoque' => true,
-                'estoque_minimo' => 2.0000,
-                'is_ativo' => true,
-            ],
-            [
-                'nome' => 'Mão de Obra de Instalação de Ar Condicionado Split',
-                'codigo_sku' => 'SERV-INST-SPLIT',
-                'codigo_barras_ean' => null,
-                'tipo_item' => 'SERVICO',
-                'preco_venda' => 350.00,
-                'preco_custo' => 0.00,
-                'unidade_medida' => 'SV',
-                'ncm' => null,
-                'cfop_padrao' => '5933',
-                'controla_estoque' => false,
-                'estoque_minimo' => 0.0000,
-                'is_ativo' => true,
-            ],
-            [
-                'nome' => 'Disjuntor Tripolar 50A',
-                'codigo_sku' => 'IND-INS-01',
-                'codigo_barras_ean' => '7891112223334',
-                'tipo_item' => 'MATERIA_PRIMA',
-                'preco_venda' => 120.00,
-                'preco_custo' => 80.00,
-                'unidade_medida' => 'UN',
-                'ncm' => '85362000',
-                'cfop_padrao' => '5102',
-                'controla_estoque' => true,
-                'estoque_minimo' => 10.0000,
-                'is_ativo' => true,
-            ],
-        ];
-
-        foreach ($itens as $dados) {
-            Item::updateOrCreate(
-                [
-                    'tenant_id' => $tenantId,
-                    'codigo_sku' => $dados['codigo_sku'],
-                ],
-                array_merge($dados, [
-                    'id' => (string) Str::uuid(),
-                    'tenant_id' => $tenantId,
-                ])
-            );
-        }
-    }
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\MasterOwnerSeeder.php
-========================================
-<?php
-
-namespace Database\Seeders;
-
-use App\Models\Plano;
-use App\Models\User;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
-
-class MasterOwnerSeeder extends Seeder
-{
-    public function run(): void
-    {
-        // 1. Provisionar Planos Padrão
-        $planos = [
-            ['nome' => 'MEI / Básico', 'slug' => 'mei', 'valor_mensal' => 49.90, 'limite_usuarios' => 2, 'limite_empresas' => 1, 'cota_storage_bytes' => 3221225472], // 3 GB
-            ['nome' => 'Plano Pro (PMEs)', 'slug' => 'pro', 'valor_mensal' => 199.00, 'limite_usuarios' => 10, 'limite_empresas' => 2, 'cota_storage_bytes' => 21474836480], // 20 GB
-            ['nome' => 'Enterprise B2B', 'slug' => 'enterprise', 'valor_mensal' => 599.00, 'limite_usuarios' => 100, 'limite_empresas' => 10, 'cota_storage_bytes' => 107374182400], // 100 GB
-        ];
-
-        foreach ($planos as $p) {
-            Plano::firstOrCreate(['slug' => $p['slug']], array_merge($p, ['id' => (string) Str::uuid(), 'is_ativo' => true]));
-        }
-
-        // 2. Criar ou Atualizar Usuário Master
-        User::updateOrCreate(
-            ['email' => 'master@scalle.com.br'],
-            [
-                'id' => (string) Str::uuid(),
-                'name' => 'SaaS Master Owner',
-                'password' => Hash::make('ScalleMaster@2026'),
-                'is_ativo' => true,
-                'is_master' => true,
-                'tenant_id' => null,
-            ]
-        );
-    }
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\seeders\PermissoesSeeder.php
-========================================
-<?php
-
-namespace Database\Seeders;
-
-use App\Models\Permissao;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
-
-class PermissoesSeeder extends Seeder
-{
-    public function run(): void
-    {
-        $permissoes = [
-            // Módulo WMS & Estoque
-            ['modulo' => 'WMS', 'slug' => 'wms.visualizar', 'nome' => 'Visualizar Estoque e Saldos', 'descricao' => 'Consulta lista de itens e posições de estoque'],
-            ['modulo' => 'WMS', 'slug' => 'wms.inventario.ajustar', 'nome' => 'Ajustar Inventário Físico', 'descricao' => 'Permite alterar saldos manuais e endereçamento'],
-            ['modulo' => 'WMS', 'slug' => 'wms.transferir', 'nome' => 'Realizar Transferências Internas', 'descricao' => 'Transfere estoque entre almoxarifados'],
-            ['modulo' => 'WMS', 'slug' => 'wms.deposito.gerenciar', 'nome' => 'Cadastrar/Editar Depósitos', 'descricao' => 'Cria novos depósitos e almoxarifados'],
-            
-            // Módulo Compras & Suprimentos
-            ['modulo' => 'COMPRAS', 'slug' => 'compras.visualizar', 'nome' => 'Visualizar Pedidos de Compra', 'descricao' => 'Consulta entradas e compras'],
-            ['modulo' => 'COMPRAS', 'slug' => 'compras.criar', 'nome' => 'Lançar Pedidos de Entrada', 'descricao' => 'Cria entradas manuais com crédito em estoque'],
-            ['modulo' => 'COMPRAS', 'slug' => 'compras.xml.importar', 'nome' => 'Importar XML de NF-e', 'descricao' => 'Processa arquivos XML de fornecedores'],
-            
-            // Módulo Vendas & PDV
-            ['modulo' => 'VENDAS', 'slug' => 'vendas.pdv.operar', 'nome' => 'Operar Caixa / Frente de PDV', 'descricao' => 'Realiza vendas no balcão'],
-            ['modulo' => 'VENDAS', 'slug' => 'vendas.desconto.aplicar', 'nome' => 'Conceder Descontos em Vendas', 'descricao' => 'Aplica descontos comerciais'],
-            
-            // Módulo Ordens de Serviço (CMMS)
-            ['modulo' => 'OS', 'slug' => 'os.abrir', 'nome' => 'Abrir Ordens de Serviço', 'descricao' => 'Cadastra novas solicitações de manutenção'],
-            ['modulo' => 'OS', 'slug' => 'os.executar', 'nome' => 'Executar e Apontar Peças', 'descricao' => 'Lança materiais e laudo técnico'],
-            ['modulo' => 'OS', 'slug' => 'os.concluir', 'nome' => 'Concluir OS e Coletar Assinatura', 'descricao' => 'Encerra o serviço com aceite jurídico'],
-            
-            // Módulo Financeiro
-            ['modulo' => 'FINANCEIRO', 'slug' => 'financeiro.visualizar', 'nome' => 'Visualizar Contas a Pagar/Receber', 'descricao' => 'Acessa relatórios e títulos'],
-            ['modulo' => 'FINANCEIRO', 'slug' => 'financeiro.liquidar', 'nome' => 'Liquidar/Baixar Títulos', 'descricao' => 'Dá baixa financeira e movimenta extrato'],
-            
-            // Governança & Configurações
-            ['modulo' => 'GOVERNANCA', 'slug' => 'governanca.usuarios.gerenciar', 'nome' => 'Gerenciar Usuários e Acessos', 'descricao' => 'Cadastra novos membros e altera senhas'],
-            ['modulo' => 'GOVERNANCA', 'slug' => 'governanca.filiais.gerenciar', 'nome' => 'Cadastrar/Editar Filiais', 'descricao' => 'Gerencia as empresas do tenant'],
-        ];
-
-        foreach ($permissoes as $p) {
-            Permissao::firstOrCreate(
-                ['slug' => $p['slug']],
-                [
-                    'id' => (string) Str::uuid(),
-                    'modulo' => $p['modulo'],
-                    'nome' => $p['nome'],
-                    'descricao' => $p['descricao'],
-                ]
-            );
-        }
-    }
-}
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\resources\css\app.css
-========================================
-@import 'tailwindcss';
-
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\resources\js\app.js
-========================================
-//
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\resources\views\welcome.blade.php
-========================================
-<!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-
-        <title>{{ config('app.name', 'Laravel') }}</title>
-
-        @fonts
-
-        <!-- Styles / Scripts -->
-        @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-            @vite(['resources/css/app.css', 'resources/js/app.js'])
-        @else
-            <style>
-                /*! tailwindcss v4.0.7 | MIT License | https://tailwindcss.com */ @layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-translate-x:0;--tw-translate-y:0;--tw-translate-z:0;--tw-rotate-x:initial;--tw-rotate-y:initial;--tw-rotate-z:initial;--tw-skew-x:initial;--tw-skew-y:initial;--tw-space-x-reverse:0;--tw-border-style:solid;--tw-leading:initial;--tw-font-weight:initial;--tw-tracking:initial;--tw-shadow:0 0 #0000;--tw-shadow-color:initial;--tw-shadow-alpha:100%;--tw-inset-shadow:0 0 #0000;--tw-inset-shadow-color:initial;--tw-inset-shadow-alpha:100%;--tw-ring-color:initial;--tw-ring-shadow:0 0 #0000;--tw-inset-ring-color:initial;--tw-inset-ring-shadow:0 0 #0000;--tw-ring-inset:initial;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-offset-shadow:0 0 #0000;--tw-blur:initial;--tw-brightness:initial;--tw-contrast:initial;--tw-grayscale:initial;--tw-hue-rotate:initial;--tw-invert:initial;--tw-opacity:initial;--tw-saturate:initial;--tw-sepia:initial;--tw-drop-shadow:initial;--tw-drop-shadow-color:initial;--tw-drop-shadow-alpha:100%;--tw-drop-shadow-size:initial;--tw-duration:initial;--tw-ease:initial;--tw-content:""}}}@layer theme{:root,:host{--font-sans:"Instrument Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";--font-serif:ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;--color-red-50:oklch(97.1% .013 17.38);--color-red-100:oklch(93.6% .032 17.717);--color-red-200:oklch(88.5% .062 18.334);--color-red-300:oklch(80.8% .114 19.571);--color-red-400:oklch(70.4% .191 22.216);--color-red-500:oklch(63.7% .237 25.331);--color-red-600:oklch(57.7% .245 27.325);--color-red-700:oklch(50.5% .213 27.518);--color-red-800:oklch(44.4% .177 26.899);--color-red-900:oklch(39.6% .141 25.723);--color-red-950:oklch(25.8% .092 26.042);--color-orange-50:oklch(98% .016 73.684);--color-orange-100:oklch(95.4% .038 75.164);--color-orange-200:oklch(90.1% .076 70.697);--color-orange-300:oklch(83.7% .128 66.29);--color-orange-400:oklch(75% .183 55.934);--color-orange-500:oklch(70.5% .213 47.604);--color-orange-600:oklch(64.6% .222 41.116);--color-orange-700:oklch(55.3% .195 38.402);--color-orange-800:oklch(47% .157 37.304);--color-orange-900:oklch(40.8% .123 38.172);--color-orange-950:oklch(26.6% .079 36.259);--color-amber-50:oklch(98.7% .022 95.277);--color-amber-100:oklch(96.2% .059 95.617);--color-amber-200:oklch(92.4% .12 95.746);--color-amber-300:oklch(87.9% .169 91.605);--color-amber-400:oklch(82.8% .189 84.429);--color-amber-500:oklch(76.9% .188 70.08);--color-amber-600:oklch(66.6% .179 58.318);--color-amber-700:oklch(55.5% .163 48.998);--color-amber-800:oklch(47.3% .137 46.201);--color-amber-900:oklch(41.4% .112 45.904);--color-amber-950:oklch(27.9% .077 45.635);--color-yellow-50:oklch(98.7% .026 102.212);--color-yellow-100:oklch(97.3% .071 103.193);--color-yellow-200:oklch(94.5% .129 101.54);--color-yellow-300:oklch(90.5% .182 98.111);--color-yellow-400:oklch(85.2% .199 91.936);--color-yellow-500:oklch(79.5% .184 86.047);--color-yellow-600:oklch(68.1% .162 75.834);--color-yellow-700:oklch(55.4% .135 66.442);--color-yellow-800:oklch(47.6% .114 61.907);--color-yellow-900:oklch(42.1% .095 57.708);--color-yellow-950:oklch(28.6% .066 53.813);--color-lime-50:oklch(98.6% .031 120.757);--color-lime-100:oklch(96.7% .067 122.328);--color-lime-200:oklch(93.8% .127 124.321);--color-lime-300:oklch(89.7% .196 126.665);--color-lime-400:oklch(84.1% .238 128.85);--color-lime-500:oklch(76.8% .233 130.85);--color-lime-600:oklch(64.8% .2 131.684);--color-lime-700:oklch(53.2% .157 131.589);--color-lime-800:oklch(45.3% .124 130.933);--color-lime-900:oklch(40.5% .101 131.063);--color-lime-950:oklch(27.4% .072 132.109);--color-green-50:oklch(98.2% .018 155.826);--color-green-100:oklch(96.2% .044 156.743);--color-green-200:oklch(92.5% .084 155.995);--color-green-300:oklch(87.1% .15 154.449);--color-green-400:oklch(79.2% .209 151.711);--color-green-500:oklch(72.3% .219 149.579);--color-green-600:oklch(62.7% .194 149.214);--color-green-700:oklch(52.7% .154 150.069);--color-green-800:oklch(44.8% .119 151.328);--color-green-900:oklch(39.3% .095 152.535);--color-green-950:oklch(26.6% .065 152.934);--color-emerald-50:oklch(97.9% .021 166.113);--color-emerald-100:oklch(95% .052 163.051);--color-emerald-200:oklch(90.5% .093 164.15);--color-emerald-300:oklch(84.5% .143 164.978);--color-emerald-400:oklch(76.5% .177 163.223);--color-emerald-500:oklch(69.6% .17 162.48);--color-emerald-600:oklch(59.6% .145 163.225);--color-emerald-700:oklch(50.8% .118 165.612);--color-emerald-800:oklch(43.2% .095 166.913);--color-emerald-900:oklch(37.8% .077 168.94);--color-emerald-950:oklch(26.2% .051 172.552);--color-teal-50:oklch(98.4% .014 180.72);--color-teal-100:oklch(95.3% .051 180.801);--color-teal-200:oklch(91% .096 180.426);--color-teal-300:oklch(85.5% .138 181.071);--color-teal-400:oklch(77.7% .152 181.912);-
+                'nome' => 'Depósit

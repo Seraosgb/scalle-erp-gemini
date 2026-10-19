@@ -1,4 +1,457 @@
-﻿longsTo;
+﻿,
+        'is_transportadora' => 'boolean',
+        'is_ativo' => 'boolean',
+        'limite_credito' => 'decimal:2',
+    ];
+
+    public function enderecos(): HasMany
+    {
+        return $this->hasMany(Endereco::class, 'pessoa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Plano.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
+
+class Plano extends Model
+{
+    protected $table = 'sis_planos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'nome',
+        'slug',
+        'valor_mensal',
+        'limite_usuarios',
+        'limite_empresas',
+        'cota_storage_bytes',
+        'modulos_habilitados',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'valor_mensal' => 'decimal:2',
+        'cota_storage_bytes' => 'integer',
+        'modulos_habilitados' => 'array',
+        'is_ativo' => 'boolean',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(function ($model) {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function assinaturas(): HasMany
+    {
+        return $this->hasMany(Assinatura::class, 'plano_id');
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PlanoConta.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class PlanoConta extends Model
+{
+    use SoftDeletes, BelongsToTenant;
+
+    protected $table = 'fin_planos_contas';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id', 'tenant_id', 'empresa_id', 'parent_id',
+        'codigo', 'nome', 'tipo', 'is_sintetico'
+    ];
+
+    protected $casts = [
+        'is_sintetico' => 'boolean'
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    // MÁGICA: Carrega todos os "filhos" recursivamente para formar a árvore no Frontend
+    public function children()
+    {
+        return $this->hasMany(PlanoConta::class, 'parent_id')
+                    ->with('children')
+                    ->orderBy('codigo');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PlanoPreventivo.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\BelongsToEmpresa;
+
+class PlanoPreventivo extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+    protected $table = 'os_planos_preventivos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'cliente_id',
+        'ativo_id',
+        'tecnico_padrao_id',
+        'titulo_plano',
+        'frequencia',
+        'proxima_execucao',
+        'ultima_execucao',
+        'checklist_itens',
+        'instrucoes_tecnicas',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'proxima_execucao' => 'date',
+        'ultima_execucao' => 'date',
+        'checklist_itens' => 'array',
+        'is_ativo' => 'boolean',
+    ];
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    public function ativo(): BelongsTo
+    {
+        return $this->belongsTo(PatrimonioBem::class, 'ativo_id');
+    }
+
+    public function tecnicoPadrao(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'tecnico_padrao_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PontoRegistro.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToEmpresa;
+
+class PontoRegistro extends Model
+{
+    use BelongsToTenant; use BelongsToEmpresa;
+
+    protected $table = 'rh_pontos';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'colaborador_id',
+        'data_hora_registro',
+        'tipo_registro',
+        'latitude',
+        'longitude',
+        'ip_origem',
+        'dispositivo_info',
+        'hash_registro',
+        'created_at',
+    ];
+
+    protected $casts = [
+        'data_hora_registro' => 'datetime',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
+        'created_at' => 'datetime',
+    ];
+
+    public function colaborador(): BelongsTo
+    {
+        return $this->belongsTo(Colaborador::class, 'colaborador_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\PrjTarefaChecklist.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class PrjTarefaChecklist extends Model
+{
+    protected $table = 'prj_tarefa_checklists';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tarefa_id',
+        'descricao',
+        'concluido',
+    ];
+
+    protected $casts = [
+        'concluido' => 'boolean',
+    ];
+
+    /**
+     * Retorna a tarefa à qual este item de checklist pertence.
+     */
+    public function tarefa(): BelongsTo
+    {
+        return $this->belongsTo(Tarefa::class, 'tarefa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\Projeto.php
+========================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Projeto extends Model
+{
+    use HasFactory, HasUuids, SoftDeletes;
+
+    protected $table = 'prj_projetos';
+
+    protected $fillable = [
+        'tenant_id',
+        'nome',
+        'descricao',
+        'orcamento_previsto',
+        'custo_total_real',
+        'status',
+        'cliente_id',
+    ];
+
+    /**
+     * Relação com o Cliente (Módulo de Pessoas)
+     */
+    public function cliente()
+    {
+        return $this->belongsTo(Pessoa::class, 'cliente_id');
+    }
+
+    /**
+     * Relação com as Etapas do Kanban
+     */
+    public function etapas()
+    {
+        return $this->hasMany(Etapa::class, 'projeto_id')->orderBy('ordem');
+    }
+
+    /**
+     * Relação de acesso direto a todas as tarefas do projeto
+     */
+    public function tarefas()
+    {
+        return $this->hasManyThrough(Tarefa::class, Etapa::class, 'projeto_id', 'etapa_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\ProjetoCusto.php
+========================================
+<?php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class ProjetoCusto extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $table = 'prj_custos';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'projeto_id', 'tipo_custo_id',
+        'valor', 'data_custo', 'descricao', 'apontamento_id'
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\ProjetoEquipe.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class ProjetoEquipe extends Model
+{
+    use HasFactory, SoftDeletes, BelongsToTenant;
+
+    protected $table = 'prj_projeto_equipe';
+    protected $keyType = 'string';
+    public $incrementing = false;
+
+    protected $fillable = [
+        'id', 'tenant_id', 'projeto_id', 'usuario_id', 'papel_id', 'custo_hora'
+    ];
+
+    public function usuario(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'usuario_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\RecrutamentoEtapa.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+
+class RecrutamentoEtapa extends Model
+{
+    use HasUuids, BelongsToTenant;
+
+    protected $table = 'rh_recrutamento_etapas';
+
+    protected $fillable = [
+        'tenant_id', 'nome', 'cor', 'ordem'
+    ];
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\RegraComissao.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use App\Traits\BelongsToEmpresa;
+
+class RegraComissao extends Model
+{
+    use SoftDeletes, BelongsToTenant, BelongsToEmpresa;
+
+    protected $table = 'ven_regras_comissao';
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'id',
+        'tenant_id',
+        'empresa_id',
+        'cargo_ou_perfil',
+        'categoria_id',
+        'faixa_valor_min',
+        'faixa_valor_max',
+        'percentual_comissao',
+        'is_ativo',
+    ];
+
+    protected $casts = [
+        'faixa_valor_min' => 'decimal:2',
+        'faixa_valor_max' => 'decimal:2',
+        'percentual_comissao' => 'decimal:2',
+        'is_ativo' => 'boolean',
+    ];
+
+    protected static function boot(): void
+    {
+        parent::boot();
+        static::creating(fn($m) => empty($m->id) ? $m->id = (string) Str::uuid() : null);
+    }
+
+    public function categoria(): BelongsTo
+    {
+        return $this->belongsTo(TabelaDominio::class, 'categoria_id');
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Models\RegraTributaria.php
+========================================
+<?php
+
+namespace App\Models;
+
+use App\Traits\BelongsToTenant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\BelongsToEmpresa;
 
@@ -1191,15 +1644,40 @@ use App\Models\ContaFinanceira;
 use App\Models\MovimentacaoExtrato;
 use App\Models\TituloFinanceiro;
 use App\Models\User;
-use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class FinanceiroService
 {
     /**
-     * Realiza a liquidação (total ou parcial) de um título e atualiza o saldo da conta financeira
+     * Contrato oficial entre domínios para geração de Contas a Pagar / Receber
      */
+    public static function registrarTitulo(array $dados): TituloFinanceiro
+    {
+        return TituloFinanceiro::create([
+            'id' => $dados['id'] ?? (string) Str::uuid(),
+            'tenant_id' => $dados['tenant_id'],
+            'empresa_id' => $dados['empresa_id'],
+            'pessoa_id' => $dados['pessoa_id'],
+            'conta_padrao_id' => $dados['conta_padrao_id'] ?? null,
+            'plano_conta_id' => $dados['plano_conta_id'] ?? null,
+            'centro_custo_id' => $dados['centro_custo_id'] ?? null,
+            'natureza' => $dados['natureza'], // 'PAGAR' ou 'RECEBER'
+            'documento_numero' => $dados['documento_numero'] ?? ('DOC-' . strtoupper(substr((string) Str::uuid(), 0, 6))),
+            'parcela_numero' => $dados['parcela_numero'] ?? 1,
+            'total_parcelas' => $dados['total_parcelas'] ?? 1,
+            'origem_tipo' => $dados['origem_tipo'] ?? 'manual',
+            'origem_id' => $dados['origem_id'] ?? null,
+            'data_emissao' => $dados['data_emissao'] ?? now()->toDateString(),
+            'data_vencimento' => $dados['data_vencimento'],
+            'valor_original' => (float) $dados['valor_original'],
+            'valor_saldo_aberto' => (float) ($dados['valor_saldo_aberto'] ?? $dados['valor_original']),
+            'valor_pago_acumulado' => (float) ($dados['valor_pago_acumulado'] ?? 0.00),
+            'status' => $dados['status'] ?? 'ABERTO',
+            'historico' => $dados['historico'] ?? null,
+        ]);
+    }
+
     public static function liquidarTitulo(
         TituloFinanceiro $titulo,
         string $contaFinanceiraId,
@@ -1220,19 +1698,17 @@ class FinanceiroService
             $formaPagamento,
             $usuario
         ) {
-            // 1. Bloqueio pessimista da conta financeira para garantir concorrência
             $conta = ContaFinanceira::where('id', $contaFinanceiraId)->lockForUpdate()->firstOrFail();
 
             $saldoAnterior = (float) $conta->saldo_atual;
             $tipoMovimento = ($titulo->natureza === 'RECEBER') ? 'ENTRADA' : 'SAIDA';
             $saldoPosterior = ($tipoMovimento === 'ENTRADA') ? ($saldoAnterior + $valorPago) : ($saldoAnterior - $valorPago);
 
-            // 2. Atualizar saldo da conta
             $conta->update(['saldo_atual' => $saldoPosterior]);
 
-            // 3. Gravar Movimentação no Extrato
             MovimentacaoExtrato::create([
                 'id' => (string) Str::uuid(),
+                'tenant_id' => $titulo->tenant_id,
                 'conta_financeira_id' => $conta->id,
                 'titulo_id' => $titulo->id,
                 'usuario_id' => $usuario?->id,
@@ -1246,7 +1722,6 @@ class FinanceiroService
                 'created_at' => now(),
             ]);
 
-            // 4. Atualizar valores do título
             $novoPagoAcumulado = (float) $titulo->valor_pago_acumulado + $valorPago;
             $valorEfetivoTitulo = ((float) $titulo->valor_original + $juros + $multa) - $desconto;
             $novoSaldoAberto = max(0.00, $valorEfetivoTitulo - $novoPagoAcumulado);
@@ -1266,6 +1741,7 @@ class FinanceiroService
         });
     }
 }
+
 
 ========================================
 ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\ImportadorXmlNfeService.php
@@ -2990,20 +3466,30 @@ namespace App\Services\Fiscal;
 
 use App\Interfaces\FiscalDriverInterface;
 use App\Models\DocumentoFiscal;
-use NFePHP\Common\Certificate;
-use NFePHP\NFe\Tools;
-use NFePHP\NFe\Make;
-use NFePHP\NFe\Common\Standardize;
-use Illuminate\Support\Str;
+use App\Models\Endereco;
+use App\Models\Item;
 use Exception;
+use Illuminate\Support\Str;
+use NFePHP\Common\Certificate;
+use NFePHP\NFe\Common\Standardize;
+use NFePHP\NFe\Make;
+use NFePHP\NFe\Tools;
 
 class NfePhpDriver implements FiscalDriverInterface
 {
     private Tools $tools;
     private array $config;
 
-    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2, string $cnpj = '', string $razaoSocial = ''): self
-    {
+    public function configurar(
+        string $certificadoBinario,
+        string $senha,
+        string $uf,
+        int $tpAmb = 2,
+        string $cnpj = '',
+        string $razaoSocial = '',
+        string $csc = 'GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E',
+        string $cscId = '000001'
+    ): self {
         $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
         if (empty($cnpjLimpo) || strlen($cnpjLimpo) !== 14) {
             $cnpjLimpo = str_pad($cnpjLimpo, 14, '0', STR_PAD_LEFT);
@@ -3013,20 +3499,18 @@ class NfePhpDriver implements FiscalDriverInterface
             "atualizacao" => now()->format('Y-m-d H:i:s'),
             "tpAmb" => $tpAmb,
             "razaosocial" => empty($razaoSocial) ? "Empresa Emissora" : substr($razaoSocial, 0, 60),
-            "siglaUF" => $uf,
+            "siglaUF" => $uf ?: 'RJ',
             "cnpj" => $cnpjLimpo,
             "schemes" => "PL_009_V4",
             "versao" => "4.00",
             "tokenIBPT" => "",
-            // Mock do Token CSC (Obrigatório para gerar o QR Code da NFC-e Modelo 65)
-            "CSC" => "GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E",
-            "CSCid" => "000001"
+            "CSC" => $csc ?: "GPQCGX3M46MGEHUX4JPRR8FQQ1H7WJ1E",
+            "CSCid" => $cscId ?: "000001"
         ];
 
-        $jsonConfig = json_encode($this->config);
         $certificado = Certificate::readPfx($certificadoBinario, $senha);
+        $this->tools = new Tools(json_encode($this->config), $certificado);
 
-        $this->tools = new Tools($jsonConfig, $certificado);
         return $this;
     }
 
@@ -3035,8 +3519,7 @@ class NfePhpDriver implements FiscalDriverInterface
         try {
             $this->tools->model('55');
             $response = $this->tools->sefazStatus($uf, $tpAmb);
-            $standardize = new Standardize();
-            $std = $standardize->toStd($response);
+            $std = (new Standardize())->toStd($response);
 
             return [
                 'status_code' => (int) ($std->cStat ?? 0),
@@ -3051,111 +3534,123 @@ class NfePhpDriver implements FiscalDriverInterface
 
     public function emitir(array $dadosEmissao): DocumentoFiscal
     {
-        // 1. Avisa o NFePHP se é modelo 55 (NF-e) ou 65 (NFC-e) para acionar o gerador de QR Code
         $modeloDoc = $dadosEmissao['modelo'] ?? '55';
         $this->tools->model($modeloDoc);
 
+        $emitente = $dadosEmissao['emitente'];
+        $destinatario = $dadosEmissao['destinatario'];
+        $endDest = Endereco::where('pessoa_id', $destinatario['id'] ?? null)->first();
+
         $nfe = new Make();
         try {
-            // 0. Inicialização
             $stdInfNFe = new \stdClass();
             $stdInfNFe->versao = '4.00';
             $stdInfNFe->Id = '';
             $stdInfNFe->pk_nItem = null;
             $nfe->taginfNFe($stdInfNFe);
 
-            // 1. Identificação da NFe (<ide>)
+            $cMunEmit = (int) ($emitente['codigo_ibge'] ?? 3300456);
+
             $stdIde = new \stdClass();
-            $stdIde->cUF = 33; // RJ
+            $stdIde->cUF = (int) substr((string) $cMunEmit, 0, 2);
             $stdIde->cNF = rand(11111111, 99999999);
-            $stdIde->natOp = 'Venda de Mercadorias';
+            $stdIde->natOp = $dadosEmissao['natureza_operacao'] ?? 'VENDA DE MERCADORIAS';
             $stdIde->mod = $modeloDoc;
-            $stdIde->serie = 1;
-            $stdIde->nNF = $dadosEmissao['numero'];
+            $stdIde->serie = (int) ($dadosEmissao['serie'] ?? 1);
+            $stdIde->nNF = (int) $dadosEmissao['numero'];
             $stdIde->dhEmi = now()->format('Y-m-d\TH:i:sP');
-            $stdIde->tpNF = 1; // Saída
-            $stdIde->idDest = 1; // Operação Interna
-            $stdIde->cMunFG = 3300456; // Belford Roxo
-            $stdIde->tpImp = 4; // DANFE NFC-e
-            $stdIde->tpEmis = 1; // Emissão Normal
+            $stdIde->tpNF = 1;
+            $stdIde->idDest = 1;
+            $stdIde->cMunFG = $cMunEmit;
+            $stdIde->tpImp = $modeloDoc === '65' ? 4 : 1;
+            $stdIde->tpEmis = 1;
             $stdIde->tpAmb = $this->config['tpAmb'];
-            $stdIde->finNFe = 1; // Normal
-            $stdIde->indFinal = 1; // Consumidor Final
-            $stdIde->indPres = 1; // Operação Presencial
-            $stdIde->procEmi = 0; // Aplicativo Contribuinte
-            $stdIde->verProc = '1.0';
+            $stdIde->finNFe = 1;
+            $stdIde->indFinal = 1;
+            $stdIde->indPres = 1;
+            $stdIde->procEmi = 0;
+            $stdIde->verProc = 'ScalleERP-2.0';
             $nfe->tagide($stdIde);
 
-            // 2. Emitente (<emit>)
+            // Emitente Dinâmico
             $stdEmit = new \stdClass();
-            $stdEmit->xNome = $dadosEmissao['emitente']['razao_social'] ?? 'EMPRESA TESTE';
-            $stdEmit->xFant = $dadosEmissao['emitente']['nome_fantasia'] ?? 'FANTASIA TESTE';
-            $stdEmit->IE = 'ISENTO'; // Para testes, assume ISENTO
-            $stdEmit->CRT = 1; // Simples Nacional
-            $stdEmit->CNPJ = $this->config['cnpj']; // Forçado do certificado
+            $stdEmit->xNome = substr($emitente['razao_social'] ?? 'EMPRESA EMITENTE', 0, 60);
+            $stdEmit->xFant = substr($emitente['nome_fantasia'] ?? 'FANTASIA', 0, 60);
+            $stdEmit->IE = !empty($emitente['inscricao_estadual']) ? preg_replace('/[^0-9A-Z]/', '', strtoupper($emitente['inscricao_estadual'])) : 'ISENTO';
+            $stdEmit->CRT = ($emitente['regime_tributario'] ?? 'simples_nacional') === 'regime_normal' ? 3 : 1;
+            $stdEmit->CNPJ = $this->config['cnpj'];
             $nfe->tagemit($stdEmit);
 
             $stdEnderEmit = new \stdClass();
-            $stdEnderEmit->xLgr = 'Rua de Teste';
-            $stdEnderEmit->nro = '123';
-            $stdEnderEmit->xBairro = 'Centro';
-            $stdEnderEmit->cMun = 3300456;
-            $stdEnderEmit->xMun = 'Belford Roxo';
-            $stdEnderEmit->UF = 'RJ';
-            $stdEnderEmit->CEP = '26110000';
+            $stdEnderEmit->xLgr = $emitente['logradouro'] ?? 'Avenida Principal';
+            $stdEnderEmit->nro = $emitente['numero'] ?? '100';
+            $stdEnderEmit->xBairro = $emitente['bairro'] ?? 'Centro';
+            $stdEnderEmit->cMun = $cMunEmit;
+            $stdEnderEmit->xMun = $emitente['cidade'] ?? 'Belford Roxo';
+            $stdEnderEmit->UF = $emitente['uf'] ?? 'RJ';
+            $stdEnderEmit->CEP = preg_replace('/[^0-9]/', '', $emitente['cep'] ?? '26110000');
             $stdEnderEmit->cPais = 1058;
             $stdEnderEmit->xPais = 'Brasil';
             $nfe->tagenderEmit($stdEnderEmit);
 
-            // 3. Destinatário (<dest>)
+            // Destinatário Dinâmico
             $stdDest = new \stdClass();
-            $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'Consumidor Final';
-            $stdDest->indIEDest = 9; // Não Contribuinte
+            $stdDest->xNome = $this->config['tpAmb'] === 2
+                ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+                : substr($destinatario['nome_razao_social'] ?? 'Consumidor Final', 0, 60);
+            $stdDest->indIEDest = 9;
 
-            $docDestino = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
-            if (empty($docDestino)) {
-                $stdDest->CPF = '00000000000';
-            } elseif (strlen($docDestino) > 11) {
-                $stdDest->CNPJ = str_pad($docDestino, 14, '0', STR_PAD_LEFT);
+            $docDestino = preg_replace('/[^0-9]/', '', $destinatario['cpf_cnpj'] ?? '');
+            if (strlen($docDestino) === 14) {
+                $stdDest->CNPJ = $docDestino;
             } else {
-                $stdDest->CPF = str_pad($docDestino, 11, '0', STR_PAD_LEFT);
+                $stdDest->CPF = strlen($docDestino) === 11 ? $docDestino : '00000000000';
             }
             $nfe->tagdest($stdDest);
 
             $stdEnderDest = new \stdClass();
-            $stdEnderDest->xLgr = 'Rua do Cliente';
-            $stdEnderDest->nro = 'SN';
-            $stdEnderDest->xBairro = 'Centro';
-            $stdEnderDest->cMun = 3300456;
-            $stdEnderDest->xMun = 'Belford Roxo';
-            $stdEnderDest->UF = 'RJ';
-            $stdEnderDest->CEP = '26110000';
+            $stdEnderDest->xLgr = $endDest?->logradouro ?? 'Rua Comercial';
+            $stdEnderDest->nro = $endDest?->numero ?? 'SN';
+            $stdEnderDest->xBairro = $endDest?->bairro ?? 'Centro';
+            $stdEnderDest->cMun = (int) ($endDest?->codigo_ibge ?? 3300456);
+            $stdEnderDest->xMun = $endDest?->cidade ?? 'Belford Roxo';
+            $stdEnderDest->UF = $endDest?->uf ?? 'RJ';
+            $stdEnderDest->CEP = preg_replace('/[^0-9]/', '', $endDest?->cep ?? '26110000');
             $stdEnderDest->cPais = 1058;
             $stdEnderDest->xPais = 'Brasil';
             $nfe->tagenderDest($stdEnderDest);
 
-            // 4. Produtos e Impostos (<det>)
+            // Produtos Reais do Catálogo
             $totais = 0.00;
             foreach ($dadosEmissao['itens'] as $idx => $item) {
                 $nItem = $idx + 1;
                 $valorTotalItem = (float) $item['valor_total'];
+                $qtdItem = (float) ($item['quantidade'] ?? 1.0000);
+                $vlrUnit = $qtdItem > 0 ? round($valorTotalItem / $qtdItem, 4) : $valorTotalItem;
                 $totais += $valorTotalItem;
+
+                $itemCatalogo = !empty($item['item_id']) ? Item::withoutGlobalScopes()->find($item['item_id']) : null;
 
                 $stdProd = new \stdClass();
                 $stdProd->item = $nItem;
-                $stdProd->cProd = 'PRD' . str_pad($nItem, 3, '0', STR_PAD_LEFT);
-                $stdProd->cEAN = 'SEM GTIN';
-                $stdProd->xProd = 'PRODUTO DE TESTE ' . $nItem;
-                $stdProd->NCM = '94039090';
-                $stdProd->CFOP = '5102'; // Venda
-                $stdProd->uCom = 'UN';
-                $stdProd->qCom = 1.0000;
-                $stdProd->vUnCom = $valorTotalItem;
+                $stdProd->cProd = $itemCatalogo?->codigo_sku ?? ('PRD' . str_pad((string) $nItem, 3, '0', STR_PAD_LEFT));
+                $stdProd->cEAN = !empty($itemCatalogo?->codigo_barras_ean) ? $itemCatalogo->codigo_barras_ean : 'SEM GTIN';
+                $stdProd->xProd = $this->config['tpAmb'] === 2 && $nItem === 1 && $modeloDoc === '65'
+                    ? 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+                    : substr($itemCatalogo?->nome ?? ($item['descricao'] ?? "ITEM COMERCIAL {$nItem}"), 0, 120);
+                $stdProd->NCM = preg_replace('/[^0-9]/', '', $itemCatalogo?->ncm ?? '84143091');
+                if (strlen($stdProd->NCM) !== 8) {
+                    $stdProd->NCM = '84143091';
+                }
+                $stdProd->CFOP = $item['cfop'] ?? ($itemCatalogo?->cfop_padrao ?? '5102');
+                $stdProd->uCom = $itemCatalogo?->unidade_medida ?? 'UN';
+                $stdProd->qCom = $qtdItem;
+                $stdProd->vUnCom = $vlrUnit;
                 $stdProd->vProd = $valorTotalItem;
-                $stdProd->cEANTrib = 'SEM GTIN';
-                $stdProd->uTrib = 'UN';
-                $stdProd->qTrib = 1.0000;
-                $stdProd->vUnTrib = $valorTotalItem;
+                $stdProd->cEANTrib = $stdProd->cEAN;
+                $stdProd->uTrib = $stdProd->uCom;
+                $stdProd->qTrib = $qtdItem;
+                $stdProd->vUnTrib = $vlrUnit;
                 $stdProd->indTot = 1;
                 $nfe->tagprod($stdProd);
 
@@ -3165,8 +3660,8 @@ class NfePhpDriver implements FiscalDriverInterface
 
                 $stdIcms = new \stdClass();
                 $stdIcms->item = $nItem;
-                $stdIcms->orig = 0;
-                $stdIcms->CSOSN = '102'; // Simples Nacional
+                $stdIcms->orig = (int) ($itemCatalogo?->origem_mercadoria ?? 0);
+                $stdIcms->CSOSN = '102';
                 $nfe->tagICMSSN($stdIcms);
 
                 $stdPis = new \stdClass();
@@ -3180,7 +3675,6 @@ class NfePhpDriver implements FiscalDriverInterface
                 $nfe->tagCOFINS($stdCofins);
             }
 
-            // 5. Totalizadores (<total>)
             $stdIcmsTot = new \stdClass();
             $stdIcmsTot->vBC = 0.00;
             $stdIcmsTot->vICMS = 0.00;
@@ -3203,9 +3697,8 @@ class NfePhpDriver implements FiscalDriverInterface
             $stdIcmsTot->vNF = $totais;
             $nfe->tagICMSTot($stdIcmsTot);
 
-            // 6. Transporte e Pagamento (<transp>, <pag>)
             $stdTransp = new \stdClass();
-            $stdTransp->modFrete = 9; // Sem frete
+            $stdTransp->modFrete = 9;
             $nfe->tagtransp($stdTransp);
 
             $stdPag = new \stdClass();
@@ -3213,370 +3706,20 @@ class NfePhpDriver implements FiscalDriverInterface
             $nfe->tagpag($stdPag);
 
             $stdDetPag = new \stdClass();
-            $stdDetPag->tPag = '01'; // Dinheiro
+            $stdDetPag->tPag = '01';
             $stdDetPag->vPag = $totais;
             $nfe->tagdetPag($stdDetPag);
 
             $xmlString = $nfe->getXML();
-
             if (!empty($nfe->getErrors())) {
                 throw new Exception("Falha de validação do schema XML: " . implode(' | ', $nfe->getErrors()));
             }
 
             $xmlAssinado = $this->tools->signNFe($xmlString);
 
-            // CORREÇÃO MESTRA: Uso de setters explícitos para contornar o $fillable (Mass Assignment) do Laravel
             $doc = new DocumentoFiscal();
             $doc->id = (string) Str::uuid();
             $doc->tenant_id = $dadosEmissao['tenant_id'];
             $doc->empresa_id = $dadosEmissao['empresa_id'];
-            $doc->destinatario_id = $dadosEmissao['destinatario']['id'] ?? null;
-            $doc->modelo_documento = $modeloDoc;
-            $doc->numero_documento = $dadosEmissao['numero'];
-            $doc->serie = '1';
-            $doc->chave_acesso = $nfe->getChave();
-            $doc->status = 'PROCESSANDO';
-            $doc->xml_conteudo = $xmlAssinado; // Agora grava com certeza absoluta
-            $doc->data_emissao = now();
-            $doc->valor_total = $totais;
-            $doc->save();
-
-            return $doc;
-
-        } catch (Exception $e) {
-            $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
-            throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
-        }
-    }
-
-    public function cancelar(string $chaveAcesso, string $justificativa): bool { return false; }
-    public function consultar(string $chaveAcesso): array { return []; }
-    public function corrigir(string $chaveAcesso, string $correcao): bool { return false; }
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Fiscal\SefazNfeDriver.php
-========================================
-<?php
-
-namespace App\Services\Fiscal;
-
-use App\Interfaces\FiscalDriverInterface;
-use App\Models\DocumentoFiscal;
-use NFePHP\NFe\Tools;
-use NFePHP\Common\Certificate;
-use NFePHP\NFe\Make;
-use Exception;
-
-class SefazNfeDriver implements FiscalDriverInterface
-{
-    protected ?Tools $tools = null;
-
-    public function __construct()
-    {
-        // Nasce limpo. Configurado dinamicamente via MotorFiscalService.
-    }
-
-    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2): self
-    {
-        $certificado = Certificate::readPfx($certificadoBinario, $senha);
-
-        $configJson = json_encode([
-            "atualizacao" => date('Y-m-d H:i:s'),
-            "tpAmb" => $tpAmb,
-            "razaosocial" => "Scalle Operacional LTDA",
-            "siglaUF" => $uf,
-            "cnpj" => "00000000000000",
-            "schemes" => "PL_009_V4",
-            "versao" => "4.00"
-        ]);
-
-        $this->tools = new Tools($configJson, $certificado);
-        $this->tools->model('55'); // Define NFe (Modelo 55)
-
-        return $this;
-    }
-
-    public function emitir(array $dadosEmissao): DocumentoFiscal
-    {
-        if (!$this->tools) {
-            throw new Exception("Driver Fiscal não configurado. Chame o método configurar() antes de emitir.");
-        }
-
-        $nfe = new Make();
-
-        // 0. Tag raiz <infNFe>
-        $stdInfNFe = new \stdClass();
-        $stdInfNFe->versao = '4.00';
-        $stdInfNFe->Id = '';
-        $stdInfNFe->pk_nItem = null;
-        $nfe->taginfNFe($stdInfNFe);
-
-        // 1. Tag <ide> (Identificação)
-        $stdIde = new \stdClass();
-        $stdIde->cUF = 33; // RJ
-        $stdIde->cNF = rand(11111111, 99999999);
-        $stdIde->natOp = 'VENDA DE MERCADORIAS';
-        $stdIde->mod = 55;
-        $stdIde->serie = 1;
-        $stdIde->nNF = rand(1000, 9999); // Numeração que virá do banco
-        $stdIde->dhEmi = date('Y-m-d\TH:i:sP');
-        $stdIde->tpNF = 1; // 1=Saída
-        $stdIde->idDest = 1; // 1=Interna, 2=Interestadual
-        $stdIde->cMunFG = 3300456; // Belford Roxo
-        $stdIde->tpImp = 1; // Danfe Retrato
-        $stdIde->tpEmis = 1; // Emissão Normal
-        $stdIde->tpAmb = 2; // Homologação
-        $stdIde->finNFe = 1; // 1=Normal
-        $stdIde->indFinal = 0; // 0=Normal, 1=Consumidor Final
-        $stdIde->indPres = 1; // 1=Presencial
-        $stdIde->procEmi = 0; // Emissão por aplicativo próprio
-        $stdIde->verProc = 'ScalleERP-1.0';
-        $nfe->tagide($stdIde);
-
-        // 2. Tag <emit> (Emitente)
-        $stdEmit = new \stdClass();
-        $stdEmit->xNome = 'SCALLE ENTERPRISE MATRIZ';
-        $stdEmit->xFant = 'SCALLE MATRIZ';
-        $stdEmit->IE = '12345678';
-        $stdEmit->CRT = 3; // 3=Regime Normal
-        $stdEmit->CNPJ = '00000000000191';
-        $nfe->tagemit($stdEmit);
-
-        // Endereço Emitente
-        $stdEnderEmit = new \stdClass();
-        $stdEnderEmit->xLgr = 'RUA PRINCIPAL';
-        $stdEnderEmit->nro = '100';
-        $stdEnderEmit->xBairro = 'CENTRO';
-        $stdEnderEmit->cMun = 3300456;
-        $stdEnderEmit->xMun = 'BELFORD ROXO';
-        $stdEnderEmit->UF = 'RJ';
-        $stdEnderEmit->CEP = '26110000';
-        $stdEnderEmit->cPais = 1058;
-        $stdEnderEmit->xPais = 'BRASIL';
-        $nfe->tagenderEmit($stdEnderEmit);
-
-        // 3. Tag <dest> (Destinatário)
-        $stdDest = new \stdClass();
-        $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'DISTRIBUIDORA DE PECAS LTDA';
-        $stdDest->indIEDest = 1; // 1=Contribuinte ICMS
-        $stdDest->IE = '98765432';
-
-        // Blindagem de CPF/CNPJ para aceitar apenas 11 ou 14
-        $doc = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
-        if (strlen($doc) === 14) {
-            $stdDest->CNPJ = $doc;
-        } elseif (strlen($doc) === 11) {
-            $stdDest->CPF = $doc;
-        } else {
-            // Fallback para não estourar erro XSD em banco de testes com dados sujos
-            $stdDest->CNPJ = '99999999000191'; // CNPJ universal de homologação SEFAZ
-        }
-        $nfe->tagdest($stdDest);
-
-        // Endereço Destinatário
-        $stdEnderDest = new \stdClass();
-        $stdEnderDest->xLgr = 'AVENIDA AUTOMOVEL CLUBE';
-        $stdEnderDest->nro = '1500';
-        $stdEnderDest->xBairro = 'CENTRO';
-        $stdEnderDest->cMun = 3300456;
-        $stdEnderDest->xMun = 'BELFORD ROXO';
-        $stdEnderDest->UF = 'RJ';
-        $stdEnderDest->CEP = '26110000';
-        $stdEnderDest->cPais = 1058;
-        $stdEnderDest->xPais = 'BRASIL';
-        $nfe->tagenderDest($stdEnderDest);
-
-        // 4. Tag <det> e <prod> (Itens da Nota)
-        $itemCount = 1;
-        $vTotalProdutos = 0.00;
-
-        foreach ($dadosEmissao['itens'] as $item) {
-            $stdProd = new \stdClass();
-            $stdProd->item = $itemCount++;
-            $stdProd->cProd = 'COMP-TERM-10K';
-            $stdProd->cEAN = 'SEM GTIN';
-            $stdProd->xProd = 'SENSOR DE TEMPERATURA TERMISTOR NTC 10K';
-            $stdProd->NCM = '90251990';
-            $stdProd->CFOP = '5102';
-            $stdProd->uCom = 'UN';
-            $stdProd->qCom = $item['quantidade'] ?? 1.0000;
-            $stdProd->vUnCom = $item['valor_unitario'] ?? 18.50;
-            $stdProd->vProd = $stdProd->qCom * $stdProd->vUnCom;
-            $stdProd->cEANTrib = 'SEM GTIN';
-            $stdProd->uTrib = 'UN';
-            $stdProd->qTrib = $stdProd->qCom;
-            $stdProd->vUnTrib = $stdProd->vUnCom;
-            $stdProd->indTot = 1;
-
-            $vTotalProdutos += $stdProd->vProd;
-            $nfe->tagprod($stdProd);
-
-            // Tributos (ICMS 00 - Tributado Integralmente)
-            $stdImposto = new \stdClass();
-            $stdImposto->item = $stdProd->item;
-            $nfe->tagimposto($stdImposto);
-
-            $stdICMS = new \stdClass();
-            $stdICMS->item = $stdProd->item;
-            $stdICMS->orig = 0;
-            $stdICMS->CST = '00';
-            $stdICMS->modBC = 3;
-            $stdICMS->vBC = $stdProd->vProd;
-            $stdICMS->pICMS = 18.00;
-            $stdICMS->vICMS = round($stdICMS->vBC * ($stdICMS->pICMS / 100), 2);
-            $nfe->tagICMS($stdICMS);
-        }
-
-        // 5. Totais
-        $stdTot = new \stdClass();
-        $stdTot->vBC = $vTotalProdutos;
-        $stdTot->vICMS = round($vTotalProdutos * 0.18, 2);
-        $stdTot->vICMSDeson = 0.00;
-        $stdTot->vFCP = 0.00;
-        $stdTot->vBCST = 0.00;
-        $stdTot->vST = 0.00;
-        $stdTot->vFCPST = 0.00;
-        $stdTot->vFCPSTRet = 0.00;
-        $stdTot->vProd = $vTotalProdutos;
-        $stdTot->vFrete = 0.00;
-        $stdTot->vSeg = 0.00;
-        $stdTot->vDesc = 0.00;
-        $stdTot->vII = 0.00;
-        $stdTot->vIPI = 0.00;
-        $stdTot->vIPIDevol = 0.00;
-        $stdTot->vPIS = 0.00;
-        $stdTot->vCOFINS = 0.00;
-        $stdTot->vOutro = 0.00;
-        $stdTot->vNF = $vTotalProdutos;
-        $nfe->tagICMSTot($stdTot);
-
-        // Inclusão da Tag <transp> antes do Pagamento
-        $stdTransp = new \stdClass();
-        $stdTransp->modFrete = 9; // 9 = Sem Ocorrência de Transporte
-        $nfe->tagtransp($stdTransp);
-
-        // 6. Pagamento
-        $stdPag = new \stdClass();
-        $nfe->tagpag($stdPag);
-
-        $stdDetPag = new \stdClass();
-        $stdDetPag->tPag = '15'; // Boleto Bancario
-        $stdDetPag->vPag = $vTotalProdutos;
-        $stdDetPag->indPag = 1; // A Prazo
-        $nfe->tagdetPag($stdDetPag);
-
-        // Gera o XML String
-        if (!$nfe->montaNFe()) {
-            throw new \Exception("Erro ao gerar XML da NFe: " . json_encode($nfe->getErrors()));
-        }
-        $xmlNãoAssinado = $nfe->getXML();
-
-        // Assinatura Criptográfica
-        $xmlAssinado = $this->tools->signNFe($xmlNãoAssinado);
-
-        // ========================================================
-        // TRANSMISSÃO PARA A SEFAZ (Síncrono)
-        // ========================================================
-        try {
-            // Envia o lote contendo 1 nota. O 3º parâmetro '1' força o processamento síncrono
-            $respostaSefaz = $this->tools->sefazEnviaLote([$xmlAssinado], $stdIde->nNF, 1);
-
-            // Padroniza o retorno XML da SEFAZ para um Objeto PHP legível
-            $stdRetorno = (new \NFePHP\NFe\Common\Standardize())->toStd($respostaSefaz);
-
-            $documentoFiscal = new DocumentoFiscal();
-            $documentoFiscal->xml_assinado = $xmlAssinado;
-            $documentoFiscal->status = 'REJEITADO'; // Status conservador por padrão
-
-            // cStat 104 = Lote processado. Precisamos olhar o cStat interno do protocolo da nota
-            if (isset($stdRetorno->protNFe->infProt)) {
-                $infProt = $stdRetorno->protNFe->infProt;
-
-                if ($infProt->cStat == 100) { // 100 = Autorizado o uso da NF-e
-                    $documentoFiscal->status = 'AUTORIZADO';
-                    $documentoFiscal->protocolo_autorizacao = $infProt->nProt;
-                    // MÁGICA: Anexa o protocolo da SEFAZ no final do nosso XML assinado
-                    $documentoFiscal->xml_autorizado = \NFePHP\NFe\Complements::toAuthorize($xmlAssinado, $respostaSefaz);
-                } else {
-                    // Rejeição mapeada pela SEFAZ
-                    throw new Exception("SEFAZ Rejeitou [cStat {$infProt->cStat}]: {$infProt->xMotivo}");
-                }
-            } else {
-                // Erro no lote inteiro
-                throw new Exception("Erro de Lote SEFAZ [cStat {$stdRetorno->cStat}]: {$stdRetorno->xMotivo}");
-            }
-
-            return $documentoFiscal;
-
-        } catch (\Exception $e) {
-            // Em caso de falha de conexão ou rejeição, devolve o erro mastigado
-            throw new Exception("Falha na Transmissão: " . $e->getMessage());
-        }
-    }
-
-    public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
-    public function consultar(string $chaveAcesso): array { return []; }
-    public function corrigir(string $chaveAcesso, string $correcao): bool { return true; }
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Frota\FrotaOperacaoService.php
-========================================
-<?php
-
-namespace App\Services\Frota;
-
-use App\Models\FrotaVeiculo;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Exception;
-
-class FrotaOperacaoService
-{
-    /**
-     * Registra o abastecimento, gera despesa e audita manutenções
-     */
-    public static function registrarAbastecimento(array $dados, string $tenantId, string $empresaId)
-    {
-        return DB::transaction(function () use ($dados, $tenantId, $empresaId) {
-            $veiculo = FrotaVeiculo::where('tenant_id', $tenantId)->findOrFail($dados['veiculo_id']);
-
-            // 1. Blindagem de KM
-            if ($dados['km_marcador'] <= $veiculo->km_atual) {
-                throw new Exception("Erro de Hodômetro: O KM informado ({$dados['km_marcador']}) deve ser maior que o KM atual do veículo ({$veiculo->km_atual}).");
-            }
-
-            // 2. Atualiza a KM da frota
-            $veiculo->km_atual = $dados['km_marcador'];
-            $veiculo->save();
-
-            // 3. Integração Financeira: Cria Título a Pagar
-            $tituloId = (string) Str::uuid();
-            DB::table('fin_titulos_financeiros')->insert([
-                'id' => $tituloId,
-                'tenant_id' => $tenantId,
-                'empresa_id' => $empresaId,
-                'pessoa_id' => $dados['posto_id'], // Fornecedor
-                'tipo_titulo' => 'DESPESA',
-                'descricao' => "Abastecimento - Veículo {$veiculo->placa}",
-                'valor_original' => $dados['valor_total'],
-                'data_vencimento' => $dados['data_abastecimento'],
-                'is_pago' => false,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            // 4. Registra o Abastecimento
-            $abastecimentoId = (string) Str::uuid();
-            DB::table('fro_abastecimentos')->insert([
-                'id' => $abastecimentoId,
-                'tenant_id' => $tenantId,
-                'empresa_id' => $empresaId,
-                'veiculo_id' => $veiculo->id,
-                'motorista_id' => $dados['motorista_id'],
-                'posto_id' => $dados['posto_id'],
-                'data_abastecimento' => $dados['data_abastecimento'],
-               
+            $doc->destinatario_id = $destinatario['id'] ?? null;
+       

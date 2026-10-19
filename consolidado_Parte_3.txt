@@ -1,4 +1,55 @@
-﻿     $valorTotalGeral += $valorTotal;
+﻿$qtdRecebida,
+                        'TRANSFERENCIA_ENTRADA',
+                        $userId,
+                        'transferencias',
+                        $transf->id,
+                        $transf->lote,
+                        0.00
+                    );
+                }
+
+                $statusFinal = ($qtdRecebida === $qtdEnviada) ? 'CONCLUIDA' : 'DIVERGENCIA';
+
+                $transf->update([
+                    'status' => $statusFinal,
+                    'quantidade_recebida' => $qtdRecebida,
+                    'recebedor_id' => $userId,
+                    'data_recebimento' => now(),
+                    'motivo_divergencia' => $validated['motivo_divergencia'] ?? null,
+                ]);
+            });
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Transferência conferida e estoque de destino abastecido com sucesso!',
+                    'transferencia' => $transf->fresh(['origem', 'destino', 'item', 'recebedor']),
+                ]
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['error' => ['message' => $e->getMessage()]], 422);
+        }
+    }
+
+    public function relatorioCurvaAbc(Request $request): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $itens = Item::where('tenant_id', $tenantId)
+            ->where('tipo_item', '!=', 'SERVICO')
+            ->get();
+
+        $dadosAbc = [];
+        $valorTotalGeral = 0.00;
+
+        foreach ($itens as $item) {
+            $saidas = MovimentacaoEstoque::where('item_id', $item->id)
+                ->whereIn('tipo_movimento', ['SAIDA_VENDA', 'SAIDA_OS'])
+                ->where('created_at', '>=', now()->subDays(90))
+                ->sum('quantidade') ?? 0;
+
+            $preco = (float) ($item->preco_venda > 0 ? $item->preco_venda : $item->preco_custo);
+            $valorTotal = (float) $saidas * $preco;
+            $valorTotalGeral += $valorTotal;
 
             $saldoAtual = EstoqueDeposito::where('item_id', $item->id)->sum('quantidade_saldo') ?? 0;
 
@@ -2759,24 +2810,26 @@ ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\ProjetoGestaoCon
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Models\Entregavel;
+use App\Models\ProjetoCusto;
+use App\Models\ProjetoEquipe;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class ProjetoGestaoController extends Controller
 {
-    // ==========================================
-    // ABA: ALOCAÇÃO DE EQUIPA
-    // ==========================================
     public function listarEquipe(Request $request, string $projetoId): JsonResponse
     {
-        $equipe = DB::table('prj_projeto_equipe')
-            ->join('users', 'prj_projeto_equipe.usuario_id', '=', 'users.id')
-            ->where('prj_projeto_equipe.projeto_id', $projetoId)
-            ->whereNull('prj_projeto_equipe.deleted_at')
-            ->select('prj_projeto_equipe.*', 'users.name as nome_usuario')
-            ->get();
+        $tenantId = $request->user()->tenant_id;
+        $equipe = ProjetoEquipe::where('tenant_id', $tenantId)
+            ->where('projeto_id', $projetoId)
+            ->with('usuario:id,name')
+            ->get()
+            ->map(function ($membro) {
+                $membro->nome_usuario = $membro->usuario?->name ?? 'Usuário';
+                return $membro;
+            });
 
         return response()->json(['data' => $equipe]);
     }
@@ -2784,35 +2837,25 @@ class ProjetoGestaoController extends Controller
     public function adicionarEquipe(Request $request, string $projetoId): JsonResponse
     {
         $validated = $request->validate([
-            'usuario_id' => 'required|uuid',
+            'usuario_id' => 'required|uuid|exists:users,id',
             'custo_hora' => 'required|numeric|min:0'
         ]);
 
         $tenantId = $request->user()->tenant_id;
 
-        DB::table('prj_projeto_equipe')->updateOrInsert(
-            ['projeto_id' => $projetoId, 'usuario_id' => $validated['usuario_id']],
-            [
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'custo_hora' => $validated['custo_hora'],
-                'created_at' => now(),
-                'updated_at' => now(),
-                'deleted_at' => null
-            ]
+        ProjetoEquipe::updateOrCreate(
+            ['tenant_id' => $tenantId, 'projeto_id' => $projetoId, 'usuario_id' => $validated['usuario_id']],
+            ['id' => (string) Str::uuid(), 'custo_hora' => $validated['custo_hora']]
         );
 
         return response()->json(['data' => ['message' => 'Membro alocado ao projeto com sucesso!']]);
     }
 
-    // ==========================================
-    // ABA: CUSTOS E DESPESAS EXTERNAS
-    // ==========================================
     public function listarCustos(Request $request, string $projetoId): JsonResponse
     {
-        $custos = DB::table('prj_projeto_custos')
+        $tenantId = $request->user()->tenant_id;
+        $custos = ProjetoCusto::where('tenant_id', $tenantId)
             ->where('projeto_id', $projetoId)
-            ->whereNull('deleted_at')
             ->orderByDesc('data_custo')
             ->get();
 
@@ -2829,30 +2872,25 @@ class ProjetoGestaoController extends Controller
 
         $tenantId = $request->user()->tenant_id;
 
-        DB::table('prj_projeto_custos')->insert([
+        ProjetoCusto::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'projeto_id' => $projetoId,
             'descricao' => $validated['descricao'],
             'valor' => $validated['valor'],
             'data_custo' => $validated['data_custo'],
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
 
-        \App\Http\Controllers\Api\TimesheetController::recalcularCustoProjeto($projetoId);
+        TimesheetController::recalcularCustoProjeto($projetoId, $tenantId);
 
-        return response()->json(['data' => ['message' => 'Despesa externa lançada com sucesso!']]);
+        return response()->json(['data' => ['message' => 'Despesa lançada com sucesso!']]);
     }
 
-    // ==========================================
-    // ABA: ENTREGÁVEIS / MARCOS DE FATURAMENTO
-    // ==========================================
     public function listarEntregaveis(Request $request, string $projetoId): JsonResponse
     {
-        $entregaveis = DB::table('prj_projeto_entregaveis')
+        $tenantId = $request->user()->tenant_id;
+        $entregaveis = Entregavel::where('tenant_id', $tenantId)
             ->where('projeto_id', $projetoId)
-            ->whereNull('deleted_at')
             ->orderBy('data_prevista')
             ->get();
 
@@ -2869,7 +2907,7 @@ class ProjetoGestaoController extends Controller
 
         $tenantId = $request->user()->tenant_id;
 
-        DB::table('prj_projeto_entregaveis')->insert([
+        Entregavel::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'projeto_id' => $projetoId,
@@ -2877,11 +2915,163 @@ class ProjetoGestaoController extends Controller
             'valor_faturamento' => $validated['valor_faturamento'],
             'data_prevista' => $validated['data_prevista'],
             'status' => 'PENDENTE',
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
 
         return response()->json(['data' => ['message' => 'Marco de faturamento mapeado com sucesso!']]);
+    }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\PublicOnboardingController.php
+========================================
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Plano;
+use App\Services\AsaasGatewayService;
+use App\Services\DocumentoService;
+use App\Services\TenantProvisioningService;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+
+class PublicOnboardingController extends Controller
+{
+    public function listarPlanos(): JsonResponse
+    {
+        $planos = Plano::where('is_ativo', true)->orderBy('valor_mensal')->get();
+
+        if ($planos->isEmpty()) {
+            $defaults = [
+                [
+                    'id' => (string) Str::uuid(),
+                    'nome' => 'MEI / Básico',
+                    'slug' => 'mei',
+                    'valor_mensal' => 49.90,
+                    'limite_usuarios' => 2,
+                    'limite_empresas' => 1,
+                    'cota_storage_bytes' => 3221225472,
+                    'modulos_habilitados' => ['os', 'pdv', 'vendas', 'financeiro', 'pessoas', 'itens'],
+                    'is_ativo' => true,
+                ],
+                [
+                    'id' => (string) Str::uuid(),
+                    'nome' => 'Plano Pro (PMEs)',
+                    'slug' => 'pro',
+                    'valor_mensal' => 199.00,
+                    'limite_usuarios' => 10,
+                    'limite_empresas' => 2,
+                    'cota_storage_bytes' => 21474836480,
+                    'modulos_habilitados' => ['os', 'pdv', 'vendas', 'compras', 'wms', 'financeiro', 'fiscal', 'frota', 'rh', 'crm', 'ged'],
+                    'is_ativo' => true,
+                ],
+                [
+                    'id' => (string) Str::uuid(),
+                    'nome' => 'Enterprise B2B',
+                    'slug' => 'enterprise',
+                    'valor_mensal' => 599.00,
+                    'limite_usuarios' => 100,
+                    'limite_empresas' => 10,
+                    'cota_storage_bytes' => 107374182400,
+                    'modulos_habilitados' => ['*'],
+                    'is_ativo' => true,
+                ],
+            ];
+            foreach ($defaults as $d) {
+                Plano::firstOrCreate(['slug' => $d['slug']], $d);
+            }
+            $planos = Plano::where('is_ativo', true)->orderBy('valor_mensal')->get();
+        }
+
+        return response()->json(['data' => $planos]);
+    }
+
+    public function consultarCnpjPublico(string $cnpj): JsonResponse
+    {
+        $dados = DocumentoService::consultarCnpjReceitaWs($cnpj);
+        if (!$dados) {
+            return response()->json(['error' => ['message' => 'CNPJ não localizado ou inválido.']], 404);
+        }
+        return response()->json(['data' => $dados]);
+    }
+
+    public function registrarTrial(Request $request, AsaasGatewayService $asaasService): JsonResponse
+    {
+        $validated = $request->validate([
+            'tenant_nome_fantasia' => 'required|string|max:150',
+            'tenant_razao_social' => 'required|string|max:200',
+            'tenant_documento' => 'required|string|max:20',
+            'plano_slug' => 'required|string',
+            'admin_name' => 'required|string|max:150',
+            'admin_email' => 'required|email|unique:users,email',
+            'admin_password' => 'required|string|min:6',
+            'admin_telefone' => 'nullable|string|max:30',
+        ]);
+
+        $docLimpo = preg_replace('/[^0-9]/', '', $validated['tenant_documento']);
+        if (!DocumentoService::validarCpfCnpj($docLimpo)) {
+            return response()->json(['error' => ['message' => 'O CPF ou CNPJ informado é matematicamente inválido.']], 422);
+        }
+
+        if (\App\Models\Tenant::where('documento', $docLimpo)->exists()) {
+            return response()->json(['error' => ['message' => 'Este CPF/CNPJ já possui uma conta registrada no Scalle ERP.']], 422);
+        }
+
+        $validated['tenant_documento'] = $docLimpo;
+
+        try {
+            $ecossistema = TenantProvisioningService::provisionar($validated);
+
+            /** @var Assinatura $assinatura */
+            $assinatura = $ecossistema['assinatura'];
+            $assinatura->update([
+                'status' => 'TRIAL',
+                'data_proximo_vencimento' => now()->addDays(14)->toDateString(),
+            ]);
+
+            // Integração Assíncrona/Resiliente com o Asaas para agendar cobrança pós-trial (2 semanas)
+            if (!empty(env('ASAAS_API_KEY'))) {
+                try {
+                    $customerId = $asaasService->criarOuAtualizarCliente($ecossistema['tenant']);
+                    $asaasService->criarAssinatura($customerId, $assinatura->plano, 2);
+                } catch (Exception $exAsaas) {
+                    Log::warning("Aviso Asaas Onboarding: " . $exAsaas->getMessage());
+                }
+            }
+
+            $user = $ecossistema['admin_user'];
+            $token = $user->createToken('scalle_onboarding_token')->plainTextToken;
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Conta empresarial criada com 14 dias de Teste Grátis liberados!',
+                    'token' => $token,
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'tenant_id' => $user->tenant_id,
+                        'perfil' => 'Administrador',
+                        'is_admin' => true,
+                        'plano_slug' => $assinatura->plano->slug,
+                        'modulos_habilitados' => $assinatura->plano->modulos_habilitados,
+                    ]
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ONBOARDING_FAILED',
+                    'message' => $e->getMessage(),
+                ]
+            ], 422);
+        }
     }
 }
 
@@ -3058,213 +3248,4 @@ class RecrutamentoController extends Controller
             App::instance('current_tenant_id', $tenantId);
 
             $validated = $request->validate([
-                'vaga_id' => 'required|uuid|exists:rh_vagas,id',
-                'nome' => 'required|string|max:150',
-                'email' => 'nullable|email|max:150',
-                'telefone' => 'nullable|string|max:30',
-            ]);
-
-            $primeiraEtapa = RecrutamentoEtapa::withoutGlobalScopes()->where('tenant_id', $tenantId)->orderBy('ordem')->first();
-
-            $candidato = Candidato::withoutGlobalScopes()->create([
-                'id' => (string) Str::uuid(),
-                'tenant_id' => $tenantId,
-                'vaga_id' => $validated['vaga_id'],
-                'nome' => $validated['nome'],
-                'email' => $validated['email'] ?? null,
-                'telefone' => $validated['telefone'] ?? null,
-                'etapa_id' => $primeiraEtapa ? $primeiraEtapa->id : null,
-            ]);
-
-            return response()->json(['data' => $candidato], 201);
-        } catch (Exception $e) {
-            return response()->json(['error' => ['message' => 'Erro Backend Candidato: ' . $e->getMessage()]], 500);
-        }
-    }
-
-    public function moverCandidato(Request $request, string $id): JsonResponse
-    {
-        try {
-            $tenantId = $request->user()->tenant_id;
-            App::instance('current_tenant_id', $tenantId);
-
-            $candidato = Candidato::withoutGlobalScopes()->where('tenant_id', $tenantId)->findOrFail($id);
-
-            $validated = $request->validate([
-                'nova_etapa_id' => 'required|uuid|exists:rh_recrutamento_etapas,id',
-            ]);
-
-            $candidato->update(['etapa_id' => $validated['nova_etapa_id']]);
-
-            return response()->json(['data' => ['message' => 'Candidato movido com sucesso!']]);
-        } catch (Exception $e) {
-            return response()->json(['error' => ['message' => 'Erro Backend Mover: ' . $e->getMessage()]], 500);
-        }
-    }
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\SessaoController.php
-========================================
-<?php
-
-namespace App\Http\Controllers\Api;
-
-use App\Http\Controllers\Controller;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-
-class SessaoController extends Controller
-{
-    public function index(Request $request): JsonResponse
-    {
-        $tokens = $request->user()->tokens()->orderByDesc('last_used_at')->get();
-        return response()->json(['data' => $tokens]);
-    }
-
-    public function revogar(Request $request, string $id): JsonResponse
-    {
-        $token = $request->user()->tokens()->where('id', $id)->firstOrFail();
-        $token->delete();
-        
-        return response()->json(['data' => ['message' => 'Sessão desconectada com sucesso.']]);
-    }
-}
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\TenantBillingController.php
-========================================
-<?php
-
-namespace App\Http\Controllers\Api;
-
-use App\Http\Controllers\Controller;
-use App\Models\Assinatura;
-use App\Models\FaturaBilling;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-
-class TenantBillingController extends Controller
-{
-    private function autorizarFinanceiro(Request $request): void
-    {
-        $usuario = $request->user();
-
-        // 1. Libera imediatamente se for Master SaaS ou Admin do Tenant
-        if ($usuario->is_master || ($usuario->perfil && $usuario->perfil->is_admin)) {
-            return;
-        }
-
-        // 2. Normaliza o nome ou slug do perfil e verifica permissões permitidas
-        $perfilNome = strtoupper(trim($usuario->perfil->nome ?? ''));
-        $perfilSlug = strtoupper(trim($usuario->perfil->slug ?? ''));
-        $role = strtoupper(trim($usuario->role ?? ''));
-
-        $cargosPermitidos = ['ADMIN', 'ADMINISTRADOR', 'FINANCEIRO', 'GESTOR', 'GERENTE', 'DIRETOR', 'MASTER'];
-
-        $autorizado = false;
-        foreach ($cargosPermitidos as $cargo) {
-            if (
-                str_contains($perfilNome, $cargo) ||
-                str_contains($perfilSlug, $cargo) ||
-                str_contains($role, $cargo)
-            ) {
-                $autorizado = true;
-                break;
-            }
-        }
-
-        if (!$autorizado) {
-            abort(403, 'Acesso restrito ao gestor financeiro ou administrador da conta.');
-        }
-    }
-
-    public function minhaAssinatura(Request $request): JsonResponse
-    {
-        $this->autorizarFinanceiro($request);
-        $tenantId = $request->user()->tenant_id;
-
-        $assinatura = Assinatura::withoutGlobalScopes()
-            ->where('tenant_id', $tenantId)
-            ->with('plano')
-            ->first();
-
-        if (!$assinatura) {
-            return response()->json(['error' => 'Nenhuma assinatura localizada para este tenant.'], 404);
-        }
-
-        // Recupera a fatura atual em aberto para exibir o botão "Pagar Agora"
-        $faturaAberta = FaturaBilling::withoutGlobalScopes()
-            ->where('tenant_id', $tenantId)
-            ->whereIn('status', ['PENDING', 'OVERDUE'])
-            ->orderBy('data_vencimento')
-            ->first();
-
-        return response()->json([
-            'data' => [
-                'assinatura' => $assinatura,
-                'fatura_aberta' => $faturaAberta ? [
-                    'id' => $faturaAberta->id,
-                    'valor' => (float) $faturaAberta->valor,
-                    'vencimento' => $faturaAberta->data_vencimento,
-                    'status' => $faturaAberta->status,
-                    'link_pagamento' => $faturaAberta->url_fatura_gateway,
-                ] : null,
-                'metricas_uso' => [
-                    'storage_utilizado_gb' => round(($assinatura->storage_utilizado_bytes ?? 0) / 1073741824, 2),
-                    'storage_limite_gb' => round(($assinatura->plano->cota_storage_bytes ?? 0) / 1073741824, 2),
-                ]
-            ]
-        ]);
-    }
-
-    public function historicoFaturas(Request $request): JsonResponse
-    {
-        $this->autorizarFinanceiro($request);
-
-        $faturas = FaturaBilling::withoutGlobalScopes()
-            ->where('tenant_id', $request->user()->tenant_id)
-            ->orderByDesc('data_vencimento')
-            ->paginate(12);
-
-        return response()->json($faturas);
-    }
-}
-
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Http\Controllers\Api\TimesheetController.php
-========================================
-<?php
-
-namespace App\Http\Controllers\Api;
-
-use App\Http\Controllers\Controller;
-use App\Models\Apontamento;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use Carbon\Carbon;
-
-class TimesheetController extends Controller
-{
-    public function play(Request $request, string $tarefaId): JsonResponse
-    {
-        $tenantId = $request->user()->tenant_id;
-
-        // Valida a tarefa diretamente no banco para evitar bloqueios de Model
-        $tarefa = DB::table('prj_tarefas')->where('id', $tarefaId)->where('tenant_id', $tenantId)->first();
-        if (!$tarefa) {
-            return response()->json(['error' => ['message' => 'Tarefa não encontrada.']], 404);
-        }
-
-        $aberto = Apontamento::where('tarefa_id', $tarefaId)
-            ->where('usuario_id', $request->user()->id)
-            ->whereNull('fim')
-            ->first();
-
-        if ($aberto) {
-            return response()->json(['error' => ['messa
+                'vaga_id' => 'requi

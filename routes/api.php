@@ -1,59 +1,61 @@
 <?php
 
-use App\Http\Controllers\Api\PublicOnboardingController;
-use App\Http\Middleware\EnsureIdempotency;
 use App\Http\Controllers\Api\AtivoController;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BillingWebhookController;
 use App\Http\Controllers\Api\CertificadoFiscalController;
+use App\Http\Controllers\Api\ColaboradorController;
 use App\Http\Controllers\Api\CompraController;
+use App\Http\Controllers\Api\ConciliacaoController;
+use App\Http\Controllers\Api\ControladoriaController;
 use App\Http\Controllers\Api\CotacaoCompraController;
 use App\Http\Controllers\Api\CrmController;
 use App\Http\Controllers\Api\CrmInboundController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DesempenhoClimaController;
 use App\Http\Controllers\Api\EmpresaController;
+use App\Http\Controllers\Api\EscalaTrabalhoController;
 use App\Http\Controllers\Api\ExportacaoContabilController;
 use App\Http\Controllers\Api\FinanceiroController;
 use App\Http\Controllers\Api\FiscalController;
+use App\Http\Controllers\Api\FrotaOperacaoController;
+use App\Http\Controllers\Api\FrotaVeiculoController;
+use App\Http\Controllers\Api\GedController;
+use App\Http\Controllers\Api\HoleriteController;
+use App\Http\Controllers\Api\ImportacaoController;
+use App\Http\Controllers\Api\IotTelemetryController;
 use App\Http\Controllers\Api\ItemController;
+use App\Http\Controllers\Api\KanbanController;
 use App\Http\Controllers\Api\MasterController;
 use App\Http\Controllers\Api\OrdemServicoController;
 use App\Http\Controllers\Api\PcpController;
+use App\Http\Controllers\Api\PdvController;
 use App\Http\Controllers\Api\PerfilController;
 use App\Http\Controllers\Api\PessoaController;
+use App\Http\Controllers\Api\PmoConfigController;
+use App\Http\Controllers\Api\PontoController;
 use App\Http\Controllers\Api\PortalClienteController;
+use App\Http\Controllers\Api\ProjetoController;
+use App\Http\Controllers\Api\ProjetoGestaoController;
+use App\Http\Controllers\Api\PublicOnboardingController;
+use App\Http\Controllers\Api\RecrutamentoController;
 use App\Http\Controllers\Api\SessaoController;
 use App\Http\Controllers\Api\TenantBillingController;
+use App\Http\Controllers\Api\TimesheetController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VendaController;
 use App\Http\Middleware\CheckMaster;
+use App\Http\Middleware\CheckStorageQuota;
 use App\Http\Middleware\CheckSubscriptionStatus;
+use App\Http\Middleware\EnsureIdempotency;
+use App\Http\Middleware\IdentifyEmpresa;
 use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\PontoController;
-use App\Http\Controllers\Api\ColaboradorController;
-use App\Http\Controllers\Api\EscalaTrabalhoController;
-use App\Http\Controllers\Api\HoleriteController;
-use App\Http\Controllers\Api\RecrutamentoController;
-use App\Http\Controllers\Api\DesempenhoClimaController;
-use App\Http\Controllers\Api\FrotaVeiculoController;
-use App\Http\Controllers\Api\FrotaOperacaoController;
-use App\Http\Controllers\Api\KanbanController;
-use App\Http\Controllers\Api\ProjetoController;
-use App\Http\Controllers\Api\TimesheetController;
-use App\Http\Controllers\Api\ProjetoGestaoController;
-use App\Http\Controllers\Api\GedController;
-use App\Http\Controllers\Api\PmoConfigController;
-use App\Http\Controllers\Api\ControladoriaController;
-use App\Http\Controllers\Api\ConciliacaoController;
-use App\Http\Controllers\Api\ImportacaoController;
-use App\Http\Controllers\Api\IotTelemetryController;
 
 // ==========================================
 // Rotas Públicas (Sem login / Sem Sanctum)
 // ==========================================
-
 Route::prefix('public')->group(function () {
     Route::get('/planos', [PublicOnboardingController::class, 'listarPlanos']);
     Route::get('/consultar-cnpj/{cnpj}', [PublicOnboardingController::class, 'consultarCnpjPublico']);
@@ -65,9 +67,6 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'solicitarRecuperacaoSenha']);
     Route::post('/reset-password', [AuthController::class, 'redefinirSenha']);
 });
-Route::prefix('auth')->group(function () {
-    Route::post('/login', [AuthController::class, 'login']);
-});
 
 // Webhooks de Captação de Leads (Landing Pages / RD Station)
 Route::post('/crm/webhook/lead/{token}', [CrmInboundController::class, 'receberLead']);
@@ -75,9 +74,6 @@ Route::post('/crm/webhook/{token}', [CrmController::class, 'webhookCapturaLead']
 
 // Webhooks de Gateways (Asaas, etc)
 Route::post('/billing/webhook/asaas', [BillingWebhookController::class, 'handleAsaas']);
-Route::get('/billing/minha-assinatura', [TenantBillingController::class, 'minhaAssinatura']);
-Route::get('/billing/historico-faturas', [TenantBillingController::class, 'historicoFaturas']);
-Route::post('/billing/alterar-plano', [TenantBillingController::class, 'alterarPlano']);
 
 // Rota de Ingestão de Dados IoT (ESP32 / Arduino / CLP)
 Route::post('/iot/telemetry', [IotTelemetryController::class, 'receive']);
@@ -90,9 +86,16 @@ Route::prefix('portal')->group(function () {
 });
 
 // ==========================================
-// Rotas Protegidas por Autenticação (Sanctum + Tenant + Subscription)
+// Rotas Protegidas (Sanctum + Tenant + Empresa + Subscription + Quota + Idempotência)
 // ==========================================
-Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatus::class])->group(function () {
+Route::middleware([
+    'auth:sanctum',
+    IdentifyTenant::class,
+    IdentifyEmpresa::class,
+    CheckSubscriptionStatus::class,
+    CheckStorageQuota::class,
+    EnsureIdempotency::class,
+])->group(function () {
 
     // Sessão do Usuário
     Route::prefix('auth')->group(function () {
@@ -100,6 +103,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/mfa/setup', [AuthController::class, 'mfaSetup']);
         Route::post('/mfa/confirmar', [AuthController::class, 'mfaConfirmar']);
+        Route::post('/mfa/desativar', [AuthController::class, 'mfaDesativar']);
         Route::post('/auth/mfa/desativar', [AuthController::class, 'mfaDesativar']);
         Route::post('/password/update', [AuthController::class, 'updatePassword']);
         Route::get('/sessoes', [SessaoController::class, 'index']);
@@ -143,16 +147,16 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::delete('/perfis/{id}', [PerfilController::class, 'destroy']);
 
     // Cadastros e Pessoas
+    Route::get('/pessoas/consultar-cnpj/{cnpj}', [PessoaController::class, 'consultarCnpj']);
     Route::get('/pessoas', [PessoaController::class, 'index']);
     Route::post('/pessoas', [PessoaController::class, 'store']);
     Route::get('/pessoas/{id}', [PessoaController::class, 'show']);
     Route::put('/pessoas/{id}', [PessoaController::class, 'update']);
     Route::delete('/pessoas/{id}', [PessoaController::class, 'destroy']);
-    Route::get('/pessoas/consultar-cnpj/{cnpj}', [PessoaController::class, 'consultarCnpj']);
 
     // Importador de Dados (Onboarding)
     Route::prefix('importacao')->group(function () {
-    Route::post('/pessoas', [ImportacaoController::class, 'importarPessoas']);
+        Route::post('/pessoas', [ImportacaoController::class, 'importarPessoas']);
     });
 
     // Catálogo de Itens & Produtos
@@ -209,6 +213,14 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::put('/vendas/comissoes/regras/{id}/toggle', [VendaController::class, 'toggleRegraComissao']);
     Route::post('/vendas/pdv/processar-cartao', [VendaController::class, 'processarCartaoPdv']);
 
+    // Frente de Caixa (PDV) - Gaveta
+    Route::prefix('pdv')->group(function () {
+        Route::get('/caixa/status', [PdvController::class, 'status']);
+        Route::post('/caixa/abrir', [PdvController::class, 'abrir']);
+        Route::post('/caixa/movimentar', [PdvController::class, 'movimentar']);
+        Route::post('/caixa/fechar', [PdvController::class, 'fechar']);
+    });
+
     // Prestação de Serviços & CMMS
     Route::get('/os/bootstrap', [OrdemServicoController::class, 'bootstrapData']);
     Route::get('/os/metricas-cmms', [OrdemServicoController::class, 'metricasCmms']);
@@ -238,7 +250,7 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     Route::put('/os/{id}/pecas/{itemId}/almoxarifado', [OrdemServicoController::class, 'tratarPecaAlmoxarifado']);
     Route::put('/os/{id}/dados-tecnicos', [OrdemServicoController::class, 'atualizarDadosTecnicos']);
 
-   // Financeiro & Tesouraria
+    // Financeiro & Tesouraria
     Route::prefix('financeiro')->group(function () {
         Route::get('/titulos', [FinanceiroController::class, 'titulos']);
         Route::post('/titulos/{id}/liquidar', [FinanceiroController::class, 'liquidar']);
@@ -249,46 +261,39 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     });
 
     // Controladoria (DRE, Planos de Contas e Centros de Custo)
-        Route::prefix('controladoria')->group(function () {
-            Route::get('/planos-contas', [ControladoriaController::class, 'indexPlanosContas']);
-            Route::post('/planos-contas', [ControladoriaController::class, 'storePlanoConta']);
+    Route::prefix('controladoria')->group(function () {
+        Route::get('/planos-contas', [ControladoriaController::class, 'indexPlanosContas']);
+        Route::post('/planos-contas', [ControladoriaController::class, 'storePlanoConta']);
+        Route::get('/centros-custos', [ControladoriaController::class, 'indexCentrosCustos']);
+        Route::post('/centros-custos', [ControladoriaController::class, 'storeCentroCusto']);
+        Route::post('/gerar-padrao', [ControladoriaController::class, 'gerarEstruturaPadrao']);
+        Route::post('/dre', [ControladoriaController::class, 'gerarDre']);
+    });
 
-            Route::get('/centros-custos', [ControladoriaController::class, 'indexCentrosCustos']);
-            Route::post('/centros-custos', [ControladoriaController::class, 'storeCentroCusto']);
-
-            Route::post('/gerar-padrao', [ControladoriaController::class, 'gerarEstruturaPadrao']);
-        });
-        // Conciliação Bancária
-        Route::prefix('conciliacao')->group(function () {
-            Route::post('/ofx', [ConciliacaoController::class, 'processarOfx']);
-            Route::post('/ofx/manual', [ConciliacaoController::class, 'conciliarManual']);
-        });
+    // Conciliação Bancária
+    Route::prefix('conciliacao')->group(function () {
+        Route::post('/ofx', [ConciliacaoController::class, 'processarOfx']);
+        Route::post('/ofx/manual', [ConciliacaoController::class, 'conciliarManual']);
+    });
 
     // Exportações Contábeis & SPED
     Route::get('/exportacoes/metricas', [ExportacaoContabilController::class, 'metricas']);
     Route::get('/exportacoes/download', [ExportacaoContabilController::class, 'download']);
 
-    // ==========================================
     // Motor Fiscal & Certificado A1
-    // ==========================================
     Route::prefix('fiscal')->group(function () {
         Route::get('/', [FiscalController::class, 'index']);
         Route::get('/documentos', [FiscalController::class, 'index']);
         Route::get('/regras', [FiscalController::class, 'regras']);
         Route::post('/emitir', [FiscalController::class, 'emitir']);
-
-        // CORREÇÃO: Removido o "/fiscal" duplicado, pois o grupo já tem o prefixo
         Route::get('/status-sefaz', [FiscalController::class, 'statusSefaz']);
-
-        // Novas rotas de eventos fiscais
         Route::post('/{id}/cancelar', [FiscalController::class, 'cancelar']);
         Route::post('/{id}/carta-correcao', [FiscalController::class, 'cartaCorrecao']);
-
         Route::get('/certificado', [CertificadoFiscalController::class, 'show']);
         Route::post('/certificado/upload', [CertificadoFiscalController::class, 'upload']);
     });
 
-    // Indústria & PCP (Planejamento e Controle da Produção)
+    // Indústria & PCP
     Route::get('/pcp/metricas', [PcpController::class, 'metricasKpi']);
     Route::get('/pcp/ordens-producao', [PcpController::class, 'ordensProducao']);
     Route::post('/pcp/ordens-producao', [PcpController::class, 'storeOrdemProducao']);
@@ -308,83 +313,68 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
     // Auditoria (Administradores)
     Route::get('/auditoria', [AuditoriaController::class, 'index']);
 
-    // ==========================================
-    // CRM & FUNIL DE VENDAS
-    // ==========================================
+    // CRM & Funil de Vendas
     Route::get('/crm/pipelines', [CrmController::class, 'listarPipelines']);
     Route::post('/crm/pipelines', [CrmController::class, 'storePipeline']);
     Route::put('/crm/pipelines/{id}', [CrmController::class, 'atualizarPipeline']);
     Route::put('/crm/pipelines/{pipelineId}/reordenar-etapas', [CrmController::class, 'reordenarEtapas']);
-
     Route::post('/crm/pipelines/{pipelineId}/etapas', [CrmController::class, 'storeEtapa']);
     Route::put('/crm/etapas/{id}', [CrmController::class, 'updateEtapa']);
     Route::delete('/crm/etapas/{id}', [CrmController::class, 'destroyEtapa']);
-
     Route::get('/crm/board', [CrmController::class, 'board']);
     Route::post('/crm/oportunidades', [CrmController::class, 'storeOportunidade']);
     Route::put('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
     Route::patch('/crm/oportunidades/{id}/mover', [CrmController::class, 'moverCard']);
     Route::post('/crm/oportunidades/{id}/marcar-perdido', [CrmController::class, 'marcarPerdido']);
     Route::post('/crm/oportunidades/{id}/converter-orcamento', [CrmController::class, 'converterParaOrcamento']);
-
     Route::post('/crm/oportunidades/{id}/itens', [CrmController::class, 'adicionarItemOportunidade']);
     Route::delete('/crm/oportunidades/{id}/itens/{itemId}', [CrmController::class, 'removerItemOportunidade']);
-
     Route::post('/crm/oportunidades/{id}/atividades', [CrmController::class, 'adicionarAtividade']);
     Route::patch('/crm/oportunidades/{id}/atividades/{atividadeId}/toggle', [CrmController::class, 'toggleAtividade']);
-
     Route::post('/crm/motivos-perda', [CrmController::class, 'storeMotivoPerda']);
     Route::put('/crm/motivos-perda/{id}', [CrmController::class, 'updateMotivoPerda']);
     Route::delete('/crm/motivos-perda/{id}', [CrmController::class, 'destroyMotivoPerda']);
-
     Route::get('/crm/metricas', [CrmController::class, 'metricasAnaliticas']);
 
-    // --- GESTÃO DE ASSINATURA (PORTAL DO INQUILINO) ---
+    // Gestão de Assinatura (Portal do Inquilino Protegido)
     Route::get('/billing/minha-assinatura', [TenantBillingController::class, 'minhaAssinatura']);
     Route::get('/billing/historico-faturas', [TenantBillingController::class, 'historicoFaturas']);
+    Route::post('/billing/alterar-plano', [TenantBillingController::class, 'alterarPlano']);
 
     // Recursos Humanos & Ponto Eletrônico
     Route::post('/rh/ponto/registrar', [PontoController::class, 'registrar']);
     Route::get('/rh/ponto/hoje', [PontoController::class, 'historicoHoje']);
-
     Route::get('/rh/colaboradores', [ColaboradorController::class, 'index']);
     Route::post('/rh/colaboradores', [ColaboradorController::class, 'store']);
     Route::put('/rh/colaboradores/{id}', [ColaboradorController::class, 'update']);
     Route::get('/rh/colaboradores/{id}/espelho', [ColaboradorController::class, 'espelhoPonto']);
-
     Route::get('/rh/departamentos', [ColaboradorController::class, 'departamentos']);
     Route::post('/rh/departamentos', [ColaboradorController::class, 'storeDepartamento']);
     Route::delete('/rh/departamentos/{id}', [ColaboradorController::class, 'destroyDepartamento']);
-
     Route::get('/rh/escalas', [EscalaTrabalhoController::class, 'index']);
     Route::post('/rh/escalas', [EscalaTrabalhoController::class, 'store']);
     Route::delete('/rh/escalas/{id}', [EscalaTrabalhoController::class, 'destroy']);
-
     Route::get('/rh/holerites/meus', [HoleriteController::class, 'meusHolerites']);
     Route::get('/rh/holerites/meus/{id}/pdf', [HoleriteController::class, 'baixarMeuPdf'])->whereUuid('id');
     Route::get('/rh/holerites', [HoleriteController::class, 'index']);
     Route::post('/rh/holerites', [HoleriteController::class, 'store']);
     Route::get('/rh/holerites/{id}', [HoleriteController::class, 'show'])->whereUuid('id');
-
     Route::get('/rh/vagas', [RecrutamentoController::class, 'indexVagas']);
     Route::post('/rh/vagas', [RecrutamentoController::class, 'storeVaga']);
     Route::get('/rh/vagas/{vagaId}/kanban', [RecrutamentoController::class, 'boardKanban']);
     Route::post('/rh/candidatos', [RecrutamentoController::class, 'storeCandidato']);
     Route::put('/rh/candidatos/{id}/mover', [RecrutamentoController::class, 'moverCandidato']);
-
     Route::get('/rh/etapas', [RecrutamentoController::class, 'indexEtapas']);
     Route::post('/rh/etapas', [RecrutamentoController::class, 'storeEtapa']);
     Route::delete('/rh/etapas/{id}', [RecrutamentoController::class, 'destroyEtapa']);
-
     Route::post('/rh/enps/campanhas', [DesempenhoClimaController::class, 'storeCampanha']);
     Route::post('/rh/enps/campanhas/{campanhaId}/responder', [DesempenhoClimaController::class, 'responderEnps']);
     Route::get('/rh/enps/campanhas/{campanhaId}/resultados', [DesempenhoClimaController::class, 'resultadosEnps']);
-
     Route::post('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'storeEixo']);
     Route::get('/rh/enps/campanhas', [DesempenhoClimaController::class, 'indexCampanhas']);
     Route::get('/rh/ninebox/eixos', [DesempenhoClimaController::class, 'indexEixos']);
 
-    // MÓDULO DE FROTAS & TELEMETRIA
+    // Módulo de Frotas & Telemetria
     Route::prefix('frota')->group(function () {
         Route::get('/dominios', [FrotaVeiculoController::class, 'dominios']);
         Route::get('/veiculos', [FrotaVeiculoController::class, 'index']);
@@ -394,7 +384,8 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::delete('/veiculos/{id}', [FrotaVeiculoController::class, 'destroy']);
         Route::post('/abastecimentos', [FrotaOperacaoController::class, 'storeAbastecimento']);
     });
-    // Dentro do seu grupo de auth Sanctum + IdentifyTenant, adicione:
+
+    // Configurações Dinâmicas do PMO
     Route::prefix('pmo/configuracoes')->group(function () {
         Route::get('/{dominio}', [PmoConfigController::class, 'index']);
         Route::post('/{dominio}', [PmoConfigController::class, 'store']);
@@ -402,81 +393,45 @@ Route::middleware(['auth:sanctum', IdentifyTenant::class, CheckSubscriptionStatu
         Route::delete('/{dominio}/{id}', [PmoConfigController::class, 'destroy']);
     });
 
-    // Frente de Caixa (PDV) - Gaveta
-    Route::prefix('pdv')->group(function () {
-        Route::get('/caixa/status', [\App\Http\Controllers\Api\PdvController::class, 'status']);
-        Route::post('/caixa/abrir', [\App\Http\Controllers\Api\PdvController::class, 'abrir']);
-        Route::post('/caixa/movimentar', [\App\Http\Controllers\Api\PdvController::class, 'movimentar']);
-        Route::post('/caixa/fechar', [\App\Http\Controllers\Api\PdvController::class, 'fechar']);
-    });
-
-    // ==========================================
     // Módulo de Projetos (Kanban & Timesheet)
-    // ==========================================
     Route::prefix('projetos')->middleware('check.projeto.status')->group(function () {
         Route::get('/', [ProjetoController::class, 'index']);
         Route::post('/', [ProjetoController::class, 'store']);
         Route::put('/{id}', [ProjetoController::class, 'update']);
         Route::put('/{projetoId}/orcamento', [ProjetoController::class, 'atualizarOrcamento']);
-
-        // --- Novas Rotas Nativas do Enterprise PMO ---
         Route::get('/{projetoId}/gantt', [ProjetoController::class, 'gantt']);
         Route::get('/{projetoId}/capacidade', [ProjetoController::class, 'capacidade']);
-        // ---------------------------------------------
-
         Route::get('/{projetoId}/board', [KanbanController::class, 'board']);
         Route::patch('/tarefas/{tarefaId}/mover', [KanbanController::class, 'moverTarefa']);
         Route::post('/etapas/{etapaId}/tarefas', [KanbanController::class, 'adicionarTarefa']);
-
         Route::post('/tarefas/{tarefaId}/play', [TimesheetController::class, 'play']);
         Route::put('/tarefas/{tarefaId}/stop', [TimesheetController::class, 'stop']);
-
         Route::get('/{projetoId}/equipe', [ProjetoGestaoController::class, 'listarEquipe']);
         Route::post('/{projetoId}/equipe', [ProjetoGestaoController::class, 'adicionarEquipe']);
-
-        Route::get('/{projetoId}/custos', [ProjetoGestaoController::class, 'listarCustos']);
-        Route::post('/{projetoId}/custos', [ProjetoGestaoController::class, 'adicionarCusto']);
-
-        Route::get('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'listarEntregaveis']);
-        Route::post('/{projetoId}/entregaveis', [ProjetoGestaoController::class, 'adicionarEntregavel']);
-
-        Route::post('/tarefas/{tarefaId}/checklists', [KanbanController::class, 'adicionarChecklist']);
-        Route::patch('/tarefas/checklists/{checklistId}/toggle', [KanbanController::class, 'toggleChecklist']);
-
-        Route::post('/tarefas/{tarefaId}/dependencias', [KanbanController::class, 'adicionarDependencia']);
-        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [KanbanController::class, 'removerDependencia']);
-
-        // Rotas corretivas (Status, Taxonomia e Prioridades)
-        Route::patch('/{id}/status', [ProjetoController::class, 'alterarStatus'])->withoutMiddleware('check.projeto.status');
-        Route::patch('/tarefas/{tarefaId}/prioridade', [KanbanController::class, 'alterarPrioridade']);
-        Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
-
-        // Parâmetros de Domínio PMO
-        Route::get('/parametros/status', [ProjetoController::class, 'listarStatus']);
-        Route::get('/parametros/prioridades', [KanbanController::class, 'listarPrioridades']);
-         Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
-        // Novas rotas de Taxonomia de Fluxos (Etapas)
-        Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
-        Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
-
-        // Financeiro do PMO: Custos e Entregáveis
         Route::get('/{projetoId}/custos', [ProjetoController::class, 'custos']);
         Route::post('/{projetoId}/custos', [ProjetoController::class, 'storeCusto']);
-
         Route::get('/{projetoId}/entregaveis', [ProjetoController::class, 'entregaveis']);
         Route::post('/{projetoId}/entregaveis', [ProjetoController::class, 'storeEntregavel']);
         Route::post('/entregaveis/{entregavelId}/faturar', [ProjetoController::class, 'faturarEntregavel']);
+        Route::post('/tarefas/{tarefaId}/checklists', [KanbanController::class, 'adicionarChecklist']);
+        Route::patch('/tarefas/checklists/{checklistId}/toggle', [KanbanController::class, 'toggleChecklist']);
+        Route::post('/tarefas/{tarefaId}/dependencias', [KanbanController::class, 'adicionarDependencia']);
+        Route::delete('/tarefas/{tarefaId}/dependencias/{dependeDeId}', [KanbanController::class, 'removerDependencia']);
+        Route::patch('/{id}/status', [ProjetoController::class, 'alterarStatus'])->withoutMiddleware('check.projeto.status');
+        Route::patch('/tarefas/{tarefaId}/prioridade', [KanbanController::class, 'alterarPrioridade']);
+        Route::put('/etapas/{etapaId}', [KanbanController::class, 'renomearEtapa']);
+        Route::get('/parametros/status', [ProjetoController::class, 'listarStatus']);
+        Route::get('/parametros/prioridades', [KanbanController::class, 'listarPrioridades']);
+        Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
+        Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
     });
 
-    // ==========================================
-    // MÓDULO GED (Cofre Digital)
-    // ==========================================
+    // Módulo GED (Cofre Digital)
     Route::prefix('ged')->group(function () {
         Route::get('/listar', [GedController::class, 'listar']);
         Route::post('/pastas', [GedController::class, 'criarPasta']);
         Route::post('/upload', [GedController::class, 'upload']);
-
-        Route::post('/upload/tarefa/{tarefaId}', function(\Illuminate\Http\Request $request, $tarefaId) {
+        Route::post('/upload/tarefa/{tarefaId}', function (\Illuminate\Http\Request $request, $tarefaId) {
             $request->merge([
                 'entidade_type' => 'App\Models\Tarefa',
                 'entidade_id' => $tarefaId

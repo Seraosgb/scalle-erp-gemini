@@ -1,32 +1,378 @@
-﻿ 'km_marcador' => $dados['km_marcador'],
+﻿     $doc->modelo_documento = $modeloDoc;
+            $doc->numero_documento = $dadosEmissao['numero'];
+            $doc->serie = '1';
+            $doc->chave_acesso = $nfe->getChave();
+            $doc->status = 'PROCESSANDO';
+            $doc->xml_conteudo = $xmlAssinado;
+            $doc->data_emissao = now();
+            $doc->valor_total = $totais;
+            $doc->save();
+
+            return $doc;
+        } catch (Exception $e) {
+            $errosXsd = !empty($nfe->getErrors()) ? implode(' | ', $nfe->getErrors()) : '';
+            throw new Exception($e->getMessage() . ($errosXsd ? " - SEFAZ Schema Error: " . $errosXsd : ""));
+        }
+    }
+
+    public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
+    public function consultar(string $chaveAcesso): array { return []; }
+    public function corrigir(string $chaveAcesso, string $correcao): bool { return true; }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Fiscal\SefazNfeDriver.php
+========================================
+<?php
+
+namespace App\Services\Fiscal;
+
+use App\Interfaces\FiscalDriverInterface;
+use App\Models\DocumentoFiscal;
+use NFePHP\NFe\Tools;
+use NFePHP\Common\Certificate;
+use NFePHP\NFe\Make;
+use Exception;
+
+class SefazNfeDriver implements FiscalDriverInterface
+{
+    protected ?Tools $tools = null;
+
+    public function __construct()
+    {
+        // Nasce limpo. Configurado dinamicamente via MotorFiscalService.
+    }
+
+    public function configurar(string $certificadoBinario, string $senha, string $uf, int $tpAmb = 2): self
+    {
+        $certificado = Certificate::readPfx($certificadoBinario, $senha);
+
+        $configJson = json_encode([
+            "atualizacao" => date('Y-m-d H:i:s'),
+            "tpAmb" => $tpAmb,
+            "razaosocial" => "Scalle Operacional LTDA",
+            "siglaUF" => $uf,
+            "cnpj" => "00000000000000",
+            "schemes" => "PL_009_V4",
+            "versao" => "4.00"
+        ]);
+
+        $this->tools = new Tools($configJson, $certificado);
+        $this->tools->model('55'); // Define NFe (Modelo 55)
+
+        return $this;
+    }
+
+    public function emitir(array $dadosEmissao): DocumentoFiscal
+    {
+        if (!$this->tools) {
+            throw new Exception("Driver Fiscal não configurado. Chame o método configurar() antes de emitir.");
+        }
+
+        $nfe = new Make();
+
+        // 0. Tag raiz <infNFe>
+        $stdInfNFe = new \stdClass();
+        $stdInfNFe->versao = '4.00';
+        $stdInfNFe->Id = '';
+        $stdInfNFe->pk_nItem = null;
+        $nfe->taginfNFe($stdInfNFe);
+
+        // 1. Tag <ide> (Identificação)
+        $stdIde = new \stdClass();
+        $stdIde->cUF = 33; // RJ
+        $stdIde->cNF = rand(11111111, 99999999);
+        $stdIde->natOp = 'VENDA DE MERCADORIAS';
+        $stdIde->mod = 55;
+        $stdIde->serie = 1;
+        $stdIde->nNF = rand(1000, 9999); // Numeração que virá do banco
+        $stdIde->dhEmi = date('Y-m-d\TH:i:sP');
+        $stdIde->tpNF = 1; // 1=Saída
+        $stdIde->idDest = 1; // 1=Interna, 2=Interestadual
+        $stdIde->cMunFG = 3300456; // Belford Roxo
+        $stdIde->tpImp = 1; // Danfe Retrato
+        $stdIde->tpEmis = 1; // Emissão Normal
+        $stdIde->tpAmb = 2; // Homologação
+        $stdIde->finNFe = 1; // 1=Normal
+        $stdIde->indFinal = 0; // 0=Normal, 1=Consumidor Final
+        $stdIde->indPres = 1; // 1=Presencial
+        $stdIde->procEmi = 0; // Emissão por aplicativo próprio
+        $stdIde->verProc = 'ScalleERP-1.0';
+        $nfe->tagide($stdIde);
+
+        // 2. Tag <emit> (Emitente)
+        $stdEmit = new \stdClass();
+        $stdEmit->xNome = 'SCALLE ENTERPRISE MATRIZ';
+        $stdEmit->xFant = 'SCALLE MATRIZ';
+        $stdEmit->IE = '12345678';
+        $stdEmit->CRT = 3; // 3=Regime Normal
+        $stdEmit->CNPJ = '00000000000191';
+        $nfe->tagemit($stdEmit);
+
+        // Endereço Emitente
+        $stdEnderEmit = new \stdClass();
+        $stdEnderEmit->xLgr = 'RUA PRINCIPAL';
+        $stdEnderEmit->nro = '100';
+        $stdEnderEmit->xBairro = 'CENTRO';
+        $stdEnderEmit->cMun = 3300456;
+        $stdEnderEmit->xMun = 'BELFORD ROXO';
+        $stdEnderEmit->UF = 'RJ';
+        $stdEnderEmit->CEP = '26110000';
+        $stdEnderEmit->cPais = 1058;
+        $stdEnderEmit->xPais = 'BRASIL';
+        $nfe->tagenderEmit($stdEnderEmit);
+
+        // 3. Tag <dest> (Destinatário)
+        $stdDest = new \stdClass();
+        $stdDest->xNome = $dadosEmissao['destinatario']['nome_razao_social'] ?? 'DISTRIBUIDORA DE PECAS LTDA';
+        $stdDest->indIEDest = 1; // 1=Contribuinte ICMS
+        $stdDest->IE = '98765432';
+
+        // Blindagem de CPF/CNPJ para aceitar apenas 11 ou 14
+        $doc = preg_replace('/[^0-9]/', '', $dadosEmissao['destinatario']['cpf_cnpj'] ?? '');
+        if (strlen($doc) === 14) {
+            $stdDest->CNPJ = $doc;
+        } elseif (strlen($doc) === 11) {
+            $stdDest->CPF = $doc;
+        } else {
+            // Fallback para não estourar erro XSD em banco de testes com dados sujos
+            $stdDest->CNPJ = '99999999000191'; // CNPJ universal de homologação SEFAZ
+        }
+        $nfe->tagdest($stdDest);
+
+        // Endereço Destinatário
+        $stdEnderDest = new \stdClass();
+        $stdEnderDest->xLgr = 'AVENIDA AUTOMOVEL CLUBE';
+        $stdEnderDest->nro = '1500';
+        $stdEnderDest->xBairro = 'CENTRO';
+        $stdEnderDest->cMun = 3300456;
+        $stdEnderDest->xMun = 'BELFORD ROXO';
+        $stdEnderDest->UF = 'RJ';
+        $stdEnderDest->CEP = '26110000';
+        $stdEnderDest->cPais = 1058;
+        $stdEnderDest->xPais = 'BRASIL';
+        $nfe->tagenderDest($stdEnderDest);
+
+        // 4. Tag <det> e <prod> (Itens da Nota)
+        $itemCount = 1;
+        $vTotalProdutos = 0.00;
+
+        foreach ($dadosEmissao['itens'] as $item) {
+            $stdProd = new \stdClass();
+            $stdProd->item = $itemCount++;
+            $stdProd->cProd = 'COMP-TERM-10K';
+            $stdProd->cEAN = 'SEM GTIN';
+            $stdProd->xProd = 'SENSOR DE TEMPERATURA TERMISTOR NTC 10K';
+            $stdProd->NCM = '90251990';
+            $stdProd->CFOP = '5102';
+            $stdProd->uCom = 'UN';
+            $stdProd->qCom = $item['quantidade'] ?? 1.0000;
+            $stdProd->vUnCom = $item['valor_unitario'] ?? 18.50;
+            $stdProd->vProd = $stdProd->qCom * $stdProd->vUnCom;
+            $stdProd->cEANTrib = 'SEM GTIN';
+            $stdProd->uTrib = 'UN';
+            $stdProd->qTrib = $stdProd->qCom;
+            $stdProd->vUnTrib = $stdProd->vUnCom;
+            $stdProd->indTot = 1;
+
+            $vTotalProdutos += $stdProd->vProd;
+            $nfe->tagprod($stdProd);
+
+            // Tributos (ICMS 00 - Tributado Integralmente)
+            $stdImposto = new \stdClass();
+            $stdImposto->item = $stdProd->item;
+            $nfe->tagimposto($stdImposto);
+
+            $stdICMS = new \stdClass();
+            $stdICMS->item = $stdProd->item;
+            $stdICMS->orig = 0;
+            $stdICMS->CST = '00';
+            $stdICMS->modBC = 3;
+            $stdICMS->vBC = $stdProd->vProd;
+            $stdICMS->pICMS = 18.00;
+            $stdICMS->vICMS = round($stdICMS->vBC * ($stdICMS->pICMS / 100), 2);
+            $nfe->tagICMS($stdICMS);
+        }
+
+        // 5. Totais
+        $stdTot = new \stdClass();
+        $stdTot->vBC = $vTotalProdutos;
+        $stdTot->vICMS = round($vTotalProdutos * 0.18, 2);
+        $stdTot->vICMSDeson = 0.00;
+        $stdTot->vFCP = 0.00;
+        $stdTot->vBCST = 0.00;
+        $stdTot->vST = 0.00;
+        $stdTot->vFCPST = 0.00;
+        $stdTot->vFCPSTRet = 0.00;
+        $stdTot->vProd = $vTotalProdutos;
+        $stdTot->vFrete = 0.00;
+        $stdTot->vSeg = 0.00;
+        $stdTot->vDesc = 0.00;
+        $stdTot->vII = 0.00;
+        $stdTot->vIPI = 0.00;
+        $stdTot->vIPIDevol = 0.00;
+        $stdTot->vPIS = 0.00;
+        $stdTot->vCOFINS = 0.00;
+        $stdTot->vOutro = 0.00;
+        $stdTot->vNF = $vTotalProdutos;
+        $nfe->tagICMSTot($stdTot);
+
+        // Inclusão da Tag <transp> antes do Pagamento
+        $stdTransp = new \stdClass();
+        $stdTransp->modFrete = 9; // 9 = Sem Ocorrência de Transporte
+        $nfe->tagtransp($stdTransp);
+
+        // 6. Pagamento
+        $stdPag = new \stdClass();
+        $nfe->tagpag($stdPag);
+
+        $stdDetPag = new \stdClass();
+        $stdDetPag->tPag = '15'; // Boleto Bancario
+        $stdDetPag->vPag = $vTotalProdutos;
+        $stdDetPag->indPag = 1; // A Prazo
+        $nfe->tagdetPag($stdDetPag);
+
+        // Gera o XML String
+        if (!$nfe->montaNFe()) {
+            throw new \Exception("Erro ao gerar XML da NFe: " . json_encode($nfe->getErrors()));
+        }
+        $xmlNãoAssinado = $nfe->getXML();
+
+        // Assinatura Criptográfica
+        $xmlAssinado = $this->tools->signNFe($xmlNãoAssinado);
+
+        // ========================================================
+        // TRANSMISSÃO PARA A SEFAZ (Síncrono)
+        // ========================================================
+        try {
+            // Envia o lote contendo 1 nota. O 3º parâmetro '1' força o processamento síncrono
+            $respostaSefaz = $this->tools->sefazEnviaLote([$xmlAssinado], $stdIde->nNF, 1);
+
+            // Padroniza o retorno XML da SEFAZ para um Objeto PHP legível
+            $stdRetorno = (new \NFePHP\NFe\Common\Standardize())->toStd($respostaSefaz);
+
+            $documentoFiscal = new DocumentoFiscal();
+            $documentoFiscal->xml_assinado = $xmlAssinado;
+            $documentoFiscal->status = 'REJEITADO'; // Status conservador por padrão
+
+            // cStat 104 = Lote processado. Precisamos olhar o cStat interno do protocolo da nota
+            if (isset($stdRetorno->protNFe->infProt)) {
+                $infProt = $stdRetorno->protNFe->infProt;
+
+                if ($infProt->cStat == 100) { // 100 = Autorizado o uso da NF-e
+                    $documentoFiscal->status = 'AUTORIZADO';
+                    $documentoFiscal->protocolo_autorizacao = $infProt->nProt;
+                    // MÁGICA: Anexa o protocolo da SEFAZ no final do nosso XML assinado
+                    $documentoFiscal->xml_autorizado = \NFePHP\NFe\Complements::toAuthorize($xmlAssinado, $respostaSefaz);
+                } else {
+                    // Rejeição mapeada pela SEFAZ
+                    throw new Exception("SEFAZ Rejeitou [cStat {$infProt->cStat}]: {$infProt->xMotivo}");
+                }
+            } else {
+                // Erro no lote inteiro
+                throw new Exception("Erro de Lote SEFAZ [cStat {$stdRetorno->cStat}]: {$stdRetorno->xMotivo}");
+            }
+
+            return $documentoFiscal;
+
+        } catch (\Exception $e) {
+            // Em caso de falha de conexão ou rejeição, devolve o erro mastigado
+            throw new Exception("Falha na Transmissão: " . $e->getMessage());
+        }
+    }
+
+    public function cancelar(string $chaveAcesso, string $justificativa): bool { return true; }
+    public function consultar(string $chaveAcesso): array { return []; }
+    public function corrigir(string $chaveAcesso, string $correcao): bool { return true; }
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\app\Services\Frota\FrotaOperacaoService.php
+========================================
+<?php
+
+namespace App\Services\Frota;
+
+use App\Models\FrotaAbastecimento;
+use App\Models\FrotaVeiculo;
+use App\Models\OrdemServico;
+use App\Services\FinanceiroService;
+use App\Services\OrdemServicoService;
+use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class FrotaOperacaoService
+{
+    public static function registrarAbastecimento(array $dados, string $tenantId, string $empresaId): string
+    {
+        return DB::transaction(function () use ($dados, $tenantId, $empresaId) {
+            $veiculo = FrotaVeiculo::where('tenant_id', $tenantId)->findOrFail($dados['veiculo_id']);
+
+            if ($dados['km_marcador'] <= $veiculo->km_atual) {
+                throw new Exception("Erro de Hodômetro: O KM informado ({$dados['km_marcador']}) deve ser maior que o KM atual do veículo ({$veiculo->km_atual}).");
+            }
+
+            $veiculo->update(['km_atual' => $dados['km_marcador']]);
+
+            // Integração via Contrato de Serviço com o Módulo Financeiro (Zero SQL direto)
+            $titulo = FinanceiroService::registrarTitulo([
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'pessoa_id' => $dados['posto_id'],
+                'natureza' => 'PAGAR',
+                'documento_numero' => 'ABAST-' . $veiculo->placa,
+                'origem_tipo' => 'frota_abastecimento',
+                'origem_id' => $veiculo->id,
+                'data_vencimento' => $dados['data_abastecimento'],
+                'valor_original' => (float) $dados['valor_total'],
+                'historico' => "Abastecimento - Veículo {$veiculo->placa} ({$dados['litros']}L)",
+            ]);
+
+            $abastecimento = FrotaAbastecimento::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'empresa_id' => $empresaId,
+                'veiculo_id' => $veiculo->id,
+                'motorista_id' => $dados['motorista_id'],
+                'posto_id' => $dados['posto_id'],
+                'data_abastecimento' => $dados['data_abastecimento'],
+                'km_marcador' => $dados['km_marcador'],
                 'litros' => $dados['litros'],
                 'valor_total' => $dados['valor_total'],
                 'tipo_combustivel_id' => $dados['tipo_combustivel_id'] ?? null,
-                'titulo_financeiro_id' => $tituloId,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'titulo_financeiro_id' => $titulo->id,
             ]);
 
-            // 5. Integração CMMS: Alerta de Manutenção (Ex: Troca de óleo a cada 10k KM)
-            // Se o resto da divisão por 10.000 for menor que a quilometragem desse abastecimento, acende o alerta.
-            if ($veiculo->km_atual % 10000 < 500) {
-                self::gerarOsPreventiva($veiculo, $tenantId, $empresaId);
+            if (((int) $veiculo->km_atual % 10000) < 500) {
+                self::acionarOsPreventivaFrota($veiculo, $tenantId, $empresaId, $dados['posto_id']);
             }
 
-            return $abastecimentoId;
+            return $abastecimento->id;
         });
     }
 
-    private static function gerarOsPreventiva(FrotaVeiculo $veiculo, string $tenantId, string $empresaId)
+    private static function acionarOsPreventivaFrota(FrotaVeiculo $veiculo, string $tenantId, string $empresaId, string $clienteRefId): void
     {
-        DB::table('os_ordens_servico')->insert([
+        $sla = OrdemServicoService::calcularSla('NORMAL');
+        $ultimoNumero = OrdemServico::where('tenant_id', $tenantId)->where('empresa_id', $empresaId)->max('numero_os') ?? 1000;
+
+        OrdemServico::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'empresa_id' => $empresaId,
-            'descricao' => "Revisão Preventiva Automática (Troca de Óleo) - KM Atual: {$veiculo->km_atual}",
-            // Como as etapas/status são dinâmicos (sis_tabelas_dominio), deixamos o status inicial nulo para o trigger do banco assumir o padrão
-            'created_at' => now(),
-            'updated_at' => now(),
+            'cliente_id' => $clienteRefId,
+            'numero_os' => $ultimoNumero + 1,
+            'status' => 'ABERTA',
+            'prioridade' => 'NORMAL',
+            'tipo_manutencao' => 'PREVENTIVA',
+            'equipamento_descricao' => "Veículo {$veiculo->placa} - {$veiculo->marca} {$veiculo->modelo}",
+            'defeito_reclamado' => "Revisão Preventiva Automática (Troca de Óleo/Filtros) - KM Atual: {$veiculo->km_atual}",
+            'data_abertura' => now(),
+            'prazo_sla_resposta' => $sla['resposta'],
+            'prazo_sla_resolucao' => $sla['resolucao'],
         ]);
     }
 }
@@ -2990,337 +3336,4 @@ return new class extends Migration
             $table->string('email', 150);
             $table->string('telefone', 30);
             $table->string('etapa_kanban', 50)->default('TRIAGEM'); // TRIAGEM, ENTREVISTA, TESTE_TECNICO, PROPOSTA, APROVADO, REPROVADO
-            $table->text('observacoes')->nullable();
-            $table->timestamps();
-        });
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('rh_candidatos');
-        Schema::dropIfExists('rh_vagas');
-        Schema::dropIfExists('rh_pontos');
-        Schema::dropIfExists('rh_colaboradores');
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_23_031012_create_saas_billing_and_planos_tables.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        // 1. Tabela de Planos Comerciais da Plataforma
-        Schema::create('sis_planos', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->string('nome', 50); // MEI, Pro, Enterprise
-            $table->string('slug', 50)->unique();
-            $table->decimal('valor_mensal', 15, 2);
-            $table->integer('limite_usuarios')->default(1);
-            $table->integer('limite_empresas')->default(1);
-            $table->bigInteger('cota_storage_bytes'); // 3GB = 3221225472, 20GB = 21474836480
-            $table->jsonb('modulos_habilitados')->nullable(); // Lista de módulos permitidos
-            $table->boolean('is_ativo')->default(true);
-            $table->timestamps();
-        });
-
-        // 2. Tabela de Assinaturas dos Tenants
-        Schema::create('sis_assinaturas', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
-            $table->foreignUuid('plano_id')->constrained('sis_planos')->cascadeOnDelete();
-            $table->string('status', 30)->default('TRIAL'); // TRIAL, ATIVA, PENDENTE, CANCELADA, SOFT_LOCK
-            $table->date('data_inicio');
-            $table->date('data_proximo_vencimento');
-            $table->bigInteger('storage_utilizado_bytes')->default(0);
-            $table->timestamps();
-            $table->softDeletes();
-
-            $table->index(['tenant_id', 'status']);
-        });
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('sis_assinaturas');
-        Schema::dropIfExists('sis_planos');
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_010000_add_is_master_to_users_table.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        Schema::table('users', function (Blueprint $table) {
-            $table->boolean('is_master')->default(false)->after('is_ativo');
-        });
-    }
-
-    public function down(): void
-    {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('is_master');
-        });
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_020000_add_sla_and_geo_to_os_tables.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        Schema::table('os_ordens_servico', function (Blueprint $table) {
-            $table->dateTime('prazo_sla_resposta')->nullable()->after('data_abertura');
-            $table->dateTime('prazo_sla_resolucao')->nullable()->after('prazo_sla_resposta');
-            $table->string('hash_assinatura_sha256', 64)->nullable()->after('assinado_em');
-            $table->string('ip_assinatura', 45)->nullable()->after('hash_assinatura_sha256');
-            $table->decimal('latitude_assinatura', 10, 8)->nullable()->after('ip_assinatura');
-            $table->decimal('longitude_assinatura', 11, 8)->nullable()->after('latitude_assinatura');
-        });
-    }
-
-    public function down(): void
-    {
-        Schema::table('os_ordens_servico', function (Blueprint $table) {
-            $table->dropColumn([
-                'prazo_sla_resposta',
-                'prazo_sla_resolucao',
-                'hash_assinatura_sha256',
-                'ip_assinatura',
-                'latitude_assinatura',
-                'longitude_assinatura'
-            ]);
-        });
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_030000_create_cmms_pmoc_and_ativos_tables.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        // 1. Criar tabela de Bens Patrimoniais / Ativos se não existir
-        if (!Schema::hasTable('pat_bens')) {
-            Schema::create('pat_bens', function (Blueprint $table) {
-                $table->uuid('id')->primary();
-                $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
-                $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
-                $table->foreignUuid('responsavel_atual_id')->nullable()->constrained('users')->nullOnDelete();
-                $table->string('codigo_patrimonio', 50);
-                $table->string('descricao', 200);
-                $table->string('marca_modelo', 150)->nullable();
-                $table->string('numero_serie', 100)->nullable();
-                $table->string('qr_code_hash', 64)->nullable();
-                $table->date('data_aquisicao')->nullable();
-                $table->decimal('valor_aquisicao', 15, 2)->nullable();
-                $table->string('status', 30)->default('ATIVO');
-                $table->string('localizacao_fisica', 150)->nullable();
-                $table->timestamps();
-                $table->softDeletes();
-            });
-        }
-
-        // 2. Adicionar coluna ativo_id na OS se não existir
-        if (Schema::hasTable('os_ordens_servico') && !Schema::hasColumn('os_ordens_servico', 'ativo_id')) {
-            Schema::table('os_ordens_servico', function (Blueprint $table) {
-                $table->foreignUuid('ativo_id')->nullable()->after('deposito_saida_id')->constrained('pat_bens')->nullOnDelete();
-            });
-        }
-
-        // 3. Tabela de Planos Preventivos (PMOC)
-        if (!Schema::hasTable('os_planos_preventivos')) {
-            Schema::create('os_planos_preventivos', function (Blueprint $table) {
-                $table->uuid('id')->primary();
-                $table->foreignUuid('tenant_id')->constrained('sis_tenants')->cascadeOnDelete();
-                $table->foreignUuid('empresa_id')->constrained('sis_empresas')->cascadeOnDelete();
-                $table->foreignUuid('cliente_id')->constrained('pes_pessoas')->cascadeOnDelete();
-                $table->foreignUuid('ativo_id')->nullable()->constrained('pat_bens')->nullOnDelete();
-                $table->foreignUuid('tecnico_padrao_id')->nullable()->constrained('users')->nullOnDelete();
-                $table->string('titulo_plano', 150);
-                $table->string('frequencia', 30); // MENSAL, BIMESTRAL, TRIMESTRAL, SEMESTRAL, ANUAL
-                $table->date('proxima_execucao');
-                $table->date('ultima_execucao')->nullable();
-                $table->jsonb('checklist_itens')->nullable();
-                $table->text('instrucoes_tecnicas')->nullable();
-                $table->boolean('is_ativo')->default(true);
-                $table->timestamps();
-                $table->softDeletes();
-            });
-        }
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('os_planos_preventivos');
-        if (Schema::hasColumn('os_ordens_servico', 'ativo_id')) {
-            Schema::table('os_ordens_servico', function (Blueprint $table) {
-                $table->dropForeign(['ativo_id']);
-                $table->dropColumn('ativo_id');
-            });
-        }
-        Schema::dropIfExists('pat_bens');
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_040000_add_cliente_id_to_pat_bens_table.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        if (Schema::hasTable('pat_bens') && !Schema::hasColumn('pat_bens', 'cliente_id')) {
-            Schema::table('pat_bens', function (Blueprint $table) {
-                $table->foreignUuid('cliente_id')->nullable()->after('empresa_id')->constrained('pes_pessoas')->nullOnDelete();
-            });
-        }
-    }
-
-    public function down(): void
-    {
-        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'cliente_id')) {
-            Schema::table('pat_bens', function (Blueprint $table) {
-                $table->dropForeign(['cliente_id']);
-                $table->dropColumn('cliente_id');
-            });
-        }
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_050000_create_os_apontamentos_e_workflow_pecas.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        // 1. Tabela de Apontamentos de Mão de Obra / Jornada Técnica
-        if (!Schema::hasTable('os_apontamentos_horas')) {
-            Schema::create('os_apontamentos_horas', function (Blueprint $table) {
-                $table->uuid('id')->primary();
-                $table->uuid('tenant_id')->index();
-                $table->uuid('ordem_servico_id')->index();
-                $table->uuid('tecnico_id')->index();
-                $table->dateTime('data_hora_inicio');
-                $table->dateTime('data_hora_fim')->nullable();
-                $table->decimal('total_horas', 8, 2)->default(0.00);
-                $table->decimal('valor_hora', 10, 2)->default(0.00);
-                $table->decimal('valor_total', 10, 2)->default(0.00);
-                $table->text('descricao_atividades')->nullable();
-                $table->timestamps();
-
-                $table->foreign('ordem_servico_id')->references('id')->on('os_ordens_servico')->onDelete('cascade');
-                $table->foreign('tecnico_id')->references('id')->on('users')->onDelete('cascade');
-            });
-        }
-
-        // 2. Adicionar status do fluxo de almoxarifado nas peças da OS
-        if (Schema::hasTable('os_itens') && !Schema::hasColumn('os_itens', 'status_requisicao')) {
-            Schema::table('os_itens', function (Blueprint $table) {
-                $table->string('status_requisicao', 30)->default('RETIRADO')->after('lote'); // SOLICITADO, DISPONIVEL, RETIRADO
-                $table->uuid('almoxarife_id')->nullable()->after('status_requisicao');
-                $table->dateTime('atendido_em')->nullable()->after('almoxarife_id');
-            });
-        }
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('os_apontamentos_horas');
-        if (Schema::hasTable('os_itens') && Schema::hasColumn('os_itens', 'status_requisicao')) {
-            Schema::table('os_itens', function (Blueprint $table) {
-                $table->dropColumn(['status_requisicao', 'almoxarife_id', 'atendido_em']);
-            });
-        }
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_060000_alter_valor_aquisicao_on_pat_bens_table.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'valor_aquisicao')) {
-            Schema::table('pat_bens', function (Blueprint $table) {
-                $table->decimal('valor_aquisicao', 12, 2)->default(0.00)->nullable()->change();
-            });
-        }
-    }
-
-    public function down(): void
-    {
-        if (Schema::hasTable('pat_bens') && Schema::hasColumn('pat_bens', 'valor_aquisicao')) {
-            Schema::table('pat_bens', function (Blueprint $table) {
-                $table->decimal('valor_aquisicao', 12, 2)->nullable(false)->change();
-            });
-        }
-    }
-};
-
-========================================
-ARQUIVO: C:\Projetos\scalle-erp-gemini\database\migrations\2026_08_24_070000_fix_pat_bens_valor_aquisicao_constraint.php
-========================================
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-         if (Schema::hasTable('pat_bens') && DB::getDriverName() === 'pgsql') {
-   
+       

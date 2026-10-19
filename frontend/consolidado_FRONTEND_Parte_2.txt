@@ -1,0 +1,2174 @@
+﻿setModalNovaCotacao(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarCotacao} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Título da Cotação *</label>
+                <input type="text" required placeholder="Ex: Cotação de Insumos e Filtros HVAC" value={formCotacao.titulo} onChange={(e) => setFormCotacao({ ...formCotacao, titulo: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white" />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Depósito Destino *</label>
+                <select required value={formCotacao.deposito_destino_id} onChange={(e) => setFormCotacao({ ...formCotacao, deposito_destino_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovaCotacao(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Abrir Cotação</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Inserir Proposta */}
+      {modalProposta && cotacaoSelecionada && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Trophy className="h-4 w-4 text-indigo-400" /> Proposta de Fornecedor: {cotacaoSelecionada.titulo}</h3>
+              <button type="button" onClick={() => setModalProposta(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleSalvarProposta} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Fornecedor *</label>
+                <select required value={formProposta.fornecedor_id} onChange={(e) => setFormProposta({ ...formProposta, fornecedor_id: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white">
+                  <option value="">Selecione o Fornecedor...</option>
+                  {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome_razao_social}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Valor do Frete (R$)</label>
+                  <input type="number" step="0.01" min="0" value={formProposta.valor_frete} onChange={(e) => setFormProposta({ ...formProposta, valor_frete: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Prazo de Entrega (Dias)</label>
+                  <input type="number" min="1" required value={formProposta.prazo_entrega_dias} onChange={(e) => setFormProposta({ ...formProposta, prazo_entrega_dias: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono" />
+                </div>
+              </div>
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <span className="font-semibold text-slate-400 block">Preços Unitários por Item:</span>
+                {cotacaoSelecionada.itens?.map((it, idx) => (
+                  <div key={it.id} className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800">
+                    <span className="text-white font-medium">{it.item?.nome} (Qtd: {it.quantidade})</span>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      min="0.01"
+                      required
+                      placeholder="Preço Unit."
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        const newItens = [...formProposta.itens];
+                        newItens[idx].valor_unitario = val;
+                        setFormProposta({ ...formProposta, itens: newItens });
+                      }}
+                      className="w-28 px-2 py-1 bg-slate-900 border border-slate-700 rounded text-white font-mono text-right"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalProposta(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Salvar Proposta</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\Configuracoes\ControladoriaConfig.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { GitMerge, Plus, Folder, FileText, ChevronRight, ChevronDown, CheckCircle2, AlertTriangle, X } from 'lucide-react';
+
+export default function ControladoriaConfig() {
+    const [activeTab, setActiveTab] = useState('planos_contas');
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [feedback, setFeedback] = useState(null);
+
+    // Estado do Modal
+    const [modalAberto, setModalAberto] = useState(false);
+    const [form, setForm] = useState({
+        parent_id: '',
+        codigo: '',
+        nome: '',
+        tipo: 'DESPESA',
+        is_sintetico: false
+    });
+    const [parentName, setParentName] = useState('');
+
+    useEffect(() => {
+        carregarDados();
+    }, [activeTab]);
+
+    const carregarDados = async () => {
+        setLoading(true);
+        try {
+            const endpoint = activeTab === 'planos_contas' ? '/controladoria/planos-contas' : '/controladoria/centros-custos';
+            const res = await api.get(endpoint);
+            setData(res.data?.data || []);
+        } catch (error) {
+            console.error(error);
+            setFeedback({ tipo: 'erro', msg: 'Erro ao carregar a árvore estrutural.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSalvar = async (e) => {
+        e.preventDefault();
+        try {
+            const endpoint = activeTab === 'planos_contas' ? '/controladoria/planos-contas' : '/controladoria/centros-custos';
+            await api.post(endpoint, form);
+            setModalAberto(false);
+            setFeedback({ tipo: 'sucesso', msg: 'Nova conta/centro adicionado com sucesso!' });
+            carregarDados();
+        } catch (error) {
+            setFeedback({ tipo: 'erro', msg: error.response?.data?.error?.message || error.response?.data?.message || 'Erro ao salvar registro.' });
+        }
+    };
+
+    const abrirModalNovo = (parentId = '', parentTitle = '') => {
+        setParentName(parentTitle);
+        setForm({
+            parent_id: parentId,
+            codigo: '',
+            nome: '',
+            tipo: 'DESPESA',
+            is_sintetico: false
+        });
+        setModalAberto(true);
+    };
+
+    // Componente Recursivo para renderizar a Árvore
+    const TreeNode = ({ node, level = 0 }) => {
+        const [isExpanded, setIsExpanded] = useState(true);
+        const hasChildren = node.children && node.children.length > 0;
+
+        return (
+            <div className="flex flex-col">
+                <div className={`flex items-center justify-between p-3 border-b border-slate-800/50 hover:bg-slate-800/40 transition group ${level === 0 ? 'bg-slate-900/40' : ''}`} style={{ paddingLeft: `${(level * 24) + 12}px` }}>
+                    <div className="flex items-center gap-2">
+                        {hasChildren ? (
+                            <button onClick={() => setIsExpanded(!isExpanded)} className="text-slate-400 hover:text-white transition cursor-pointer p-0.5">
+                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </button>
+                        ) : (
+                            <span className="w-4"></span> // Spacer
+                        )}
+
+                        <div className={`p-1.5 rounded-lg border ${node.is_sintetico ? 'bg-indigo-950 border-indigo-800 text-indigo-400' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                            {node.is_sintetico ? <Folder size={14} /> : <FileText size={14} />}
+                        </div>
+
+                        <span className="font-mono text-sm font-bold text-slate-300 w-24 shrink-0">{node.codigo}</span>
+                        <span className={`text-sm ${node.is_sintetico ? 'font-bold text-white' : 'font-medium text-slate-300'}`}>{node.nome}</span>
+
+                        {activeTab === 'planos_contas' && level === 0 && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ml-3 ${
+                                node.tipo === 'RECEITA' ? 'bg-emerald-950 text-emerald-400' :
+                                node.tipo === 'DESPESA' ? 'bg-rose-950 text-rose-400' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                                {node.tipo}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {node.is_sintetico && (
+                            <button
+                                onClick={() => abrirModalNovo(node.id, `${node.codigo} - ${node.nome}`)}
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded cursor-pointer transition"
+                            >
+                                <Plus size={12} /> Subconta
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Renderiza os Filhos Recursivamente se estiver expandido */}
+                {isExpanded && hasChildren && (
+                    <div className="flex flex-col border-l border-slate-800 ml-[22px]">
+                        {node.children.map(child => (
+                            <TreeNode key={child.id} node={child} level={level + 1} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 text-slate-200">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+                <div>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+                        <GitMerge className="h-6 w-6 text-indigo-500" /> Controladoria Gerencial
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                        Estruturação da Árvore de Plano de Contas e Centros de Custo para DRE.
+                    </p>
+                </div>
+            </div>
+
+            {feedback && (
+                <div className={`p-4 rounded-xl flex items-center justify-between text-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+                    <div className="flex items-center gap-2">
+                        {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+                        <span className="font-medium">{feedback.msg}</span>
+                    </div>
+                    <button onClick={() => setFeedback(null)} className="cursor-pointer"><X className="h-4 w-4" /></button>
+                </div>
+            )}
+
+            {/* Abas */}
+            <div className="flex gap-2">
+                <button
+                    onClick={() => setActiveTab('planos_contas')}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-sm cursor-pointer ${
+                        activeTab === 'planos_contas' ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                >
+                    Plano de Contas
+                </button>
+                <button
+                    onClick={() => setActiveTab('centros_custos')}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-sm cursor-pointer ${
+                        activeTab === 'centros_custos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                >
+                    Centros de Custo
+                </button>
+            </div>
+
+            {/* Content Tree */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
+                    <div>
+                        <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                            Estrutura Base: {activeTab === 'planos_contas' ? 'Plano de Contas' : 'Centros de Custo'}
+                        </h2>
+                        <p className="text-[10px] text-slate-400 mt-0.5">As contas Sintéticas (Pastas) apenas agrupam valores. Contas Analíticas recebem lançamentos.</p>
+                    </div>
+                    <button
+                        onClick={() => abrirModalNovo('', 'Raiz (Nível Principal)')}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition shadow-md cursor-pointer"
+                    >
+                        <Plus size={16} /> Adicionar Raiz
+                    </button>
+                </div>
+
+                <div className="flex-1 p-2 overflow-y-auto">
+                    {loading ? (
+                        <div className="p-8 text-center text-slate-500 animate-pulse font-bold">Carregando estrutura hierárquica...</div>
+                    ) : data.length === 0 ? (
+                        <div className="p-12 text-center text-slate-400 border border-dashed border-slate-800 m-4 rounded-xl flex flex-col items-center justify-center space-y-4">
+                            <p>Sua estrutura {activeTab === 'planos_contas' ? 'de contas' : 'de centros de custo'} está vazia.</p>
+                            {activeTab === 'planos_contas' && (
+                                <button
+                                    onClick={async () => {
+                                        setLoading(true);
+                                        try {
+                                            await api.post('/controladoria/gerar-padrao');
+                                            setFeedback({ tipo: 'sucesso', msg: 'Árvore de contas corporativa injetada com sucesso!' });
+                                            carregarDados();
+                                        } catch (err) {
+                                            setFeedback({ tipo: 'erro', msg: 'Falha ao injetar estrutura.' });
+                                            setLoading(false);
+                                        }
+                                    }}
+                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition shadow-lg shadow-indigo-600/30 cursor-pointer"
+                                >
+                                    Gerar Estrutura Corporativa Padrão
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col">
+                            {data.map(rootNode => (
+                                <TreeNode key={rootNode.id} node={rootNode} level={0} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* MODAL DE CRIAÇÃO */}
+            {modalAberto && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <form onSubmit={handleSalvar} className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                        <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50">
+                            <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                <GitMerge className="h-5 w-5 text-indigo-400" /> Adicionar na Estrutura
+                            </h3>
+                            <button type="button" onClick={() => setModalAberto(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="h-5 w-5" /></button>
+                        </div>
+
+                        <div className="p-6 space-y-4 text-xs">
+                            <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-slate-400">
+                                <strong>Criando dentro de:</strong> <span className="text-indigo-300 font-mono ml-1">{parentName}</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2 sm:col-span-1">
+                                    <label className="block font-bold text-slate-400 mb-1">Código (Ex: 1.01) *</label>
+                                    <input type="text" required value={form.codigo} onChange={e => setForm({...form, codigo: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:border-indigo-500" placeholder="1.01.001" />
+                                </div>
+                                <div className="col-span-2 sm:col-span-1">
+                                    <label className="block font-bold text-slate-400 mb-1">Comportamento</label>
+                                    <select value={form.is_sintetico} onChange={e => setForm({...form, is_sintetico: e.target.value === 'true'})} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:border-indigo-500 cursor-pointer">
+                                        <option value="false">Analítico (Recebe Valor)</option>
+                                        <option value="true">Sintético (Pasta Agrupadora)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block font-bold text-slate-400 mb-1">Nome da Conta / Centro *</label>
+                                <input type="text" required value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:border-indigo-500" placeholder="Despesas Operacionais" />
+                            </div>
+
+                            {activeTab === 'planos_contas' && !form.parent_id && (
+                                <div>
+                                    <label className="block font-bold text-slate-400 mb-1">Tipo de Natureza (Apenas para Raiz) *</label>
+                                    <select value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value})} className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:border-indigo-500 cursor-pointer">
+                                        <option value="RECEITA">Receita</option>
+                                        <option value="DESPESA">Despesa</option>
+                                        <option value="ATIVO">Ativo</option>
+                                        <option value="PASSIVO">Passivo</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-3 p-5 border-t border-slate-800 bg-slate-950/30">
+                            <button type="button" onClick={() => setModalAberto(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl transition cursor-pointer">Cancelar</button>
+                            <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition shadow-lg shadow-indigo-600/20 cursor-pointer">Salvar na Árvore</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\Configuracoes\PmoConfig.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { Settings, Plus, Edit2, Trash2, Tag, AlertCircle, Building2, DollarSign, Target, Activity } from 'lucide-react';
+
+const TABS = [
+    { id: 'status', label: 'Status dos Projetos', icon: Activity, hasColor: true, hasPeso: false },
+    { id: 'prioridades', label: 'Prioridades das Tarefas', icon: Target, hasColor: true, hasPeso: true },
+    { id: 'tipos', label: 'Tipos de Projetos', icon: Tag, hasColor: true, hasPeso: false },
+    { id: 'departamentos', label: 'Departamentos', icon: Building2, hasColor: false, hasPeso: false },
+    { id: 'categorias_custos', label: 'Categorias de Custo', icon: DollarSign, hasColor: false, hasPeso: false },
+];
+
+export default function PmoConfig() {
+    const [activeTab, setActiveTab] = useState('status');
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [modal, setModal] = useState({ open: false, isEdit: false, item: null });
+    const [form, setForm] = useState({ nome: '', cor_hex: '#3b82f6', peso: 0 });
+
+    const currentTabSpec = TABS.find(t => t.id === activeTab);
+
+    useEffect(() => {
+        carregarDados();
+    }, [activeTab]);
+
+    const carregarDados = async () => {
+        setLoading(true);
+        try {
+            const res = await api.get(`/pmo/configuracoes/${activeTab}`);
+            setData(res.data.data || []);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSalvar = async (e) => {
+        e.preventDefault();
+        try {
+            if (modal.isEdit) {
+                await api.put(`/pmo/configuracoes/${activeTab}/${modal.item.id}`, form);
+            } else {
+                await api.post(`/pmo/configuracoes/${activeTab}`, form);
+            }
+            setModal({ open: false, isEdit: false, item: null });
+            carregarDados();
+        } catch (error) {
+            alert("Erro ao salvar configuração.");
+        }
+    };
+
+    const handleDeletar = async (id) => {
+        if (!window.confirm("Deseja realmente apagar este registro? Certifique-se de que nenhum projeto dependa dele.")) return;
+        try {
+            await api.delete(`/pmo/configuracoes/${activeTab}/${id}`);
+            carregarDados();
+        } catch (error) {
+            alert("Erro ao deletar.");
+        }
+    };
+
+    const openModal = (item = null) => {
+        if (item) {
+            setForm({ nome: item.nome, cor_hex: item.cor_hex || '#3b82f6', peso: item.peso || 0 });
+            setModal({ open: true, isEdit: true, item });
+        } else {
+            setForm({ nome: '', cor_hex: '#3b82f6', peso: 0 });
+            setModal({ open: true, isEdit: false, item: null });
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex flex-col space-y-6 text-slate-200">
+            <header className="bg-slate-900 border border-slate-800 shadow-sm rounded-2xl p-6 flex items-center gap-4">
+                <div className="p-3 bg-indigo-500/10 rounded-xl"><Settings className="text-indigo-400 h-6 w-6" /></div>
+                <div>
+                    <h1 className="text-2xl font-bold text-white">Taxonomia e Parâmetros (PMO)</h1>
+                    <p className="text-xs text-slate-400 mt-1">Gerencie globalmente os domínios do módulo de projetos da sua empresa.</p>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* Menu Lateral de Abas */}
+                <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col gap-2">
+                    {TABS.map(tab => {
+                        const Icon = tab.icon;
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition cursor-pointer text-left ${
+                                    activeTab === tab.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                                }`}
+                            >
+                                <Icon className="w-4 h-4" /> {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* Conteúdo Dinâmico Principal */}
+                <div className="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-4 mb-4">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <currentTabSpec.icon className="text-indigo-400 w-5 h-5" />
+                            Gerenciar {currentTabSpec.label}
+                        </h2>
+                        <button onClick={() => openModal()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center gap-2 cursor-pointer">
+                            <Plus size={16} /> Adicionar Novo
+                        </button>
+                    </div>
+
+                    {loading ? (
+                        <div className="p-8 text-center text-slate-500">Carregando dados...</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm text-slate-300">
+                                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
+                                    <tr>
+                                        <th className="p-4">Nome do Parâmetro</th>
+                                        {currentTabSpec.hasPeso && <th className="p-4 text-center">Peso (Ord.)</th>}
+                                        <th className="p-4 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/60">
+                                    {data.length === 0 ? (
+                                        <tr><td colSpan="3" className="p-8 text-center text-slate-500">Nenhum registro encontrado para esta categoria.</td></tr>
+                                    ) : data.map(item => (
+                                        <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                                            <td className="p-4 flex items-center gap-3">
+                                                {currentTabSpec.hasColor && (
+                                                    <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: item.cor_hex || '#3b82f6' }}></span>
+                                                )}
+                                                <span className="font-bold text-white">{item.nome}</span>
+                                            </td>
+                                            {currentTabSpec.hasPeso && <td className="p-4 text-center font-mono">{item.peso}</td>}
+                                            <td className="p-4 text-right flex justify-end gap-2">
+                                                <button onClick={() => openModal(item)} className="p-2 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded transition cursor-pointer" title="Editar"><Edit2 size={14}/></button>
+                                                <button onClick={() => handleDeletar(item.id)} className="p-2 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded transition cursor-pointer" title="Excluir"><Trash2 size={14}/></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* MODAL UNIVERSAL DO CRUD */}
+            {modal.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={handleSalvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">
+                            {modal.isEdit ? 'Editar Registro' : 'Novo Registro'}
+                        </h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nome *</label>
+                            <input type="text" required value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+
+                        {currentTabSpec.hasColor && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Cor de Identificação</label>
+                                <div className="flex gap-3 items-center">
+                                    <input type="color" value={form.cor_hex} onChange={e => setForm({...form, cor_hex: e.target.value})} className="w-12 h-12 rounded cursor-pointer bg-slate-950 border border-slate-800" />
+                                    <span className="text-sm font-mono text-slate-300">{form.cor_hex}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {currentTabSpec.hasPeso && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Peso/Ordem de Grandeza (Numérico)</label>
+                                <input type="number" required value={form.peso} onChange={e => setForm({...form, peso: e.target.value})} placeholder="Ex: 100" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                                <p className="text-[10px] text-slate-500 mt-1">Números maiores aparecem no topo das listas de prioridade.</p>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModal({ open: false, isEdit: false, item: null })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\Crm\BoardCrm.jsx
+========================================
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { api } from '../../services/api';
+
+export default function BoardCrm() {
+    const navigate = useNavigate();
+    const [pipeline, setPipeline] = useState(null);
+    const [pipelinesDisponiveis, setPipelinesDisponiveis] = useState([]);
+    const [pipelineSelecionadoId, setPipelineSelecionadoId] = useState('');
+    const [motivosPerda, setMotivosPerda] = useState([]);
+    const [vendedores, setVendedores] = useState([]);
+    const [produtos, setProdutos] = useState([]);
+    const [permissoes, setPermissoes] = useState({ pode_gerenciar_pipeline: true });
+    const [loading, setLoading] = useState(true);
+
+    // Filtros
+    const [statusFiltro, setStatusFiltro] = useState('ABERTO');
+    const [vendedorFiltro, setVendedorFiltro] = useState('');
+    const [busca, setBusca] = useState('');
+
+    // Edição inline de Pipeline
+    const [editandoNome, setEditandoNome] = useState(false);
+    const [novoNomePipeline, setNovoNomePipeline] = useState('');
+
+    // Modais & Drawer
+    const [modalNovoAberto, setModalNovoAberto] = useState(false);
+    const [modalNovoPipelineAberto, setModalNovoPipelineAberto] = useState(false);
+    const [modalEtapasAberto, setModalEtapasAberto] = useState(false);
+    const [modalPerdaAberto, setModalPerdaAberto] = useState(false);
+    const [cardSelecionado, setCardSelecionado] = useState(null);
+    const [drawerAberto, setDrawerAberto] = useState(false);
+    const [salvando, setSalvando] = useState(false);
+
+    // Formulários
+    const [formNovo, setFormNovo] = useState({
+        titulo: '', nome_contato: '', email_contato: '', telefone_contato: '', valor_estimado: '', vendedor_id: ''
+    });
+
+    const [formNovoPipe, setFormNovoPipe] = useState({
+        nome: '', descricao: '', cor_hex: '#4f46e5'
+    });
+
+    const [formNovaEtapa, setFormNovaEtapa] = useState({
+        nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1'
+    });
+
+    const [formNovoItem, setFormNovoItem] = useState({
+        produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0
+    });
+
+    const [formPerda, setFormPerda] = useState({
+        motivo_perda_id: '', justificativa_perda: ''
+    });
+
+    const [novaAtividade, setNovaAtividade] = useState({
+        tipo: 'NOTA', descricao: '', data_agendamento: ''
+    });
+
+    useEffect(() => {
+        carregarBoard();
+        const handleAtualizacao = () => carregarBoard();
+        window.addEventListener('crm_pipeline_atualizado', handleAtualizacao);
+        return () => window.removeEventListener('crm_pipeline_atualizado', handleAtualizacao);
+    }, [pipelineSelecionadoId, statusFiltro, vendedorFiltro, busca]);
+
+    const carregarBoard = async () => {
+        try {
+            setLoading(true);
+            const params = {
+                pipeline_id: pipelineSelecionadoId || undefined,
+                status: statusFiltro,
+                vendedor_id: vendedorFiltro || undefined,
+                search: busca || undefined
+            };
+            const response = await api.get('/crm/board', { params });
+            const payload = response.data?.data || response.data;
+            const pipe = payload?.pipeline;
+
+            if (pipe && Array.isArray(pipe.etapas)) {
+                setPipeline(pipe);
+                setNovoNomePipeline(pipe.nome);
+                if (!pipelineSelecionadoId) {
+                    setPipelineSelecionadoId(pipe.id);
+                }
+            }
+
+            setPipelinesDisponiveis(payload?.pipelines_disponiveis || []);
+            setMotivosPerda(payload?.motivos_perda || []);
+            setVendedores(payload?.vendedores || []);
+            setProdutos(payload?.produtos || []);
+
+            if (payload?.permissoes) {
+                setPermissoes(payload.permissoes);
+            }
+
+            if (cardSelecionado && pipe?.etapas) {
+                for (const et of pipe.etapas) {
+                    const c = et.oportunidades?.find(o => o.id === cardSelecionado.id);
+                    if (c) {
+                        setCardSelecionado(c);
+                        break;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Erro ao carregar Pipeline", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const kpis = useMemo(() => {
+        if (!pipeline?.etapas) return { totalPipeline: 0, totalCards: 0, ticketMedio: 0, forecastPonderado: 0 };
+        let totalPipeline = 0;
+        let totalCards = 0;
+        let forecastPonderado = 0;
+
+        pipeline.etapas.forEach(et => {
+            const prob = Number(et.probabilidade_fechamento ?? 50) / 100;
+            (et.oportunidades || []).forEach(op => {
+                const val = Number(op.valor_estimado || 0);
+                totalPipeline += val;
+                forecastPonderado += val * prob;
+                totalCards += 1;
+            });
+        });
+
+        const ticketMedio = totalCards > 0 ? totalPipeline / totalCards : 0;
+        return { totalPipeline, totalCards, ticketMedio, forecastPonderado };
+    }, [pipeline]);
+
+    const handleDragEnd = async (result) => {
+        const { destination, source, draggableId } = result;
+        if (!destination) return;
+        if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+
+        const pipeAtualizado = { ...pipeline };
+        const etapaOrigem = pipeAtualizado.etapas.find(e => e.id === source.droppableId);
+        const etapaDestino = pipeAtualizado.etapas.find(e => e.id === destination.droppableId);
+
+        if (!etapaOrigem || !etapaDestino) return;
+
+        const [cardMovido] = etapaOrigem.oportunidades.splice(source.index, 1);
+        etapaDestino.oportunidades.splice(destination.index, 0, cardMovido);
+        setPipeline(pipeAtualizado);
+
+        try {
+            await api.put(`/crm/oportunidades/${draggableId}/mover`, {
+                etapa_id_destino: destination.droppableId
+            });
+        } catch (error) {
+            console.error("Erro ao mover card", error);
+            carregarBoard();
+        }
+    };
+
+    const salvarNovoNomePipeline = async () => {
+        if (!novoNomePipeline.trim() || novoNomePipeline === pipeline.nome) {
+            setEditandoNome(false);
+            return;
+        }
+        try {
+            await api.put(`/crm/pipelines/${pipeline.id}`, {
+                nome: novoNomePipeline,
+                cor_hex: pipeline.cor_hex || '#4f46e5'
+            });
+            setPipeline({ ...pipeline, nome: novoNomePipeline });
+            setEditandoNome(false);
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao renomear pipeline.");
+        }
+    };
+
+    const criarNovoPipeline = async (e) => {
+        e.preventDefault();
+        setSalvando(true);
+        try {
+            const { data } = await api.post('/crm/pipelines', formNovoPipe);
+            setModalNovoPipelineAberto(false);
+            setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+            setPipelineSelecionadoId(data.data.id);
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao criar novo pipeline.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const adicionarEtapa = async (e) => {
+        e.preventDefault();
+        setSalvando(true);
+        try {
+            await api.post(`/crm/pipelines/${pipeline.id}/etapas`, formNovaEtapa);
+            setFormNovaEtapa({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
+            carregarBoard();
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao criar etapa.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const excluirEtapa = async (etapaId) => {
+        if (!confirm("Confirmar exclusão desta etapa?")) return;
+        try {
+            await api.delete(`/crm/etapas/${etapaId}`);
+            carregarBoard();
+            window.dispatchEvent(new Event('crm_pipeline_atualizado'));
+        } catch (err) {
+            alert(err.response?.data?.error?.message || err.response?.data?.error || "Erro ao excluir etapa.");
+        }
+    };
+
+    const criarOportunidade = async (e) => {
+        e.preventDefault();
+        if (!pipeline?.etapas?.length) return;
+
+        setSalvando(true);
+        try {
+            await api.post('/crm/oportunidades', {
+                ...formNovo,
+                etapa_id: pipeline.etapas[0].id,
+                valor_estimado: parseFloat(formNovo.valor_estimado) || 0
+            });
+            setModalNovoAberto(false);
+            setFormNovo({
+                titulo: '', nome_contato: '', email_contato: '', telefone_contato: '', valor_estimado: '', vendedor_id: ''
+            });
+            carregarBoard();
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao cadastrar oportunidade.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const adicionarItemAoCard = async (e) => {
+        e.preventDefault();
+        if (!cardSelecionado || !formNovoItem.descricao) return;
+        setSalvando(true);
+        try {
+            const payload = {
+                produto_id: formNovoItem.produto_id || null,
+                item_id: formNovoItem.produto_id || null,
+                descricao: formNovoItem.descricao,
+                quantidade: parseFloat(formNovoItem.quantidade) || 1,
+                valor_unitario: parseFloat(formNovoItem.valor_unitario) || 0
+            };
+
+            await api.post(`/crm/oportunidades/${cardSelecionado.id}/itens`, payload);
+            setFormNovoItem({ produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0 });
+            await carregarBoard();
+        } catch (err) {
+            alert(err.response?.data?.error?.message || err.response?.data?.message || "Erro ao adicionar produto.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const removerItemDoCard = async (itemId) => {
+        if (!confirm("Remover este item da oportunidade?")) return;
+        try {
+            await api.delete(`/crm/oportunidades/${cardSelecionado.id}/itens/${itemId}`);
+            await carregarBoard();
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao remover item.");
+        }
+    };
+
+    const converterEmOrcamento = async (oportunidadeId, e) => {
+        if (e) e.stopPropagation();
+        if (!confirm("Confirmar conversão da oportunidade com os itens em Orçamento Comercial?")) return;
+        try {
+            const { data } = await api.post(`/crm/oportunidades/${oportunidadeId}/converter-orcamento`);
+            alert(data?.data?.message || "Orçamento gerado com sucesso!");
+            if (drawerAberto) setDrawerAberto(false);
+            carregarBoard();
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao converter lead em orçamento.");
+        }
+    };
+
+    const abrirModalPerda = (card, e) => {
+        if (e) e.stopPropagation();
+        setCardSelecionado(card);
+        setFormPerda({
+            motivo_perda_id: motivosPerda[0]?.id || '',
+            justificativa_perda: ''
+        });
+        setModalPerdaAberto(true);
+    };
+
+    const confirmarPerda = async (e) => {
+        e.preventDefault();
+        if (!cardSelecionado) return;
+        setSalvando(true);
+        try {
+            await api.post(`/crm/oportunidades/${cardSelecionado.id}/marcar-perdido`, formPerda);
+            setModalPerdaAberto(false);
+            if (drawerAberto) setDrawerAberto(false);
+            carregarBoard();
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao registrar perda.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const abrirDrawer = (card) => {
+        setCardSelecionado(card);
+        setFormNovoItem({ produto_id: '', descricao: '', quantidade: 1, valor_unitario: 0 });
+        setNovaAtividade({ tipo: 'NOTA', descricao: '', data_agendamento: '' });
+        setDrawerAberto(true);
+    };
+
+    const salvarAtividade = async (e) => {
+        e.preventDefault();
+        if (!novaAtividade.descricao.trim()) return;
+        try {
+            await api.post(`/crm/oportunidades/${cardSelecionado.id}/atividades`, novaAtividade);
+            setNovaAtividade({ tipo: 'NOTA', descricao: '', data_agendamento: '' });
+            carregarBoard();
+        } catch (err) {
+            alert(err.response?.data?.error?.message || "Erro ao registrar atividade.");
+        }
+    };
+
+    const toggleAtividade = async (atividadeId) => {
+        try {
+            await api.patch(`/crm/oportunidades/${cardSelecionado.id}/atividades/${atividadeId}/toggle`);
+            carregarBoard();
+        } catch (err) {
+            console.error("Erro ao alterar status da tarefa", err);
+        }
+    };
+
+    const abrirWhatsApp = (telefone, nomeContato, e) => {
+        if (e) e.stopPropagation();
+        if (!telefone) return;
+        const apenasNumeros = telefone.replace(/\D/g, '');
+        const foneFormatado = apenasNumeros.length <= 11 ? `55${apenasNumeros}` : apenasNumeros;
+        const msg = encodeURIComponent(`Olá ${nomeContato}, tudo bem? Sou da equipe comercial do Scalle ERP.`);
+        window.open(`https://wa.me/${foneFormatado}?text=${msg}`, '_blank');
+    };
+
+    if (loading && !pipeline) return <div className="p-8 text-center text-slate-400">Carregando Pipelines Comerciais...</div>;
+    if (!pipeline) return <div className="p-8 text-center text-slate-400">Nenhum pipeline ativo.</div>;
+
+    const etapas = Array.isArray(pipeline.etapas) ? pipeline.etapas : [];
+
+    return (
+        <div className="p-4 sm:p-6 min-h-full flex flex-col space-y-4">
+            {/* Header com Seletor, RBAC e Ações */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 shadow-sm">
+                        <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: pipeline.cor_hex || '#4f46e5' }}></span>
+                        <select
+                            value={pipelineSelecionadoId}
+                            onChange={(e) => setPipelineSelecionadoId(e.target.value)}
+                            className="bg-transparent text-slate-100 font-bold text-base sm:text-lg focus:outline-none cursor-pointer"
+                        >
+                            {pipelinesDisponiveis.map(p => (
+                                <option key={p.id} value={p.id} className="bg-slate-900 text-white">
+                                    {p.nome} {p.is_padrao ? '(Padrão)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {permissoes.pode_gerenciar_pipeline && (
+                        <>
+                            {editandoNome ? (
+                                <div className="flex items-center gap-1.5">
+                                    <input
+                                        type="text"
+                                        value={novoNomePipeline}
+                                        onChange={(e) => setNovoNomePipeline(e.target.value)}
+                                        className="bg-slate-950 border border-indigo-500 rounded px-2 py-1 text-xs text-white"
+                                        autoFocus
+                                    />
+                                    <button onClick={salvarNovoNomePipeline} className="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-bold cursor-pointer">✓</button>
+                                    <button onClick={() => setEditandoNome(false)} className="bg-slate-700 text-white px-2 py-1 rounded text-xs font-bold cursor-pointer">✕</button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setEditandoNome(true)}
+                                    className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer"
+                                    title="Renomear este Pipeline"
+                                >
+                                    ✏️ Renomear
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setModalEtapasAberto(true)}
+                                className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer"
+                            >
+                                📑 Etapas
+                            </button>
+                        </>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigate('/app/crm/configuracoes');
+                        }}
+                        className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold px-2.5 py-1.5 bg-indigo-950/40 border border-indigo-800/60 rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                        title="Tela Completa de Parametrização e Configurações do CRM"
+                    >
+                        <span>⚙️</span> Parametrização & Relatórios
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {permissoes.pode_gerenciar_pipeline && (
+                        <button
+                            type="button"
+                            onClick={() => setModalNovoPipelineAberto(true)}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                            + Novo Pipeline
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setModalNovoAberto(true)}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                        <span>+</span> Nova Oportunidade
+                    </button>
+                </div>
+            </div>
+
+            {/* Pipeline Summary (4 KPIs) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-medium text-slate-400">Pipeline Total Ativo</p>
+                        <p className="text-lg font-bold text-emerald-400 mt-0.5">
+                            {kpis.totalPipeline.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </p>
+                    </div>
+                    <span className="text-2xl">💰</span>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-medium text-slate-400">Previsão (Forecast Ponderado)</p>
+                        <p className="text-lg font-bold text-purple-400 mt-0.5">
+                            {kpis.forecastPonderado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </p>
+                    </div>
+                    <span className="text-2xl">🔮</span>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-medium text-slate-400">Deals no Pipeline</p>
+                        <p className="text-lg font-bold text-indigo-400 mt-0.5">{kpis.totalCards} Oportunidades</p>
+                    </div>
+                    <span className="text-2xl">🎯</span>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-medium text-slate-400">Tíquete Médio Ponderado</p>
+                        <p className="text-lg font-bold text-sky-400 mt-0.5">
+                            {kpis.ticketMedio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </p>
+                    </div>
+                    <span className="text-2xl">📈</span>
+                </div>
+            </div>
+
+            {/* Filtros e Busca */}
+            <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl flex flex-wrap gap-3 items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                    <input
+                        type="text"
+                        placeholder="Buscar deal, contato ou telefone..."
+                        value={busca}
+                        onChange={(e) => setBusca(e.target.value)}
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-56 sm:w-64"
+                    />
+                    <select
+                        value={vendedorFiltro}
+                        onChange={(e) => setVendedorFiltro(e.target.value)}
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                        <option value="">Todos os Vendedores</option>
+                        {vendedores.map(v => (
+                            <option key={v.id} value={v.id}>{v.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                    {['ABERTO', 'GANHO', 'PERDIDO', 'TODOS'].map((st) => (
+                        <button
+                            key={st}
+                            type="button"
+                            onClick={() => setStatusFiltro(st)}
+                            className={`px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                                statusFiltro === st
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                        >
+                            {st === 'ABERTO' ? 'Em Aberto' : st === 'GANHO' ? 'Ganhos' : st === 'PERDIDO' ? 'Perdidos' : 'Todos'}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Quadro Kanban */}
+            <DragDropContext onDragEnd={handleDragEnd}>
+                <div className="flex flex-1 gap-4 overflow-x-auto pb-4 items-start">
+                    {etapas.map(etapa => {
+                        const oportunidades = Array.isArray(etapa.oportunidades) ? etapa.oportunidades : [];
+                        const totalEtapa = oportunidades.reduce((acc, curr) => acc + Number(curr.valor_estimado || 0), 0);
+
+                        return (
+                            <div
+                                key={etapa.id}
+                                className="bg-slate-900 border border-slate-800 rounded-xl w-80 shrink-0 flex flex-col max-h-[calc(100vh-16rem)] shadow-sm"
+                                style={{ borderTop: `3px solid ${etapa.cor_hex || '#6366f1'}` }}
+                            >
+                                <div className="p-3.5 border-b border-slate-800 flex justify-between items-center text-slate-200">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#6366f1' }}></span>
+                                            <span className="text-xs font-bold uppercase tracking-wider">{etapa.nome}</span>
+                                            <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">
+                                                {etapa.probabilidade_fechamento ?? 50}%
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-emerald-400 font-semibold mt-0.5">
+                                            {totalEtapa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        </p>
+                                    </div>
+                                    <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full text-xs font-bold border border-slate-700">
+                                        {oportunidades.length}
+                                    </span>
+                                </div>
+
+                                <Droppable droppableId={String(etapa.id)}>
+                                    {(provided) => (
+                                        <div
+                                            {...provided.droppableProps}
+                                            ref={provided.innerRef}
+                                            className="flex-1 p-3 overflow-y-auto min-h-[160px] space-y-3"
+                                        >
+                                            {oportunidades.map((card, index) => (
+                                                <Draggable key={card.id} draggableId={String(card.id)} index={index}>
+                                                    {(provided) => (
+                                                        <div
+                                                            ref={provided.innerRef}
+                                                            {...provided.draggableProps}
+                                                            {...provided.dragHandleProps}
+                                                            onClick={() => abrirDrawer(card)}
+                                                            className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-100 shadow-sm cursor-pointer hover:border-slate-600 transition space-y-2.5 group"
+                                                        >
+                                                            <div className="flex justify-between items-start gap-2">
+                                                                <h3 className="font-semibold text-xs text-slate-100 line-clamp-2">{card.titulo}</h3>
+                                                                {card.status === 'GANHO' && (
+                                                                    <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-bold">GANHO</span>
+                                                                )}
+                                                                {card.status === 'PERDIDO' && (
+                                                                    <span className="bg-rose-950 text-rose-400 border border-rose-800 px-1.5 py-0.5 rounded text-[10px] font-bold">PERDIDO</span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between text-xs text-slate-400">
+                                                                <span className="truncate">{card.nome_contato}</span>
+                                                                {card.telefone_contato && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => abrirWhatsApp(card.telefone_contato, card.nome_contato, e)}
+                                                                        className="text-emerald-400 hover:text-emerald-300 font-bold text-xs cursor-pointer"
+                                                                        title="Falar no WhatsApp"
+                                                                    >
+                                                                        💬 WA
+                                                                    </button>
+                                                                )}
+                                                            </div>
+
+                                                            {card.itens && card.itens.length > 0 && (
+                                                                <div className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded">
+                                                                    📦 {card.itens.length} {card.itens.length === 1 ? 'item vinculado' : 'itens vinculados'}
+                                                                </div>
+                                                            )}
+
+                                                            <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
+                                                                <span className="text-xs font-bold text-emerald-400">
+                                                                    {Number(card.valor_estimado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                                </span>
+
+                                                                {card.status === 'ABERTO' && (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => abrirModalPerda(card, e)}
+                                                                            className="text-[11px] bg-rose-950 text-rose-400 border border-rose-900 hover:bg-rose-900 hover:text-white px-2 py-0.5 rounded transition cursor-pointer"
+                                                                        >
+                                                                            Perdido
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => converterEmOrcamento(card.id, e)}
+                                                                            className="text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded font-medium transition cursor-pointer"
+                                                                        >
+                                                                            Orçar
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </Draggable>
+                                            ))}
+                                            {provided.placeholder}
+                                        </div>
+                                    )}
+                                </Droppable>
+                            </div>
+                        );
+                    })}
+                </div>
+            </DragDropContext>
+
+            {/* Modal de Gestão de Etapas (RBAC) */}
+            {modalEtapasAberto && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-lg shadow-xl text-slate-100">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-base font-bold">Configurar Etapas do Pipeline</h2>
+                            <button onClick={() => setModalEtapasAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer">✕</button>
+                        </div>
+
+                        <div className="space-y-2 mb-4 max-h-56 overflow-y-auto">
+                            {etapas.map((et, idx) => (
+                                <div key={et.id} className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: et.cor_hex || '#6366f1' }}></span>
+                                        <span className="font-semibold">{idx + 1}. {et.nome}</span>
+                                        <span className="text-slate-500">({et.probabilidade_fechamento ?? 50}%)</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => excluirEtapa(et.id)}
+                                        className="text-rose-400 hover:text-rose-300 font-bold px-2 py-1 rounded bg-rose-950/40 cursor-pointer"
+                                    >
+                                        Excluir
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <form onSubmit={adicionarEtapa} className="pt-3 border-t border-slate-800 space-y-3">
+                            <p className="text-xs font-bold text-slate-400">Adicionar Nova Coluna / Etapa</p>
+                            <div className="grid grid-cols-12 gap-2">
+                                <div className="col-span-6">
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="Nome da Etapa"
+                                        value={formNovaEtapa.nome}
+                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, nome: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div className="col-span-3">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        required
+                                        placeholder="Prob. %"
+                                        value={formNovaEtapa.probabilidade_fechamento}
+                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, probabilidade_fechamento: parseInt(e.target.value) || 0 })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div className="col-span-3">
+                                    <input
+                                        type="color"
+                                        value={formNovaEtapa.cor_hex}
+                                        onChange={(e) => setFormNovaEtapa({ ...formNovaEtapa, cor_hex: e.target.value })}
+                                        className="w-full h-8 bg-slate-950 border border-slate-700 rounded cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs font-semibold cursor-pointer"
+                                >
+                                    + Adicionar Etapa
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Drawer Lateral de Detalhes, Produtos & Follow-up */}
+            {drawerAberto && cardSelecionado && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex justify-end">
+                    <div className="bg-slate-900 w-full max-w-xl h-full border-l border-slate-800 flex flex-col p-6 shadow-2xl overflow-y-auto">
+                        <div className="flex justify-between items-start pb-4 border-b border-slate-800">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-100">{cardSelecionado.titulo}</h2>
+                                <p className="text-xs text-slate-400 mt-0.5">{cardSelecionado.nome_contato}</p>
+                            </div>
+                            <button onClick={() => setDrawerAberto(false)} className="text-slate-400 hover:text-white text-lg font-bold p-1 cursor-pointer">✕</button>
+                        </div>
+
+                        {/* Dados Principais */}
+                        <div className="py-4 space-y-3 text-xs border-b border-slate-800">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <span className="text-slate-500">Valor Estimado</span>
+                                    <p className="font-bold text-emerald-400 text-sm mt-0.5">
+                                        {Number(cardSelecionado.valor_estimado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-slate-500">Vendedor / Owner</span>
+                                    <p className="text-slate-200 font-medium mt-0.5">{cardSelecionado.vendedor?.name || 'Não atribuído'}</p>
+                                </div>
+                                <div>
+                                    <span className="text-slate-500">Telefone / WhatsApp</span>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <p className="text-slate-200">{cardSelecionado.telefone_contato || '—'}</p>
+                                        {cardSelecionado.telefone_contato && (
+                                            <button
+                                                type="button"
+                                                onClick={() => abrirWhatsApp(cardSelecionado.telefone_contato, cardSelecionado.nome_contato)}
+                                                className="text-emerald-400 font-bold hover:underline cursor-pointer"
+                                            >
+                                                Abrir WA
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span className="text-slate-500">E-mail</span>
+                                    <p className="text-slate-200 mt-0.5">{cardSelecionado.email_contato || '—'}</p>
+                                </div>
+                            </div>
+
+                            {cardSelecionado.status === 'ABERTO' && (
+                                <div className="pt-2 flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => converterEmOrcamento(cardSelecionado.id, e)}
+                                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-semibold transition cursor-pointer"
+                                    >
+                                        Converter em Orçamento ERP
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => abrirModalPerda(cardSelecionado, e)}
+                                        className="bg-rose-950 text-rose-400 border border-rose-900 hover:bg-rose-900 hover:text-white px-3 py-2 rounded-lg font-medium transition cursor-pointer"
+                                    >
+                                        Marcar Perdido
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Grade de Produtos / Serviços da Oportunidade */}
+                        <div className="py-4 border-b border-slate-800 space-y-3">
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                <span>📦</span> Grade de Produtos / Serviços da Proposta
+                            </h3>
+
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                {(cardSelecionado.itens || []).map((it) => (
+                                    <div key={it.id} className="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800 text-xs">
+                                        <div>
+                                            <p className="font-bold text-slate-200">{it.descricao}</p>
+                                            <p className="text-[10px] text-slate-500">
+                                                {Number(it.quantidade)} un x {Number(it.valor_unitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold text-emerald-400">
+                                                {Number(it.valor_total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            </span>
+                                            {cardSelecionado.status === 'ABERTO' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removerItemDoCard(it.id)}
+                                                    className="text-rose-400 hover:text-rose-300 px-1 text-xs cursor-pointer"
+                                                >
+                                                    ✕
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {cardSelecionado.status === 'ABERTO' && (
+                                <form onSubmit={adicionarItemAoCard} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-2">
+                                    <div className="grid grid-cols-12 gap-2">
+                                        <div className="col-span-6">
+                                            <select
+                                                value={formNovoItem.produto_id}
+                                                onChange={(e) => {
+                                                    const prod = produtos.find(p => p.id === e.target.value);
+                                                    setFormNovoItem({
+                                                        ...formNovoItem,
+                                                        produto_id: e.target.value,
+                                                        descricao: prod ? prod.nome : formNovoItem.descricao,
+                                                        valor_unitario: prod ? parseFloat(prod.preco_venda || 0) : formNovoItem.valor_unitario
+                                                    });
+                                                }}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white cursor-pointer"
+                                            >
+                                                <option value="">Item Avulso / Catálogo</option>
+                                                {produtos.map(p => (
+                                                    <option key={p.id} value={p.id}>
+                                                        {p.nome} {p.codigo_sku ? `(${p.codigo_sku})` : ''} - R$ {Number(p.preco_venda || 0).toFixed(2)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-6">
+                                            <input
+                                                type="text"
+                                                required
+                                                placeholder="Descrição do item"
+                                                value={formNovoItem.descricao}
+                                                onChange={(e) => setFormNovoItem({ ...formNovoItem, descricao: e.target.value })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                            />
+                                        </div>
+                                        <div className="col-span-4">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0.01"
+                                                required
+                                                placeholder="Qtd"
+                                                value={formNovoItem.quantidade}
+                                                onChange={(e) => setFormNovoItem({ ...formNovoItem, quantidade: parseFloat(e.target.value) || 1 })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                            />
+                                        </div>
+                                        <div className="col-span-5">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                required
+                                                placeholder="Valor Unit (R$)"
+                                                value={formNovoItem.valor_unitario}
+                                                onChange={(e) => setFormNovoItem({ ...formNovoItem, valor_unitario: parseFloat(e.target.value) || 0 })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                            />
+                                        </div>
+                                        <div className="col-span-3 flex justify-end">
+                                            <button
+                                                type="submit"
+                                                disabled={salvando}
+                                                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-bold cursor-pointer"
+                                            >
+                                                + Item
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            )}
+                        </div>
+
+                        {/* Linha do Tempo de Atividades e Notas */}
+                        <div className="flex-1 py-4 flex flex-col space-y-4">
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Histórico de Atividades & Follow-ups</h3>
+
+                            <form onSubmit={salvarAtividade} className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                <div className="flex gap-2">
+                                    <select
+                                        value={novaAtividade.tipo}
+                                        onChange={(e) => setNovaAtividade({ ...novaAtividade, tipo: e.target.value })}
+                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                    >
+                                        <option value="NOTA">📝 Nota</option>
+                                        <option value="LIGACAO">📞 Ligação</option>
+                                        <option value="REUNIAO">🤝 Reunião</option>
+                                        <option value="WHATSAPP">💬 WhatsApp</option>
+                                        <option value="TAREFA">📌 Tarefa / Retorno</option>
+                                    </select>
+                                    <input
+                                        type="datetime-local"
+                                        value={novaAtividade.data_agendamento}
+                                        onChange={(e) => setNovaAtividade({ ...novaAtividade, data_agendamento: e.target.value })}
+                                        className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1 flex-1 focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <textarea
+                                    required
+                                    rows="2"
+                                    value={novaAtividade.descricao}
+                                    onChange={(e) => setNovaAtividade({ ...novaAtividade, descricao: e.target.value })}
+                                    placeholder="Descreva o que foi tratado ou defina o próximo passo..."
+                                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                ></textarea>
+                                <div className="flex justify-end">
+                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-semibold cursor-pointer">
+                                        Adicionar Registro
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div className="space-y-2.5 flex-1 overflow-y-auto">
+                                {(cardSelecionado.atividades || []).map((atv) => (
+                                    <div key={atv.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1">
+                                        <div className="flex justify-between items-center text-[11px]">
+                                            <span className="font-bold text-indigo-400">
+                                                {atv.tipo === 'LIGACAO' ? '📞 Ligação' : atv.tipo === 'REUNIAO' ? '🤝 Reunião' : atv.tipo === 'WHATSAPP' ? '💬 WhatsApp' : atv.tipo === 'TAREFA' ? '📌 Tarefa' : '📝 Nota'}
+                                            </span>
+                                            <span className="text-slate-500">{new Date(atv.created_at).toLocaleString('pt-BR')}</span>
+                                        </div>
+                                        <p className="text-xs text-slate-300 whitespace-pre-wrap">{atv.descricao}</p>
+                                        {atv.data_agendamento && (
+                                            <div className="flex justify-between items-center pt-1 text-[11px] border-t border-slate-900">
+                                                <span className="text-amber-400">Agendado: {new Date(atv.data_agendamento).toLocaleString('pt-BR')}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleAtividade(atv.id)}
+                                                    className={`px-2 py-0.5 rounded font-bold cursor-pointer ${atv.is_concluida ? 'bg-emerald-950 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}
+                                                >
+                                                    {atv.is_concluida ? '✓ Concluída' : 'Pendente'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Novo Pipeline */}
+            {modalNovoPipelineAberto && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl text-slate-100">
+                        <h2 className="text-base font-bold mb-4">Criar Novo Pipeline de Vendas</h2>
+                        <form onSubmit={criarNovoPipeline} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Pipeline *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formNovoPipe.nome}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, nome: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Contratos de Manutenção PMOC"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Descrição</label>
+                                <input
+                                    type="text"
+                                    value={formNovoPipe.descricao}
+                                    onChange={(e) => setFormNovoPipe({ ...formNovoPipe, descricao: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Venda consultiva recorrente"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Cor de Destaque</label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="color"
+                                        value={formNovoPipe.cor_hex}
+                                        onChange={(e) => setFormNovoPipe({ ...formNovoPipe, cor_hex: e.target.value })}
+                                        className="w-10 h-8 bg-slate-950 border border-slate-700 rounded-lg cursor-pointer p-0.5"
+                                    />
+                                    <span className="text-xs font-mono text-slate-300 uppercase">{formNovoPipe.cor_hex}</span>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setModalNovoPipelineAberto(false)}
+                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
+                                >
+                                    {salvando ? 'Criando...' : 'Criar Pipeline'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Nova Oportunidade */}
+            {modalNovoAberto && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl text-slate-100">
+                        <h2 className="text-base font-bold mb-4">Nova Oportunidade Comercial</h2>
+                        <form onSubmit={criarOportunidade} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Título / Assunto *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formNovo.titulo}
+                                    onChange={(e) => setFormNovo({ ...formNovo, titulo: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Contrato Anual Climatização"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Contato / Empresa *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formNovo.nome_contato}
+                                    onChange={(e) => setFormNovo({ ...formNovo, nome_contato: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                    placeholder="Ex: Clínica Alpha"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-300 mb-1">E-mail</label>
+                                    <input
+                                        type="email"
+                                        value={formNovo.email_contato}
+                                        onChange={(e) => setFormNovo({ ...formNovo, email_contato: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-300 mb-1">Telefone / WhatsApp</label>
+                                    <input
+                                        type="text"
+                                        value={formNovo.telefone_contato}
+                                        onChange={(e) => setFormNovo({ ...formNovo, telefone_contato: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                        placeholder="(21) 99999-9999"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-300 mb-1">Valor Estimado (R$)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={formNovo.valor_estimado}
+                                        onChange={(e) => setFormNovo({ ...formNovo, valor_estimado: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                                        placeholder="0,00"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-300 mb-1">Vendedor</label>
+                                    <select
+                                        value={formNovo.vendedor_id}
+                                        onChange={(e) => setFormNovo({ ...formNovo, vendedor_id: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                    >
+                                        <option value="">Atribuir a mim</option>
+                                        {vendedores.map(v => (
+                                            <option key={v.id} value={v.id}>{v.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setModalNovoAberto(false)}
+                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
+                                >
+                                    {salvando ? 'Salvando...' : 'Salvar Oportunidade'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Marcar como Perdido */}
+            {modalPerdaAberto && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl text-slate-100">
+                        <h2 className="text-base font-bold mb-4 text-rose-400">Marcar Oportunidade como Perdida</h2>
+                        <form onSubmit={confirmarPerda} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Motivo da Perda *</label>
+                                <select
+                                    required
+                                    value={formPerda.motivo_perda_id}
+                                    onChange={(e) => setFormPerda({ ...formPerda, motivo_perda_id: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500 cursor-pointer"
+                                >
+                                    {motivosPerda.map(m => (
+                                        <option key={m.id} value={m.id}>{m.nome}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-300 mb-1">Justificativa / Observação</label>
+                                <textarea
+                                    rows="3"
+                                    value={formPerda.justificativa_perda}
+                                    onChange={(e) => setFormPerda({ ...formPerda, justificativa_perda: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                                    placeholder="Ex: Concorrente ofertou desconto de 15%."
+                                ></textarea>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setModalPerdaAberto(false)}
+                                    className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={salvando}
+                                    className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
+                                >
+                                    {salvando ? 'Salvando...' : 'Confirmar Perda'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\Crm\ConfiguracoesCrm.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
+
+export default function ConfiguracoesCrm() {
+    const navigate = useNavigate();
+    const [tabAtiva, setTabAtiva] = useState('metricas');
+    const [pipelines, setPipelines] = useState([]);
+    const [pipelineSelecionado, setPipelineSelecionado] = useState(null);
+    const [motivosPerda, setMotivosPerda] = useState([]);
+    const [metricas, setMetricas] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [salvando, setSalvando] = useState(false);
+
+    // Modal / Form Novo Funil
+    const [modalNovoFunil, setModalNovoFunil] = useState(false);
+    const [formNovoPipe, setFormNovoPipe] = useState({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+
+    // Edição do Funil Ativo
+    const [editandoPipeline, setEditandoPipeline] = useState(false);
+    const [formPipeline, setFormPipeline] = useState({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+
+    // Etapas
+    const [formEtapa, setFormEtapa] = useState({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
+    const [etapaEmEdicao, setEtapaEmEdicao] = useState(null);
+
+    // Form Motivo de Perda
+    const [formMotivo, setFormMotivo] = useState({ nome: '', cor_hex: '#ef4444' });
+    const [motivoEmEdicao, setMotivoEmEdicao] = useState(null);
+
+    useEffect(() => {
+        carregarDados();
+    }, []);
+
+    const avisarAtualizacao = () => {
+        window.dispatchEvent(new Event('crm_pipeline_atualizado'));
+    };
+
+    const carregarDados = async (selecionarId = null) => {
+        try {
+            setLoading(true);
+            const [resPipes, resMetricas] = await Promise.allSettled([
+                api.get('/crm/pipelines'),
+                api.get('/crm/metricas')
+            ]);
+
+            const pipes = resPipes.status === 'fulfilled' ? (resPipes.value.data?.data || resPipes.value.data || []) : [];
+            setPipelines(pipes);
+
+            if (resMetricas.status === 'fulfilled') {
+                setMetricas(resMetricas.value.data?.data || null);
+            }
+
+            let alvoId = selecionarId || pipelineSelecionado?.id || (pipes[0]?.id ?? null);
+            if (alvoId) {
+                try {
+                    const resBoard = await api.get('/crm/board', { params: { pipeline_id: alvoId } });
+                    const dataBoard = resBoard.data?.data || resBoard.data;
+                    const pipeAtivo = dataBoard?.pipeline || pipes.find(p => p.id === alvoId) || pipes[0];
+                    setPipelineSelecionado(pipeAtivo);
+                    setMotivosPerda(dataBoard?.motivos_perda || []);
+                } catch (e) {
+                    const fallback = pipes.find(p => p.id === alvoId) || pipes[0];
+                    setPipelineSelecionado(fallback);
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao carregar configurações do CRM:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const criarNovoFunil = async (e) => {
+        e.preventDefault();
+        setSalvando(true);
+        try {
+            const { data } = await api.post('/crm/pipelines', formNovoPipe);
+            const novoId = data?.data?.id;
+            setModalNovoFunil(false);
+            setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+            avisarAtualizacao();
+            await carregarDados(novoId);
+        } catch (err) {
+            alert(err.response?.data?.message || "Erro ao criar novo funil.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const salvarEdicaoPipeline = async (e) => {
+        e.preventDefault();
+        if (!pipelineSelecionado) return;
+        setSalvando(true);
+        try {
+            await api.put(`/crm/pipelines/${pipelineSelecionado.id}`, formPipeline);
+            setEditandoPipeline(false);
+            avisarAtualizacao();
+            await carregarDados(pipelineSelecionado.id);
+        } catch (err) {
+            alert(err.response?.data?.message || "Erro ao salvar alterações do pipeline.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const salvarEtapa = async (e) => {
+        e.preventDefault();
+        if (!pipelineSelecionado) return;
+        setSalvando(true);
+        try {
+            if (etapaEmEdicao) {
+                await api.put(`/crm/etapas/${etapaEmEdicao.id}`, formEtapa);
+                setEtapaEmEdicao(null);
+            } else {
+                await api.post(`/crm/pipelines/${pipelineSelecionado.id}/etapas`, formEtapa);
+            }
+            setFormEtapa({ nome: '', probabilidade_fechamento: 50, cor_hex: '#6366f1' });
+            avisarAtualizacao();
+            await carregarDados(pipelineSelecionado.id);
+        } catch (err) {
+            alert(err.response?.data?.message || "Erro ao salvar etapa.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const excluirEtapa = async (id) => {
+        if (!confirm("Excluir esta etapa do pipeline?")) return;
+        try {
+            await api.delete(`/crm/etapas/${id}`);
+            avisarAtualizacao();
+            await carregarDados(pipelineSelecionado.id);
+        } catch (err) {
+            alert(err.response?.data?.error || "Erro ao excluir etapa.");
+        }
+    };
+
+    const moverEtapaOrdem = async (index, direcao) => {
+        if (!pipelineSelecionado?.etapas) return;
+        const etapas = [...pipelineSelecionado.etapas];
+        const novoIndex = index + direcao;
+
+        if (novoIndex < 0 || novoIndex >= etapas.length) return;
+
+        const [removido] = etapas.splice(index, 1);
+        etapas.splice(novoIndex, 0, removido);
+
+        const payload = etapas.map((e, idx) => ({
+            id: e.id,
+            ordem_exibicao: idx + 1
+        }));
+
+        try {
+            await api.put(`/crm/pipelines/${pipelineSelecionado.id}/reordenar-etapas`, { etapas: payload });
+            const res = await api.get('/crm/board', { params: { pipeline_id: pipelineSelecionado.id } });
+            setPipelineSelecionado(res.data?.data?.pipeline || res.data?.pipeline);
+            avisarAtualizacao();
+        } catch (err) {
+            alert("Erro ao reordenar etapas.");
+        }
+    };
+
+    const salvarMotivoPerda = async (e) => {
+        e.preventDefault();
+        setSalvando(true);
+        try {
+            if (motivoEmEdicao) {
+                await api.put(`/crm/motivos-perda/${motivoEmEdicao.id}`, formMotivo);
+                setMotivoEmEdicao(null);
+            } else {
+                await api.post('/crm/motivos-perda', formMotivo);
+            }
+            setFormMotivo({ nome: '', cor_hex: '#ef4444' });
+            avisarAtualizacao();
+            await carregarDados(pipelineSelecionado?.id);
+        } catch (err) {
+            alert(err.response?.data?.error || "Erro ao salvar motivo de perda.");
+        } finally {
+            setSalvando(false);
+        }
+    };
+
+    const excluirMotivoPerda = async (id) => {
+        if (!confirm("Excluir este motivo de perda?")) return;
+        try {
+            await api.delete(`/crm/motivos-perda/${id}`);
+            avisarAtualizacao();
+            await carregarDados(pipelineSelecionado?.id);
+        } catch (err) {
+            alert(err.response?.data?.error || "Erro ao excluir motivo de perda.");
+        }
+    };
+
+    if (loading && !pipelineSelecionado && !metricas) {
+        return (
+            <div className="p-8 text-center text-slate-400">
+                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                Carregando configurações do CRM...
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
+            {/* Topbar */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+                <div>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-100 flex items-center gap-2">
+                        <span>📊</span> Parametrização & Inteligência Comercial CRM
+                    </h1>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                        Altere nomes de funis, configure probabilidades de forecast, métricas de conversão e motivos de perda.
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => navigate('/app/crm')}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30"
+                >
+                    <span>←</span> Voltar ao Board Kanban
+                </button>
+            </div>
+
+            {/* Abas de Navegação */}
+            <div className="flex gap-2 border-b border-slate-800 pb-2">
+                <button
+                    type="button"
+                    onClick={() => setTabAtiva('metricas')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        tabAtiva === 'metricas' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
+                    }`}
+                >
+                    📈 Métricas & Conversão
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTabAtiva('pipelines')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        tabAtiva === 'pipelines' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
+                    }`}
+                >
+                    🎯 Pipelines & Etapas Customizadas
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTabAtiva('motivos_perda')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        tabAtiva === 'motivos_perda' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
+                    }`}
+                >
+                    ❌ Motivos de Perda (Tabela de Domínio)
+                </button>
+            </div>
+
+            {/* Aba 1: Métricas & Inteligência Comercial */}
+            {tabAtiva === 'metricas' && (
+                <div className="space-y-6">
+                    {metricas ? (
+                        <>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                                    <p className="text-xs text-slate-400">Taxa de Conversão Geral</p>
+                                    <p className="text-2xl font-bold text-emerald-400 mt-1">{metricas.taxa_conversao_percentual}%</p>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">{metricas.total_ganhos} ganhos / {metricas.total_ganhos + metricas.total_perdidos} decididos</p>
+                                </div>
+                                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                                    <p className="text-xs text-slate-400">Volume Convertido em Vendas</p>
+                                    <p className="text-2xl font-bold text-indigo-400 mt-1">
+                                        {Number(metricas.volume_total_ganhos || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">{metricas.total_ganhos} oportunidades ganhas</p>
+                                </div>
+                                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                                    <p className="text-xs text-slate-400">Deals em Negociação</p>
+                                    <p className="text-2xl font-bold text-amber-400 mt-1">{metricas.total_abertos}</p>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">Oportunidades ativas no funil</p>
+                                </div>
+                                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                                    <p className="text-xs text-slate-400">Total Histórico de Leads</p>
+                                    <p className="text-2xl font-bold text-purple-400 mt-1">{metricas.total_geral}</p>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">Entradas totais registradas</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Ranking de Motivos de Perda */}
+                                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+                                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                        <span>❌</span> Principais Motivos de Perda
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {(metricas.ranking_perdas || []).map((rp, i) => (
+                                            <div key={i} className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: rp.cor_hex || '#ef4444' }}></span>
+                                                    <span className="text-slate-200 font-semibold">{rp.nome}</span>
+                                                </div>
+                                                <span className="font-bold text-rose-400 bg-rose-950/40 border border-rose-900 px-2 py-0.5 rounded">
+                                                    {rp.total} deals
+                                                </span>
+                                            </div>
+                                        ))}
+                                        {(!metricas.ranking_perdas || metricas.ranking_perdas.length === 0) && (
+                                            <p className="text-xs text-slate-500">Nenhum registro de perda computado.</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Desempenho por Vendedor */}
+                                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+                                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                        <span>🏆</span> Desempenho da Equipe Comercial
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {(metricas.desempenho_vendedores || []).map((dv, i) => (
+                                            <div key={i} className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
+                                                <div>
+                                                    <p className="font-bold text-slate-200">{dv.vendedor}</p>
+                                                    <p className="text-[10px] text-slate-500">{dv.ganhos} Ganhos • {dv.perdidos} Perdidos</p>
+                                                </div>
+                                                <span className="text-emerald-400 font-bold">
+                                                    {Number(dv.valor_ganho || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        {(!metricas.desempenho_vendedores || metricas.desempenho_vendedores.length === 0) && (
+                                            <p className="text-xs text-slate-500">Sem dados registrados para a equipe.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-6 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-xl">
+                            Nenhum dado analítico computado para o período selecionado.
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Aba 2: Conteúdo Pipelines & Etapas */}
+            {tabAtiva === 'pipelines' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Lista de Funis */}
+                    <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-sm font-bold text-slate-200">Seus Funis</h2>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setFormNovoPipe({ nome: '', descricao: '', cor_hex: '#4f46e5' });
+                                    setModalNovoFunil(true);
+                                }}
+                                className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 shadow-sm"
+                            >
+                                + Novo Funil
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {pipelines.map(p => (
+                                <div
+                                    key={p.id}
+                                    onClick={async () => {
+                                        try {
+                                            const res = await api.get('/crm/board', { params: { pipeline_id: p.id } });
+                                            setPipelineSelecionado(res.data?.data?.pipeline || res.data?.pipeline || p);
+                                            setEditandoPipeline(false);
+                                        } catch (e) {
+                                            setPipelineSelecionado(p);
+                                        }
+                                    }}
+                                    className={`p-3 rounded-xl border text-xs cursor-pointer transition flex justify-between items-center ${
+                                        pipelineSelecionado?.id === p.id
+                                            ? 'bg-indigo-950/40 border-indigo-500 text-white font-bold'
+                                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.cor_hex || '#4f46e5' }}></span>
+                                        <div>
+                                            <p className="line-clamp-1">{p.nome}</p>
+                                            <p className="text-[10px] text-slate-500 font-normal">{p.descricao || 'Sem descrição'}</p>
+                                        </div>
+                                    </div>
+                                    {p.is_padrao && (
+                                        <span className="bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded text-[10px]">Padrão</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Detalhes do Funil Selecionado */}
+                    {pipelineSelecionado && (
+                        <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-6">
+                            <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+                                <div>
+                                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                        <span className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: pipelineSelecionado.cor_hex || '#4f46e5' }}></span>
+                                        {pipelineSelecionado.nome}
+                                    </h3>
+                                    <p className="text-xs text-slate-400 mt-0.5">
+                                        Token Webhook Inbound: <code className="bg-slate-950 px-2 py-0.5 rounded text-indigo-400 font-mono text-[11px]">{pipelineSelecionado.token_captacao || 'Sem token gerado'}</code>
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setFormPipeline({
+                                            nome: pipelineSelecionado.nome,
+                                            descricao: pipelineSelecionado.descricao || '',
+                                            cor_hex: pipelineSelecionado.cor_hex || '#4f46e5'
+                                        });
+                                        setEditandoPipeline(!editandoPipeline);
+                                    }}
+                                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+                                >
+                                    ✏️ {editandoPipeline ? 'Fechar Edição' : 'Editar Nome / Cor'}
+                                </button>
+                            </div>
+
+                            {/* Form Inline Edição do Funil */}
+                            {editandoPipeline && (
+                                <form onSubmit={salvarEdicaoPipeline} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                                    <h4 className="text-xs font-bold text-slate-200">Editar Propriedades do Funil</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="sm:col-span-2">
+                                            <label className="block text-[11px] text-slate-400 mb-1">Nome do Funil *</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={formPipeline.nome}
+                                                onChange={(e) => setFormPipeline({ ...formPipeline, nome: e.target.value })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] text-slate-400 mb-1">Cor de Destaque</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="color"
+                                                    value={formPipeline.cor_hex}
+                                                    onChange={(e) => setFormPipeline({ ...formPipeline, cor_hex: e.target.value })}
+                                                    className="w-10 h-8 bg-slate-900 border border-slate-700 rounded cursor-pointer p-0.5"
+                                                />
+   

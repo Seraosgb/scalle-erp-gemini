@@ -3,11 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Projeto;
+use App\Models\Empresa;
+use App\Models\Entregavel;
 use App\Models\Etapa;
-use Illuminate\Http\Request;
+use App\Models\Pessoa;
+use App\Models\Projeto;
+use App\Models\ProjetoCusto;
+use App\Models\ProjetoEquipe;
+use App\Models\Tarefa;
+use App\Services\FinanceiroService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class ProjetoController extends Controller
@@ -15,13 +23,23 @@ class ProjetoController extends Controller
     public function index(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-
-        $projetos = Projeto::where('tenant_id', $tenantId)
+        $query = Projeto::where('tenant_id', $tenantId)
             ->withCount('tarefas')
-            ->with('etapas')
-            ->orderByDesc('created_at')
-            ->paginate(15);
+            ->with(['etapas', 'cliente']);
 
+        if ($request->filled('status') && $request->get('status') !== 'TODOS') {
+            $query->where('status', $request->get('status'));
+        }
+
+        if ($request->filled('search')) {
+            $s = $request->get('search');
+            $query->where(function ($q) use ($s) {
+                $q->where('nome', 'ILIKE', "%{$s}%")
+                  ->orWhere('descricao', 'ILIKE', "%{$s}%");
+            });
+        }
+
+        $projetos = $query->orderByDesc('created_at')->paginate(15);
         return response()->json($projetos);
     }
 
@@ -43,9 +61,9 @@ class ProjetoController extends Controller
                 'descricao' => $validated['descricao'] ?? null,
                 'cliente_id' => $validated['cliente_id'] ?? null,
                 'orcamento_previsto' => $validated['orcamento_previsto'] ?? 0.00,
+                'status' => 'ATIVO',
             ]);
 
-            // Scaffolding dinâmico do Kanban
             $etapasPadrao = [
                 ['nome' => 'Backlog', 'cor_hex' => '#64748b'],
                 ['nome' => 'A Fazer', 'cor_hex' => '#e2e8f0'],
@@ -94,9 +112,6 @@ class ProjetoController extends Controller
     public function alterarStatus(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-
-        // MÁGICA DA COMPATIBILIDADE RETROATIVA
-        // Aceita 'status' legado ou o novo 'status_projeto_id' dinâmico
         $validated = $request->validate([
             'status_projeto_id' => 'nullable|uuid|exists:prj_status_projetos,id',
             'status' => 'nullable|string|max:50'
@@ -109,7 +124,7 @@ class ProjetoController extends Controller
         } elseif (!empty($validated['status'])) {
             $projeto->update(['status' => $validated['status']]);
         } else {
-            return response()->json(['error' => 'O campo status_projeto_id é obrigatório.'], 422);
+            return response()->json(['error' => 'O campo status é obrigatório.'], 422);
         }
 
         return response()->json(['message' => 'Status do projeto atualizado com sucesso!']);
@@ -131,16 +146,13 @@ class ProjetoController extends Controller
     public function listarStatus(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $status = DB::table('prj_status_projetos')
-            ->where('tenant_id', $tenantId)
-            ->orderBy('nome')
-            ->get();
+        $status = DB::table('prj_status_projetos')->where('tenant_id', $tenantId)->orderBy('nome')->get();
 
         if ($status->isEmpty()) {
             $basicos = [
-                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Ativo', 'cor_hex' => '#4f46e5'],
-                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Concluído', 'cor_hex' => '#10b981'],
-                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Pausado', 'cor_hex' => '#f59e0b']
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Ativo', 'cor_hex' => '#4f46e5', 'created_at' => now(), 'updated_at' => now()],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Concluído', 'cor_hex' => '#10b981', 'created_at' => now(), 'updated_at' => now()],
+                ['id' => (string) Str::uuid(), 'tenant_id' => $tenantId, 'nome' => 'Pausado', 'cor_hex' => '#f59e0b', 'created_at' => now(), 'updated_at' => now()]
             ];
             DB::table('prj_status_projetos')->insert($basicos);
             $status = collect($basicos);
@@ -149,14 +161,33 @@ class ProjetoController extends Controller
         return response()->json(['data' => $status]);
     }
 
-    // ==========================================
-    // INTEGRAÇÃO FINANCEIRA: CUSTOS & DESPESAS
-    // ==========================================
+    public function gantt(Request $request, string $projetoId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $tarefas = Tarefa::where('tenant_id', $tenantId)
+            ->where('projeto_id', $projetoId)
+            ->with('etapa:id,nome,cor_hex')
+            ->orderBy('created_at')
+            ->get();
+
+        return response()->json(['data' => $tarefas]);
+    }
+
+    public function capacidade(Request $request, string $projetoId): JsonResponse
+    {
+        $tenantId = $request->user()->tenant_id;
+        $equipe = ProjetoEquipe::where('tenant_id', $tenantId)
+            ->where('projeto_id', $projetoId)
+            ->with('usuario:id,name')
+            ->get();
+
+        return response()->json(['data' => $equipe]);
+    }
+
     public function custos(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $custos = DB::table('prj_custos')
-            ->where('tenant_id', $tenantId)
+        $custos = ProjetoCusto::where('tenant_id', $tenantId)
             ->where('projeto_id', $id)
             ->orderByDesc('data_custo')
             ->get();
@@ -167,7 +198,7 @@ class ProjetoController extends Controller
     public function storeCusto(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()->id;
         $projeto = Projeto::where('tenant_id', $tenantId)->findOrFail($id);
 
         $validated = $request->validate([
@@ -176,59 +207,53 @@ class ProjetoController extends Controller
             'data_custo' => 'required|date'
         ]);
 
-        DB::transaction(function() use ($validated, $id, $tenantId, $empresaId, $projeto) {
-            $custoId = (string) Str::uuid();
-
-            // 1. Grava no Diário do Projeto
-            DB::table('prj_custos')->insert([
-                'id' => $custoId,
+        DB::transaction(function () use ($validated, $id, $tenantId, $empresaId, $projeto) {
+            $custo = ProjetoCusto::create([
+                'id' => (string) Str::uuid(),
                 'tenant_id' => $tenantId,
                 'projeto_id' => $id,
                 'descricao' => $validated['descricao'],
                 'valor' => $validated['valor'],
                 'data_custo' => $validated['data_custo'],
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
 
-            // 2. Integração Transparente com Contas a Pagar
-            \App\Models\TituloFinanceiro::create([
-                'id' => (string) Str::uuid(),
+            $fornecedorGenerico = Pessoa::firstOrCreate(
+                ['tenant_id' => $tenantId, 'cpf_cnpj' => '00000000000000'],
+                [
+                    'id' => (string) Str::uuid(),
+                    'tipo_pessoa' => 'PJ',
+                    'nome_razao_social' => 'Despesas Operacionais de Projetos',
+                    'is_fornecedor' => true,
+                    'is_ativo' => true,
+                ]
+            );
+
+            // Uso exclusivo do Contrato de Serviço Financeiro (Zero SQL direto)
+            FinanceiroService::registrarTitulo([
                 'tenant_id' => $tenantId,
                 'empresa_id' => $empresaId,
-                'pessoa_id' => null, // Despesa genérica do projeto (sem fornecedor fixo no MVP)
+                'pessoa_id' => $fornecedorGenerico->id,
                 'natureza' => 'PAGAR',
-                'documento_numero' => 'PRJ-CST-' . substr($custoId, 0, 6),
-                'parcela_numero' => 1,
-                'total_parcelas' => 1,
+                'documento_numero' => 'PRJ-CST-' . substr($custo->id, 0, 6),
                 'origem_tipo' => 'projetos_custo',
                 'origem_id' => $id,
-                'data_emissao' => now()->toDateString(),
                 'data_vencimento' => $validated['data_custo'],
-                'valor_original' => $validated['valor'],
-                'valor_saldo_aberto' => $validated['valor'],
-                'valor_pago_acumulado' => 0.00,
-                'status' => 'ABERTO',
+                'valor_original' => (float) $validated['valor'],
                 'historico' => "Custo de Projeto [{$projeto->nome}]: {$validated['descricao']}",
             ]);
 
-            // 3. Incrementa o custo real do projeto para o Dashboard
-            if (\Illuminate\Support\Facades\Schema::hasColumn('prj_projetos', 'custo_total_real')) {
-                $projeto->increment('custo_total_real', $validated['valor']);
+            if (Schema::hasColumn('prj_projetos', 'custo_total_real')) {
+                TimesheetController::recalcularCustoProjeto($id, $tenantId);
             }
         });
 
         return response()->json(['data' => ['message' => 'Custo lançado e Contas a Pagar gerado com sucesso!']]);
     }
 
-    // ==========================================
-    // INTEGRAÇÃO FINANCEIRA: FATURAMENTO (MILESTONES)
-    // ==========================================
     public function entregaveis(Request $request, string $id): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $entregaveis = DB::table('prj_entregaveis')
-            ->where('tenant_id', $tenantId)
+        $entregaveis = Entregavel::where('tenant_id', $tenantId)
             ->where('projeto_id', $id)
             ->orderBy('data_prevista')
             ->get();
@@ -245,7 +270,7 @@ class ProjetoController extends Controller
             'data_prevista' => 'nullable|date'
         ]);
 
-        DB::table('prj_entregaveis')->insert([
+        Entregavel::create([
             'id' => (string) Str::uuid(),
             'tenant_id' => $tenantId,
             'projeto_id' => $id,
@@ -253,8 +278,6 @@ class ProjetoController extends Controller
             'valor_faturamento' => $validated['valor_faturamento'],
             'data_prevista' => $validated['data_prevista'],
             'status' => 'PENDENTE',
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
 
         return response()->json(['data' => ['message' => 'Marco de faturamento planejado com sucesso.']]);
@@ -263,9 +286,9 @@ class ProjetoController extends Controller
     public function faturarEntregavel(Request $request, string $entregavelId): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $empresaId = $request->user()->empresa_padrao_id ?? \App\Models\Empresa::where('tenant_id', $tenantId)->first()->id;
+        $empresaId = $request->user()->empresa_padrao_id ?? Empresa::where('tenant_id', $tenantId)->first()->id;
 
-        $entregavel = DB::table('prj_entregaveis')->where('tenant_id', $tenantId)->where('id', $entregavelId)->first();
+        $entregavel = Entregavel::where('tenant_id', $tenantId)->find($entregavelId);
 
         if (!$entregavel) return response()->json(['error' => 'Entregável não encontrado.'], 404);
         if ($entregavel->status === 'FATURADO') return response()->json(['error' => 'Este marco já foi faturado.'], 422);
@@ -276,28 +299,19 @@ class ProjetoController extends Controller
             return response()->json(['error' => 'O projeto não possui um cliente vinculado para emitir a cobrança.'], 422);
         }
 
-        DB::transaction(function() use ($entregavel, $projeto, $tenantId, $empresaId) {
-            // 1. Marca o Entregável como faturado
-            DB::table('prj_entregaveis')->where('id', $entregavel->id)->update(['status' => 'FATURADO', 'updated_at' => now()]);
+        DB::transaction(function () use ($entregavel, $projeto, $tenantId, $empresaId) {
+            $entregavel->update(['status' => 'FATURADO']);
 
-            // 2. Integração Transparente com Contas a Receber
-            \App\Models\TituloFinanceiro::create([
-                'id' => (string) Str::uuid(),
+            FinanceiroService::registrarTitulo([
                 'tenant_id' => $tenantId,
                 'empresa_id' => $empresaId,
                 'pessoa_id' => $projeto->cliente_id,
                 'natureza' => 'RECEBER',
                 'documento_numero' => 'PRJ-FAT-' . substr($entregavel->id, 0, 6),
-                'parcela_numero' => 1,
-                'total_parcelas' => 1,
                 'origem_tipo' => 'projetos_faturamento',
                 'origem_id' => $projeto->id,
-                'data_emissao' => now()->toDateString(),
-                'data_vencimento' => now()->addDays(15)->toDateString(), // Prazo comercial de 15 dias
-                'valor_original' => $entregavel->valor_faturamento,
-                'valor_saldo_aberto' => $entregavel->valor_faturamento,
-                'valor_pago_acumulado' => 0.00,
-                'status' => 'ABERTO',
+                'data_vencimento' => now()->addDays(15)->toDateString(),
+                'valor_original' => (float) $entregavel->valor_faturamento,
                 'historico' => "Faturamento do Projeto [{$projeto->nome}]: Marco {$entregavel->titulo}",
             ]);
         });

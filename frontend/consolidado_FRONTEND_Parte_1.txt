@@ -1,0 +1,2876 @@
+﻿
+
+========================================
+ARQUIVO: eslint.config.js
+========================================
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import { defineConfig, globalIgnores } from 'eslint/config'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{js,jsx}'],
+    extends: [
+      js.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      globals: globals.browser,
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+  },
+])
+
+
+========================================
+ARQUIVO: index.html
+========================================
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Scalle ERP</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+========================================
+ARQUIVO: package.json
+========================================
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
+    "@tanstack/react-query": "^5.102.0",
+    "axios": "^1.19.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.33.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2",
+    "tailwind-merge": "^3.6.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.0",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}
+
+
+========================================
+ARQUIVO: vite.config.js
+========================================
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
+
+export default defineConfig({
+  base: '/',
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/gemini\.btec\.top\/api\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'scalle-api-cache',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 24 * 60 * 60 // 24 horas de cache para APIs
+              },
+              cacheableResponse: {
+                statuses: [200]
+              }
+            }
+          }
+        ]
+      },
+      manifest: {
+        name: 'Scalle ERP Enterprise',
+        short_name: 'Scalle',
+        description: 'Plataforma de Gestão Empresarial Tier 1',
+        theme_color: '#0f172a',
+        background_color: '#0f172a',
+        display: 'standalone',
+        orientation: 'portrait',
+        icons: [
+          {
+            src: '/favicon.svg',
+            sizes: '192x192',
+            type: 'image/svg+xml'
+          },
+          {
+            src: '/favicon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml'
+          }
+        ]
+      }
+    })
+  ],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
+})
+
+
+========================================
+ARQUIVO: src\App.css
+========================================
+.counter {
+  font-size: 16px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  margin-bottom: 24px;
+
+  &:hover {
+    border-color: var(--accent-border);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.hero {
+  position: relative;
+
+  .base,
+  .framework,
+  .vite {
+    inset-inline: 0;
+    margin: 0 auto;
+  }
+
+  .base {
+    width: 170px;
+    position: relative;
+    z-index: 0;
+  }
+
+  .framework,
+  .vite {
+    position: absolute;
+  }
+
+  .framework {
+    z-index: 1;
+    top: 34px;
+    height: 28px;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
+      scale(1.4);
+  }
+
+  .vite {
+    z-index: 0;
+    top: 107px;
+    height: 26px;
+    width: auto;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
+      scale(0.8);
+  }
+}
+
+#center {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+  place-content: center;
+  place-items: center;
+  flex-grow: 1;
+
+  @media (max-width: 1024px) {
+    padding: 32px 20px 24px;
+    gap: 18px;
+  }
+}
+
+#next-steps {
+  display: flex;
+  border-top: 1px solid var(--border);
+  text-align: left;
+
+  & > div {
+    flex: 1 1 0;
+    padding: 32px;
+    @media (max-width: 1024px) {
+      padding: 24px 20px;
+    }
+  }
+
+  .icon {
+    margin-bottom: 16px;
+    width: 22px;
+    height: 22px;
+  }
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+#docs {
+  border-right: 1px solid var(--border);
+
+  @media (max-width: 1024px) {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+#next-steps ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  margin: 32px 0 0;
+
+  .logo {
+    height: 18px;
+  }
+
+  a {
+    color: var(--text-h);
+    font-size: 16px;
+    border-radius: 6px;
+    background: var(--social-bg);
+    display: flex;
+    padding: 6px 12px;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: box-shadow 0.3s;
+
+    &:hover {
+      box-shadow: var(--shadow);
+    }
+    .button-icon {
+      height: 18px;
+      width: 18px;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    li {
+      flex: 1 1 calc(50% - 8px);
+    }
+
+    a {
+      width: 100%;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+  }
+}
+
+#spacer {
+  height: 88px;
+  border-top: 1px solid var(--border);
+  @media (max-width: 1024px) {
+    height: 48px;
+  }
+}
+
+.ticks {
+  position: relative;
+  width: 100%;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: -4.5px;
+    border: 5px solid transparent;
+  }
+
+  &::before {
+    left: 0;
+    border-left-color: var(--border);
+  }
+  &::after {
+    right: 0;
+    border-right-color: var(--border);
+  }
+}
+
+
+========================================
+ARQUIVO: src\App.jsx
+========================================
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// Layout Principal com Sidebar
+import AppLayout from './layouts/AppLayout';
+
+// Páginas de Autenticação e Públicas
+import Login from './pages/Login';
+import PortalOsPage from './pages/portal/PortalOsPage';
+import LandingCrm from './pages/public/LandingCrm';
+import LandingComercialPage from './pages/public/LandingComercialPage';
+
+// Páginas Operacionais e Corporativas
+import DashboardPage from './pages/dashboard/DashboardPage';
+import WmsPage from './pages/wms/WmsPage';
+import OrdensServicoPage from './pages/os/OrdensServicoPage';
+import PcpPage from './pages/pcp/PcpPage';
+import TerminalFabricaPage from './pages/pcp/TerminalFabricaPage';
+import VendasPage from './pages/vendas/VendasPage';
+import PdvPage from './pages/vendas/PdvPage';
+import ComprasPage from './pages/compras/ComprasPage';
+import CotacoesComprasPage from './pages/compras/CotacoesComprasPage';
+import FinanceiroPage from './pages/financeiro/FinanceiroPage';
+import ConciliacaoBancaria from './pages/financeiro/ConciliacaoBancaria';
+import ExportacoesPage from './pages/exportacoes/ExportacoesPage';
+import FiscalPage from './pages/fiscal/FiscalPage';
+import FiscalTestScreen from './pages/fiscal/FiscalTestScreen';
+import UsuariosPage from './pages/usuarios/UsuariosPage';
+
+// Controladoria
+import ControladoriaConfig from './pages/Configuracoes/ControladoriaConfig';
+
+// CRM & Funil
+import BoardCrm from './pages/crm/BoardCrm';
+import ConfiguracoesCrm from './pages/crm/ConfiguracoesCrm';
+import CrmKanbanView from './Pages/Crm/CrmKanbanView';
+
+// Gestão Master & Billing
+import MasterPage from './pages/master/MasterPage';
+import PainelCobrancaView from './pages/billing/PainelCobrancaView';
+import AuditoriaE2EView from './pages/master/AuditoriaE2EView';
+
+// RH
+import PontoEletronicoPage from './pages/rh/PontoEletronicoPage';
+import ColaboradoresPage from './pages/RH/ColaboradoresPage';
+import PessoasPage from './pages/Cadastros/PessoasPage';
+import HoleritesPage from './pages/RH/HoleritesPage';
+import RecrutamentoPage from './pages/RH/RecrutamentoPage';
+import DesempenhoClimaPage from './pages/RH/DesempenhoClimaPage';
+
+// Portal Colaborador
+import PortalColaboradorPage from './pages/Portal/PortalColaboradorPage';
+import FrotaPage from './pages/frota/FrotaDashboard';
+import ProjetosList from './pages/Projetos/ProjetosList';
+import ProjetoDashboard from './pages/Projetos/ProjetoDashboard';
+
+// GED (Cofre Digital)
+import CofreDigitalPage from './pages/Ged/CofreDigitalPage';
+
+// PMO Configurações
+import PmoConfig from './pages/Configuracoes/PmoConfig';
+
+// Instância global do React Query Client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: false,
+    },
+  },
+});
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          {/* Rotas Públicas e Landing Comercial Self-Service */}
+          <Route path="/" element={<LandingComercialPage />} />
+          <Route path="/planos" element={<LandingComercialPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/portal/os/:token" element={<PortalOsPage />} />
+          <Route path="/crm" element={<LandingCrm />} />
+
+          {/* Aliases e Redirecionamentos de Segurança */}
+          <Route path="/crm/configuracoes" element={<Navigate to="/app/crm/configuracoes" replace />} />
+
+          {/* Rotas Protegidas sob o Layout Principal (/app) */}
+          <Route path="/app" element={<AppLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+
+            {/* Dashboard */}
+            <Route path="dashboard" element={<DashboardPage />} />
+
+            {/* Portal Colaborador */}
+            <Route path="portal-colaborador" element={<PortalColaboradorPage />} />
+
+            {/* CRM & Vendas */}
+            <Route path="crm" element={<BoardCrm />} />
+            <Route path="crm/kanban" element={<CrmKanbanView />} />
+            <Route path="crm/configuracoes" element={<ConfiguracoesCrm />} />
+            <Route path="vendas" element={<VendasPage />} />
+            <Route path="pdv" element={<PdvPage />} />
+
+            {/* Suprimentos & WMS */}
+            <Route path="wms" element={<WmsPage />} />
+            <Route path="estoque" element={<Navigate to="/app/wms" replace />} />
+            <Route path="compras" element={<ComprasPage />} />
+            <Route path="compras/cotacoes" element={<CotacoesComprasPage />} />
+
+            {/* Frota & Operações */}
+            <Route path="frotas" element={<FrotaPage />} />
+
+            {/* Indústria & PCP */}
+            <Route path="pcp" element={<PcpPage />} />
+            <Route path="pcp/terminal" element={<TerminalFabricaPage />} />
+
+            {/* Serviços & CMMS */}
+            <Route path="os" element={<OrdensServicoPage />} />
+            <Route path="ordens-servico" element={<Navigate to="/app/os" replace />} />
+
+            {/* Projetos & B2B */}
+            <Route path="projetos" element={<ProjetosList />} />
+            <Route path="projetos/:id" element={<ProjetoDashboard />} />
+            <Route path="configuracoes/pmo" element={<PmoConfig />} />
+
+            {/* Financeiro, Fiscal & Controladoria */}
+            <Route path="financeiro" element={<FinanceiroPage />} />
+            <Route path="financeiro/conciliacao" element={<ConciliacaoBancaria />} />
+            <Route path="controladoria/config" element={<ControladoriaConfig />} />
+            <Route path="exportacoes" element={<ExportacoesPage />} />
+            <Route path="fiscal" element={<FiscalPage />} />
+            <Route path="fiscal/test" element={<FiscalTestScreen />} />
+
+            {/* Governança, Equipe & Billing */}
+            <Route path="usuarios" element={<UsuariosPage />} />
+            <Route path="billing" element={<PainelCobrancaView />} />
+
+            {/* RH & Gestão de Pessoas */}
+            <Route path="ponto" element={<PontoEletronicoPage />} />
+            <Route path="colaboradores" element={<ColaboradoresPage />} />
+            <Route path="pessoas" element={<PessoasPage />} />
+            <Route path="holerites" element={<HoleritesPage />} />
+            <Route path="recrutamento" element={<RecrutamentoPage />} />
+            <Route path="desempenho-clima" element={<DesempenhoClimaPage />} />
+
+            {/* GED & Documentos */}
+            <Route path="ged" element={<CofreDigitalPage />} />
+
+            {/* Módulo Master (SaaS Owner) */}
+            <Route path="master" element={<MasterPage />} />
+            <Route path="master/auditoria" element={<AuditoriaE2EView />} />
+          </Route>
+
+          {/* Fallback Global */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}
+
+
+========================================
+ARQUIVO: src\index.css
+========================================
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 font-sans antialiased selection:bg-indigo-500 selection:text-white;
+  }
+}
+
+========================================
+ARQUIVO: src\main.jsx
+========================================
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
+import './index.css'
+import App from './App.jsx'
+
+// Injeção do Service Worker do PWA
+const updateSW = registerSW({
+  onNeedRefresh() {
+    if (confirm('Nova atualização do Scalle ERP disponível. Deseja recarregar?')) {
+      updateSW(true)
+    }
+  },
+  onOfflineReady() {
+    console.log('Scalle ERP está pronto para funcionar offline.')
+  },
+})
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+
+
+========================================
+ARQUIVO: src\components\MfaConfigModal.jsx
+========================================
+import React, { useState } from 'react';
+import { api } from '../services/api';
+import { ShieldCheck, QrCode, KeyRound, CheckCircle2, AlertTriangle, X, Lock } from 'lucide-react';
+
+export default function MfaConfigModal({ usuario, onClose, onAtualizado }) {
+  const [etapa, setEtapa] = useState(usuario?.mfa_ativo ? 'DESATIVAR' : 'INICIO');
+  const [setupData, setSetupData] = useState(null);
+  const [codigoConfirmacao, setCodigoConfirmacao] = useState('');
+  const [senhaDesativacao, setSenhaDesativacao] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+  const [sucesso, setSucesso] = useState('');
+
+  const iniciarSetup = async () => {
+    setLoading(true);
+    setErro('');
+    try {
+      const res = await api.post('/auth/mfa/setup');
+      setSetupData(res.data?.data);
+      setEtapa('CONFIRMAR');
+    } catch (err) {
+      setErro(err.response?.data?.error?.message || 'Falha ao iniciar configuração do MFA.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmarAtivacao = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErro('');
+    try {
+      await api.post('/auth/mfa/confirmar', { codigo: codigoConfirmacao });
+      setSucesso('Autenticação em Dois Fatores (MFA) ativada com sucesso!');
+      if (onAtualizado) onAtualizado(true);
+      setTimeout(() => onClose(), 1800);
+    } catch (err) {
+      setErro(err.response?.data?.error?.message || 'Código inválido. Tente novamente com o código atual do app.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDesativarMfa = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErro('');
+    try {
+      await api.post('/auth/mfa/desativar', { password: senhaDesativacao });
+      setSucesso('Autenticação em Dois Fatores desativada.');
+      if (onAtualizado) onAtualizado(false);
+      setTimeout(() => onClose(), 1500);
+    } catch (err) {
+      setErro(err.response?.data?.error?.message || 'Senha incorreta.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 text-slate-200">
+        
+        {/* Cabeçalho */}
+        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-indigo-950/80 border border-indigo-800 text-indigo-400">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white">Segurança Avançada (MFA / 2FA)</h2>
+              <span className="text-[11px] text-slate-400">Proteção por aplicativo autenticador TOTP</span>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {erro && (
+          <div className="p-3 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-xl flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{erro}</span>
+          </div>
+        )}
+
+        {sucesso && (
+          <div className="p-3 bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs rounded-xl flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{sucesso}</span>
+          </div>
+        )}
+
+        {/* Etapa 1: Apresentação para Ativar */}
+        {etapa === 'INICIO' && (
+          <div className="space-y-4 text-xs">
+            <p className="text-slate-300">
+              A ativação da Autenticação em Duas Etapas adiciona uma camada extra de segurança à sua conta corporativa exigindo um código de 6 dígitos gerado no celular a cada login.
+            </p>
+            <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl space-y-1.5 text-[11px] text-slate-400">
+              <div>✔ Compatível com <strong>Google Authenticator</strong>, <strong>Authy</strong> e <strong>Microsoft Authenticator</strong>.</div>
+              <div>✔ Obrigatório para conformidade de segurança e perfis administrativos.</div>
+            </div>
+            <button
+              type="button"
+              onClick={iniciarSetup}
+              disabled={loading}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 transition"
+            >
+              {loading ? 'Gerando Chave...' : 'Configurar Aplicativo Autenticador'}
+            </button>
+          </div>
+        )}
+
+        {/* Etapa 2: Escanear QR Code e Digitar Código */}
+        {etapa === 'CONFIRMAR' && setupData && (
+          <form onSubmit={handleConfirmarAtivacao} className="space-y-4 text-xs">
+            <div className="flex flex-col items-center justify-center p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2 text-center">
+              <span className="text-[11px] font-semibold text-slate-300">1. Escaneie o QR Code abaixo com seu app:</span>
+              <img src={setupData.qr_code_url} alt="QR Code MFA" className="w-40 h-40 rounded-xl bg-white p-2 shadow-md" />
+              <span className="text-[10px] text-slate-500 font-mono">Chave Manual: {setupData.secret}</span>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1 text-center">2. Digite o código de 6 dígitos gerado:</label>
+              <input
+                type="text"
+                required
+                maxLength={6}
+                autoFocus
+                placeholder="000000"
+                value={codigoConfirmacao}
+                onChange={(e) => setCodigoConfirmacao(e.target.value.replace(/[^0-9]/g, ''))}
+                className="w-full py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center text-white font-mono font-bold text-lg tracking-widest focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || codigoConfirmacao.length < 6}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition"
+            >
+              {loading ? 'Validando...' : 'Confirmar e Ativar 2FA'}
+            </button>
+          </form>
+        )}
+
+        {/* Etapa 3: Desativação (caso já esteja ativo) */}
+        {etapa === 'DESATIVAR' && (
+          <form onSubmit={handleDesativarMfa} className="space-y-4 text-xs">
+            <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <CheckCircle2 className="h-4 w-4" /> MFA está atualmente ATIVADO nesta conta
+              </div>
+              <p className="text-slate-400 text-[11px]">
+                Para desativar o segundo fator, confirme sua senha atual de acesso:
+              </p>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-400 mb-1">Sua Senha Atual</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                <input
+                  type="password"
+                  required
+                  value={senhaDesativacao}
+                  onChange={(e) => setSenhaDesativacao(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-rose-500 font-medium"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !senhaDesativacao}
+              className="w-full py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-rose-600/30 transition"
+            >
+              {loading ? 'Desativando...' : 'Desativar Autenticação em 2 Etapas'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\hooks\useBalanca.js
+========================================
+import { useState, useRef } from 'react';
+
+export function useBalanca() {
+    const [peso, setPeso] = useState("0.000");
+    const [conectado, setConectado] = useState(false);
+    const [erro, setErro] = useState(null);
+
+    // Referências para podermos fechar a conexão depois
+    const portRef = useRef(null);
+    const readerRef = useRef(null);
+
+    const conectarBalanca = async () => {
+        setErro(null);
+        try {
+            if (!navigator.serial) {
+                throw new Error("Navegador não suporta Web Serial API.");
+            }
+
+            // Pede permissão ao usuário e abre a porta (Padrão Toledo/Filizola: 9600 ou 4800 bps)
+            const port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 9600 });
+
+            portRef.current = port;
+            setConectado(true);
+
+            // Cria um decodificador de texto para ler a Stream (fluxo contínuo) da porta USB
+            const textDecoder = new TextDecoderStream();
+            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+            const reader = textDecoder.readable.getReader();
+            readerRef.current = reader;
+
+            let buffer = "";
+
+            // Loop infinito escutando a balança
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    reader.releaseLock();
+                    break;
+                }
+
+                buffer += value;
+
+                // Balanças geralmente separam os envios por quebra de linha ou caracteres de controle
+                // Vamos usar um Regex simples para pegar os últimos 5 números recebidos
+                const numeros = buffer.replace(/[^0-9]/g, '');
+
+                if (numeros.length >= 5) {
+                    // Pega os últimos 5 dígitos (Ex: Toledo envia STX + 02150 + ETX -> 02150 = 2.150 Kg)
+                    const pesoExtraido = numeros.slice(-5);
+                    const pesoFormatado = (parseInt(pesoExtraido, 10) / 1000).toFixed(3);
+                    setPeso(pesoFormatado);
+                    buffer = ""; // Limpa o buffer após leitura de sucesso
+                }
+
+                // Prevenção de estouro de memória caso a balança mande lixo
+                if (buffer.length > 50) buffer = "";
+            }
+
+        } catch (err) {
+            console.error("Erro na balança USB:", err);
+            if (err.name !== 'NotFoundError') {
+                setErro(err.message);
+            }
+            setConectado(false);
+        }
+    };
+
+    const desconectarBalanca = async () => {
+        try {
+            if (readerRef.current) {
+                await readerRef.current.cancel();
+                readerRef.current = null;
+            }
+            if (portRef.current) {
+                await portRef.current.close();
+                portRef.current = null;
+            }
+            setConectado(false);
+            setPeso("0.000");
+        } catch (err) {
+            console.error("Erro ao desconectar:", err);
+        }
+    };
+
+    return { peso, conectado, erro, conectarBalanca, desconectarBalanca };
+}
+
+
+========================================
+ARQUIVO: src\hooks\usePrinter.js
+========================================
+import { useState } from 'react';
+
+export function usePrinter() {
+    const [isPrinting, setIsPrinting] = useState(false);
+    const [error, setError] = useState(null);
+
+    const printReceipt = async (bytesPackage) => {
+        setIsPrinting(true);
+        setError(null);
+
+        try {
+            // Verifica se o navegador tem suporte
+            if (!navigator.serial) {
+                throw new Error("Seu navegador não suporta impressão direta (Use Chrome ou Edge).");
+            }
+
+            // Abre o pop-up nativo pedindo para selecionar a impressora USB
+            const port = await navigator.serial.requestPort();
+
+            // Abre a porta com velocidade padrão de 9600 bps
+            await port.open({ baudRate: 9600 });
+
+            // Prepara o túnel de escrita
+            const writer = port.writable.getWriter();
+
+            // Escreve os bytes e fecha o túnel
+            await writer.write(bytesPackage);
+            await writer.close();
+            await port.close();
+
+            return true;
+        } catch (err) {
+            console.error("Erro na impressão:", err);
+            // Ignora o erro se o usuário apenas clicou em "Cancelar" no pop-up
+            if (err.name !== 'NotFoundError') {
+                setError(err.message);
+            }
+            return false;
+        } finally {
+            setIsPrinting(false);
+        }
+    };
+
+    return { printReceipt, isPrinting, error };
+}
+
+
+========================================
+ARQUIVO: src\layouts\AppLayout.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import {
+  LayoutDashboard, Boxes, ShoppingCart, ShoppingBag, Wrench,
+  DollarSign, FileText, Users, LogOut, Menu, X,
+  Building2, ShieldAlert, Factory, FileSpreadsheet,
+  Truck, UserCheck, ShieldCheck, Monitor, Kanban, Settings,
+  CreditCard, FileCheck, Fingerprint, UserSquare, GitMerge, RefreshCw
+} from 'lucide-react';
+import { api } from '../services/api';
+import MfaConfigModal from '../components/MfaConfigModal';
+
+export default function AppLayout() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [empresas, setEmpresas] = useState([]);
+  const [empresaAtivaId, setEmpresaAtivaId] = useState('');
+  const [usuario, setUsuario] = useState(null);
+  const [modalMfaAberto, setModalMfaAberto] = useState(false);
+  const navigate = useNavigate();
+
+  const carregarContexto = async () => {
+    try {
+      const [resMe, resEmps] = await Promise.allSettled([
+        api.get('/auth/me'),
+        api.get('/empresas')
+      ]);
+
+      if (resMe.status === 'fulfilled' && resMe.value.data?.data) {
+        setUsuario(resMe.value.data.data);
+      } else {
+        const localUser = localStorage.getItem('scalle_user');
+        if (localUser) {
+          try { setUsuario(JSON.parse(localUser)); } catch (e) {}
+        }
+      }
+
+      if (resEmps.status === 'fulfilled' && resEmps.value.data?.data) {
+        const emps = Array.isArray(resEmps.value.data.data) ? resEmps.value.data.data : [];
+        setEmpresas(emps);
+        if (emps.length > 0) {
+          setEmpresaAtivaId(emps[0].id);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar contexto inicial do layout:', e);
+    }
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem('scalle_token')
+               || localStorage.getItem('token')
+               || localStorage.getItem('@scalle:token');
+
+    if (!token) {
+      window.location.replace('/login');
+      return;
+    }
+
+    carregarContexto();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (e) {
+      console.error(e);
+    } finally {
+      localStorage.removeItem('scalle_token');
+      localStorage.removeItem('token');
+      localStorage.removeItem('scalle_user');
+      navigate('/login');
+    }
+  };
+
+  const handleTrocarEmpresa = async (novaId) => {
+    try {
+      await api.post('/empresas/trocar-contexto', { empresa_id: novaId });
+      setEmpresaAtivaId(novaId);
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Rotas relativas sob o layout /app
+  const menu = [
+    ...(usuario?.is_master ? [{ name: 'Painel Master SaaS', path: '/app/master', icon: ShieldAlert, isMaster: true }] : []),
+    { name: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard },
+    { name: 'Portal do Colaborador', path: '/app/portal-colaborador', icon: UserSquare },
+    { name: 'CRM & Funil', path: '/app/crm', icon: Kanban, end: true },
+    { name: 'Parametrização CRM', path: '/app/crm/configuracoes', icon: Settings },
+    { name: 'WMS & Estoque', path: '/app/wms', icon: Boxes },
+    { name: 'Indústria & PCP', path: '/app/pcp', icon: Factory },
+    { name: 'Terminal Chão de Fábrica', path: '/app/pcp/terminal', icon: Monitor },
+    { name: 'Compras & Suprimentos', path: '/app/compras', icon: ShoppingCart },
+    { name: 'Pedidos & Vendas', path: '/app/vendas', icon: ShoppingBag },
+    { name: 'PDV Balcão', path: '/app/pdv', icon: ShoppingBag },
+    { name: 'Ordens de Serviço', path: '/app/os', icon: Wrench },
+    { name: 'Frotas & Ativos', path: '/app/frotas', icon: Truck },
+    { name: 'Gestão de Projetos (PMO)', path: '/app/projetos', icon: Kanban, end: false },
+    { name: 'Configuração do PMO', path: '/app/configuracoes/pmo', icon: Settings, end: false },
+    { name: 'Financeiro', path: '/app/financeiro', icon: DollarSign, end: true },
+    { name: 'Conciliação Bancária', path: '/app/financeiro/conciliacao', icon: RefreshCw },
+    { name: 'Árvore Contábil & DRE', path: '/app/controladoria/config', icon: GitMerge },
+    { name: 'Minha Assinatura & SaaS', path: '/app/billing', icon: CreditCard },
+    { name: 'Exportação Contábil', path: '/app/exportacoes', icon: FileSpreadsheet },
+    { name: 'Motor Fiscal', path: '/app/fiscal', icon: FileText },
+    { name: 'Teste Fiscal', path: '/app/fiscal/test', icon: FileText },
+    { name: 'Governança & Equipe', path: '/app/usuarios', icon: UserCheck },
+    { name: 'Gestão de Pessoas (Contatos)', path: '/app/pessoas', icon: Users },
+    { name: 'Gestão de RH', path: '/app/colaboradores', icon: Users },
+    { name: 'RH & Ponto REP-P', path: '/app/ponto', icon: Fingerprint },
+    { name: 'Folha & Holerites', path: '/app/holerites', icon: FileText },
+    { name: 'Recrutamento & Candidatos', path: '/app/recrutamento', icon: Users },
+    { name: 'Cofre Digital (GED)', path: '/app/ged', icon: ShieldCheck },
+    { name: 'Desempenho & Clima Organizacional', path: '/app/desempenho-clima', icon: UserCheck, end: true },
+    ...(usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin ? [
+      { name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }
+    ] : []),
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex text-slate-100 font-sans">
+      {/* Sidebar Mobile Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar Navigation */}
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-950/40">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-lg ${
+              usuario?.is_master ? 'bg-rose-600 shadow-rose-600/30' : 'bg-indigo-600 shadow-indigo-600/30'
+            }`}>
+              S
+            </div>
+            <div className="flex flex-col">
+              <span className="font-bold text-base text-white tracking-wide leading-none">Scalle ERP</span>
+              {usuario?.is_master && (
+                <span className="text-[9px] font-bold text-rose-400 font-mono tracking-wider mt-0.5">SaaS Owner</span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="p-1 rounded-lg text-slate-400 hover:text-white lg:hidden cursor-pointer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin">
+          {menu.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) => `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition ${
+                  isActive
+                    ? item.isMaster
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20 font-bold'
+                      : 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold'
+                    : item.isMaster
+                      ? 'text-rose-400 hover:bg-rose-950/40 hover:text-rose-200'
+                      : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span>{item.name}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="p-3 border-t border-slate-800 bg-slate-950/20">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 transition cursor-pointer"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span>Encerrar Sessão</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Topbar Header */}
+        <header className="h-16 flex items-center justify-between px-4 sm:px-6 border-b border-slate-800 bg-slate-900/60 backdrop-blur-md shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 rounded-lg text-slate-400 hover:text-white lg:hidden cursor-pointer"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+
+            {/* Context Switcher de Empresa / Filial */}
+            {empresas.length > 0 && (
+              <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl">
+                <Building2 className="h-4 w-4 text-indigo-400 shrink-0" />
+                <select
+                  value={empresaAtivaId}
+                  onChange={(e) => handleTrocarEmpresa(e.target.value)}
+                  className="bg-transparent text-xs sm:text-sm text-white font-medium focus:outline-none cursor-pointer pr-2"
+                >
+                  {empresas.map((emp) => (
+                    <option key={emp.id} value={emp.id} className="bg-slate-900 text-white">
+                      {emp.nome_fantasia} {emp.is_matriz ? '(Matriz)' : '(Filial)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Botão de Gestão de 2FA / MFA */}
+            <button
+              type="button"
+              onClick={() => setModalMfaAberto(true)}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
+                usuario?.mfa_ativo
+                  ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300 hover:bg-emerald-900/50'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Configuração de Autenticação em 2 Etapas (MFA/2FA)"
+            >
+              <ShieldCheck className={`h-4 w-4 ${usuario?.mfa_ativo ? 'text-emerald-400' : 'text-slate-500'}`} />
+              <span className="hidden md:inline">{usuario?.mfa_ativo ? '2FA Ativo' : 'Ativar 2FA'}</span>
+            </button>
+
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-bold text-white">{usuario?.name || 'Operador Conectado'}</div>
+              <div className={`text-[11px] font-medium ${usuario?.is_master ? 'text-rose-400 font-bold' : 'text-indigo-400'}`}>
+                {usuario?.is_master ? 'SaaS Owner (Global)' : (usuario?.perfil?.nome || 'Operador')}
+              </div>
+            </div>
+            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold text-xs shadow-inner ${
+              usuario?.is_master
+                ? 'bg-rose-600/20 border-rose-500/30 text-rose-400'
+                : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
+            }`}>
+              {usuario?.name?.charAt(0) || 'U'}
+            </div>
+          </div>
+        </header>
+
+        {/* Content Outlet */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5">
+          <Outlet />
+        </main>
+      </div>
+
+      {/* Modal de Gestão de 2FA / MFA */}
+      {modalMfaAberto && (
+        <MfaConfigModal
+          usuario={usuario}
+          onClose={() => setModalMfaAberto(false)}
+          onAtualizado={(status) => {
+            const updated = { ...usuario, mfa_ativo: status };
+            setUsuario(updated);
+            localStorage.setItem('scalle_user', JSON.stringify(updated));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\Login.jsx
+========================================
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../services/api';
+import { ShieldCheck, KeyRound, Mail, Lock, ArrowRight, ArrowLeft } from 'lucide-react';
+
+export default function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaRequerido, setMfaRequerido] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const navigate = useNavigate();
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setErro('');
+    setLoading(true);
+
+    try {
+      const res = await api.post('/auth/login', {
+        email: email.trim(),
+        password,
+        mfa_code: mfaRequerido ? mfaCode.trim() : undefined
+      });
+
+      if (res.data?.data?.mfa_requerido) {
+        setMfaRequerido(true);
+        setLoading(false);
+        return;
+      }
+
+      const { token, user } = res.data.data;
+
+      // Gravação padronizada em todas as chaves
+      localStorage.setItem('scalle_token', token);
+      localStorage.setItem('token', token);
+      localStorage.setItem('@scalle:token', token);
+      localStorage.setItem('scalle_user', JSON.stringify(user));
+      localStorage.setItem('@scalle:user', JSON.stringify(user));
+
+      // Redirecionamento limpo para o layout do app
+      window.location.replace('/app/dashboard');
+    } catch (err) {
+      setErro(err.response?.data?.error?.message || 'Falha na autenticação. Verifique os dados.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const voltarParaSenha = () => {
+    setMfaRequerido(false);
+    setMfaCode('');
+    setErro('');
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-200">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <div className="text-center space-y-2">
+          <div className="inline-flex p-3 rounded-2xl bg-indigo-950/80 border border-indigo-800 text-indigo-400 mb-1">
+            <ShieldCheck className="h-8 w-8" />
+          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Scalle ERP</h1>
+          <p className="text-xs text-slate-400">Entre com suas credenciais corporativas</p>
+        </div>
+
+        {erro && (
+          <div className="p-3.5 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-xl text-center">
+            {erro}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4 text-xs">
+          {!mfaRequerido ? (
+            <>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">E-mail</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="seu.email@empresa.com"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Senha</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 font-medium"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
+              <KeyRound className="h-6 w-6 text-emerald-400 mx-auto" />
+              <div>
+                <h3 className="text-sm font-bold text-white">Segundo Fator (2FA)</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Digite o código de 6 dígitos do seu aplicativo autenticador</p>
+              </div>
+              <input
+                type="text"
+                required
+                maxLength={6}
+                autoFocus
+                placeholder="000000"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/[^0-9]/g, ''))}
+                className="w-full py-3 bg-slate-900 border border-slate-700 rounded-xl text-center text-white font-mono font-bold text-xl tracking-widest focus:outline-none focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={voltarParaSenha}
+                className="text-[11px] text-slate-400 hover:text-white flex items-center justify-center gap-1 mx-auto cursor-pointer"
+              >
+                <ArrowLeft className="h-3 w-3" /> Voltar para senha
+              </button>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 transition"
+          >
+            {loading ? 'Validando...' : (mfaRequerido ? 'Confirmar e Entrar' : 'Acessar Sistema')}
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\Billing\PainelCobrancaView.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { CheckCircle2, ArrowRight, X } from 'lucide-react';
+
+export default function PainelCobrancaView() {
+    const [loading, setLoading] = useState(true);
+    const [dadosAssinatura, setDadosAssinatura] = useState(null);
+    const [faturas, setFaturas] = useState([]);
+    const [erro, setErro] = useState(null);
+
+    // Estados do Modal de Upgrade
+    const [modalPlanos, setModalPlanos] = useState(false);
+    const [planosDisponiveis, setPlanosDisponiveis] = useState([]);
+    const [alterandoPlano, setAlterandoPlano] = useState(false);
+
+    const carregarDados = async () => {
+        setLoading(true);
+        setErro(null);
+        try {
+            const [resAssinatura, resFaturas] = await Promise.all([
+                api.get('/billing/minha-assinatura'),
+                api.get('/billing/historico-faturas')
+            ]);
+
+            setDadosAssinatura(resAssinatura.data.data);
+            setFaturas(resFaturas.data.data || resFaturas.data || []);
+        } catch (err) {
+            const mensagem = err.response?.data?.error || err.response?.data?.message || err.message || 'Falha ao carregar faturamento.';
+            setErro(mensagem);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const abrirModalPlanos = async () => {
+        setModalPlanos(true);
+        try {
+            const res = await api.get('/public/planos');
+            setPlanosDisponiveis(res.data?.data || []);
+        } catch (e) {
+            console.error('Falha ao carregar planos', e);
+        }
+    };
+
+    const handleAlterarPlano = async (slug) => {
+        setAlterandoPlano(true);
+        try {
+            await api.post('/billing/alterar-plano', { plano_slug: slug });
+            setModalPlanos(false);
+            carregarDados();
+        } catch (err) {
+            alert(err.response?.data?.error?.message || 'Erro ao alterar plano.');
+        } finally {
+            setAlterandoPlano(false);
+        }
+    };
+
+    useEffect(() => {
+        carregarDados();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+            </div>
+        );
+    }
+
+    if (erro) {
+        return (
+            <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+                <p className="font-semibold">Erro ao carregar painel</p>
+                <p className="text-sm">{erro}</p>
+                <button onClick={carregarDados} className="mt-2 text-xs font-semibold underline hover:text-red-900 cursor-pointer">
+                    Tentar novamente
+                </button>
+            </div>
+        );
+    }
+
+    const { assinatura, fatura_aberta, metricas_uso } = dadosAssinatura || {};
+    const percentualStorage = metricas_uso?.storage_limite_gb > 0
+        ? Math.min(100, Math.round((metricas_uso.storage_utilizado_gb / metricas_uso.storage_limite_gb) * 100))
+        : 0;
+
+    const isSoftLocked = assinatura?.status === 'SOFT_LOCK' || assinatura?.status === 'SUSPENSO' || assinatura?.status === 'INADIMPLENTE';
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-100">Assinatura & Faturamento</h1>
+                    <p className="text-sm text-slate-400">Gerencie seu plano corporativo, faturas e cotas de uso.</p>
+                </div>
+                <button
+                    onClick={carregarDados}
+                    className="self-start md:self-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-xl transition cursor-pointer"
+                >
+                    Atualizar Dados
+                </button>
+            </div>
+
+            {isSoftLocked && (
+                <div className="p-4 bg-amber-950/40 border-l-4 border-amber-500 rounded-r-xl shadow-sm">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div>
+                            <h3 className="text-amber-400 font-bold">Conta em Modo Somente Leitura (Soft-Lock)</h3>
+                            <p className="text-amber-300/80 text-sm mt-0.5">
+                                Identificamos pendência financeira. As mutações estão pausadas até a quitação da fatura.
+                            </p>
+                        </div>
+                        {fatura_aberta?.link_pagamento && (
+                            <a
+                                href={fatura_aberta.link_pagamento}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm rounded-xl shadow transition text-center whitespace-nowrap"
+                            >
+                                Pagar Fatura Agora
+                            </a>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+                    <div>
+                        <span className="text-xs font-semibold uppercase text-slate-400">Plano Contratado</span>
+                        <h2 className="text-xl font-bold text-white mt-1">{assinatura?.plano?.nome || 'Enterprise Custom'}</h2>
+                        <p className="text-2xl font-extrabold text-indigo-400 mt-2">
+                            R$ {Number(assinatura?.plano?.valor_mensal || 0).toFixed(2)}
+                            <span className="text-xs text-slate-400 font-normal"> /mês</span>
+                        </p>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between text-sm">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            assinatura?.status === 'ATIVO' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+                            assinatura?.status === 'TRIAL' ? 'bg-blue-950 text-blue-400 border border-blue-800' :
+                            'bg-amber-950 text-amber-400 border border-amber-800'
+                        }`}>
+                            {assinatura?.status}
+                        </span>
+                        <button onClick={abrirModalPlanos} className="text-indigo-400 hover:text-indigo-300 font-bold text-xs underline cursor-pointer">
+                            Fazer Upgrade
+                        </button>
+                    </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+                    <div>
+                        <span className="text-xs font-semibold uppercase text-slate-400">Fatura Atual</span>
+                        {fatura_aberta ? (
+                            <>
+                                <h2 className="text-xl font-bold text-white mt-1">R$ {Number(fatura_aberta.valor).toFixed(2)}</h2>
+                                <p className="text-sm text-slate-400 mt-1">
+                                    Vencimento: {fatura_aberta.vencimento ? new Date(fatura_aberta.vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                                </p>
+                                <div className="mt-4">
+                                    <a
+                                        href={fatura_aberta.link_pagamento}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-block w-full text-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm rounded-xl shadow transition"
+                                    >
+                                        Pagar via PIX, Boleto ou Cartão
+                                    </a>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="mt-2 text-slate-300">
+                                <p className="font-semibold text-emerald-400">Sem pendências financeiras</p>
+                                <p className="text-xs text-slate-400 mt-1">
+                                    Próxima renovação: {assinatura?.data_proximo_vencimento ? new Date(assinatura.data_proximo_vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : 'N/D'}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+                    <div>
+                        <span className="text-xs font-semibold uppercase text-slate-400">Armazenamento (Storage)</span>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            <span className="text-2xl font-bold text-white">{metricas_uso?.storage_utilizado_gb || 0} GB</span>
+                            <span className="text-xs text-slate-400">de {metricas_uso?.storage_limite_gb || 0} GB</span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-2.5 mt-3 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                    percentualStorage > 90 ? 'bg-red-500' :
+                                    percentualStorage > 70 ? 'bg-amber-500' : 'bg-indigo-500'
+                                }`}
+                                style={{ width: `${percentualStorage}%` }}
+                            ></div>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2 text-right">{percentualStorage}% utilizado</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-800">
+                    <h3 className="font-bold text-white">Histórico de Cobranças</h3>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr className="bg-slate-950/60 text-slate-400 border-b border-slate-800">
+                                <th className="p-4 font-semibold">Identificador</th>
+                                <th className="p-4 font-semibold">Valor</th>
+                                <th className="p-4 font-semibold">Vencimento</th>
+                                <th className="p-4 font-semibold">Status</th>
+                                <th className="p-4 font-semibold text-right">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800">
+                            {faturas.length === 0 ? (
+                                <tr><td colSpan="5" className="p-6 text-center text-slate-500">Nenhuma fatura registrada.</td></tr>
+                            ) : (
+                                faturas.map((fat) => (
+                                    <tr key={fat.id} className="hover:bg-slate-800/50 transition">
+                                        <td className="p-4 font-mono text-xs text-slate-400">{fat.gateway_payment_id || fat.id.substring(0, 8)}</td>
+                                        <td className="p-4 font-bold text-white">R$ {Number(fat.valor).toFixed(2)}</td>
+                                        <td className="p-4 text-slate-300">{fat.data_vencimento ? new Date(fat.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                                fat.status === 'RECEIVED' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+                                                fat.status === 'PENDING' ? 'bg-blue-950 text-blue-400 border border-blue-800' :
+                                                fat.status === 'OVERDUE' ? 'bg-red-950 text-red-400 border border-red-800' :
+                                                'bg-slate-800 text-slate-300'
+                                            }`}>
+                                                {fat.status === 'RECEIVED' ? 'Pago' : fat.status === 'PENDING' ? 'Aguardando' : fat.status === 'OVERDUE' ? 'Vencido' : fat.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            {fat.url_fatura_gateway ? (
+                                                <a href={fat.url_fatura_gateway} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300 font-medium text-xs underline">Visualizar Fatura</a>
+                                            ) : <span className="text-slate-600 text-xs">-</span>}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Modal de Escolha de Planos (Upgrade) */}
+            {modalPlanos && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-slate-950 border border-slate-800 rounded-3xl w-full max-w-5xl p-6 md:p-10 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
+                            <h2 className="text-2xl font-bold text-white">Alterar Plano (Upgrade / Downgrade)</h2>
+                            <button onClick={() => setModalPlanos(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-6 w-6" /></button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {planosDisponiveis.map(plano => {
+                                const isAtual = assinatura?.plano?.id === plano.id;
+                                return (
+                                    <div key={plano.id} className={`p-6 rounded-2xl border ${isAtual ? 'bg-indigo-900/30 border-indigo-500' : 'bg-slate-900 border-slate-800'} flex flex-col justify-between`}>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white">{plano.nome}</h3>
+                                            <div className="mt-2 text-3xl font-extrabold text-white">
+                                                R$ {Number(plano.valor_mensal).toFixed(2).replace('.', ',')}
+                                                <span className="text-xs text-slate-400 font-normal">/mês</span>
+                                            </div>
+                                            <ul className="mt-4 space-y-2 text-xs text-slate-300">
+                                                <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Até {plano.limite_usuarios} Usuários</li>
+                                                <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Até {plano.limite_empresas} Filiais</li>
+                                                <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> {Math.round(plano.cota_storage_bytes / 1073741824)} GB de Arquivos</li>
+                                            </ul>
+                                        </div>
+                                        <button
+                                            onClick={() => handleAlterarPlano(plano.slug)}
+                                            disabled={isAtual || alterandoPlano}
+                                            className={`mt-6 w-full py-3 rounded-xl font-bold text-xs transition ${
+                                                isAtual ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg cursor-pointer'
+                                            }`}
+                                        >
+                                            {isAtual ? 'Plano Atual' : (alterandoPlano ? 'Processando...' : 'Mudar para este plano')}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\Cadastros\PessoasPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import {
+  Users, Plus, Search, CheckCircle2, AlertTriangle,
+  X, Building2, User as UserIcon, Tag, UploadCloud
+} from 'lucide-react';
+
+export default function PessoasPage() {
+  const [pessoas, setPessoas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('TODOS');
+  const [feedback, setFeedback] = useState(null);
+
+  // Estados da Importação CSV
+  const [modalImportacao, setModalImportacao] = useState(false);
+  const [arquivoCsv, setArquivoCsv] = useState(null);
+  const [importando, setImportando] = useState(false);
+
+  // Modais e Form
+  const [modalNovo, setModalNovo] = useState(false);
+  const [form, setForm] = useState({
+    id: null,
+    tipo_pessoa: 'PF',
+    nome_razao_social: '',
+    nome_fantasia_apelido: '',
+    cpf_cnpj: '',
+    email_principal: '',
+    telefone_principal: '',
+    is_cliente: false,
+    is_fornecedor: false,
+    is_tecnico: false,
+    is_transportadora: false,
+  });
+
+  const carregarPessoas = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/pessoas', { params: { search } });
+      const data = res.data?.data?.data || res.data?.data || [];
+      setPessoas(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setFeedback({ tipo: 'erro', msg: 'Erro ao carregar a base de pessoas.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const delay = setTimeout(() => { carregarPessoas(); }, 300);
+    return () => clearTimeout(delay);
+  }, [search]);
+
+  const handleSalvar = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...form,
+        cpf_cnpj: form.cpf_cnpj.replace(/\D/g, '')
+      };
+
+      if (form.id) {
+        await api.put(`/pessoas/${form.id}`, payload);
+        setFeedback({ tipo: 'sucesso', msg: 'Cadastro atualizado com sucesso!' });
+      } else {
+        await api.post('/pessoas', payload);
+        setFeedback({ tipo: 'sucesso', msg: 'Nova pessoa cadastrada no ERP!' });
+      }
+      setModalNovo(false);
+      carregarPessoas();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar o registro.' });
+    }
+  };
+
+  const handleImportarCsv = async (e) => {
+    e.preventDefault();
+    if (!arquivoCsv) return;
+
+    setImportando(true);
+    const formData = new FormData();
+    formData.append('arquivo_csv', arquivoCsv);
+
+    try {
+      const res = await api.post('/importacao/pessoas', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message });
+      setModalImportacao(false);
+      setArquivoCsv(null);
+      carregarPessoas();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao importar arquivo.' });
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  const handleEditar = (pessoa) => {
+    setForm({
+      id: pessoa.id,
+      tipo_pessoa: pessoa.tipo_pessoa || 'PF',
+      nome_razao_social: pessoa.nome_razao_social || '',
+      nome_fantasia_apelido: pessoa.nome_fantasia_apelido || '',
+      cpf_cnpj: pessoa.cpf_cnpj || '',
+      email_principal: pessoa.email_principal || '',
+      telefone_principal: pessoa.telefone_principal || '',
+      is_cliente: pessoa.is_cliente || false,
+      is_fornecedor: pessoa.is_fornecedor || false,
+      is_tecnico: pessoa.is_tecnico || false,
+      is_transportadora: pessoa.is_transportadora || false,
+    });
+    setModalNovo(true);
+  };
+
+  const pessoasFiltradas = pessoas.filter(p => {
+    if (filtroTipo === 'TODOS') return true;
+    if (filtroTipo === 'PF' && p.tipo_pessoa === 'PF') return true;
+    if (filtroTipo === 'PJ' && p.tipo_pessoa === 'PJ') return true;
+    return false;
+  });
+
+  return (
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto text-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <Users className="h-6 w-6 text-indigo-500" /> Diretório Global de Pessoas
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">Base central unificada para RH, Clientes e Fornecedores</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setModalImportacao(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold rounded-xl text-sm transition shadow-sm cursor-pointer"
+          >
+            <UploadCloud className="h-4 w-4" /> Importar CSV
+          </button>
+          <button
+            onClick={() => {
+              setForm({ id: null, tipo_pessoa: 'PF', nome_razao_social: '', nome_fantasia_apelido: '', cpf_cnpj: '', email_principal: '', telefone_principal: '', is_cliente: false, is_fornecedor: false, is_tecnico: false, is_transportadora: false });
+              setModalNovo(true);
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-500/30 cursor-pointer"
+          >
+            <Plus className="h-4 w-4" /> Novo Cadastro
+          </button>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-4 rounded-xl flex items-center justify-between text-sm mb-6 ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+            <span className="font-medium">{feedback.msg}</span>
+          </div>
+          <button onClick={() => setFeedback(null)} className="cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Abas e Busca */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-950/50">
+          <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <button onClick={() => setFiltroTipo('TODOS')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${filtroTipo === 'TODOS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Todos</button>
+            <button onClick={() => setFiltroTipo('PF')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${filtroTipo === 'PF' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Pessoa Física (PF)</button>
+            <button onClick={() => setFiltroTipo('PJ')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${filtroTipo === 'PJ' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>Pessoa Jurídica (PJ)</button>
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Buscar por Nome, CPF ou CNPJ..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500 transition"
+            />
+          </div>
+        </div>
+
+        {/* Tabela */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-slate-300 min-w-[800px]">
+            <thead className="bg-slate-950 text-xs uppercase font-bold text-slate-500">
+              <tr>
+                <th className="px-6 py-4">Tipo</th>
+                <th className="px-6 py-4">Nome / Razão Social</th>
+                <th className="px-6 py-4">CPF / CNPJ</th>
+                <th className="px-6 py-4">Contatos</th>
+                <th className="px-6 py-4">Classificação (Tags)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {loading ? (
+                <tr><td colSpan="5" className="text-center py-8 text-slate-500">Carregando diretório...</td></tr>
+              ) : pessoasFiltradas.length === 0 ? (
+                <tr><td colSpan="5" className="text-center py-8 text-slate-500">Nenhum registro encontrado.</td></tr>
+              ) : (
+                pessoasFiltradas.map((p) => (
+                  <tr key={p.id} onClick={() => handleEditar(p)} className="hover:bg-slate-800/40 transition cursor-pointer group">
+                    <td className="px-6 py-4">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${p.tipo_pessoa === 'PJ' ? 'bg-indigo-950 border-indigo-800 text-indigo-400' : 'bg-emerald-950 border-emerald-800 text-emerald-400'}`}>
+                        {p.tipo_pessoa === 'PJ' ? <Building2 className="h-4 w-4" /> : <UserIcon className="h-4 w-4" />}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-white group-hover:text-indigo-400 transition">{p.nome_razao_social}</div>
+                      <div className="text-[11px] text-slate-500">{p.nome_fantasia_apelido || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 font-mono text-slate-300">{p.cpf_cnpj}</td>
+                    <td className="px-6 py-4 text-xs">
+                      <div className="text-slate-300">{p.email_principal || 'Sem e-mail'}</div>
+                      <div className="text-slate-400">{p.telefone_principal || 'Sem telefone'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.is_cliente && <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[9px] font-bold uppercase">Cliente</span>}
+                        {p.is_fornecedor && <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[9px] font-bold uppercase">Fornecedor</span>}
+                        {p.is_tecnico && <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 text-[9px] font-bold uppercase">Técnico</span>}
+                        {!p.is_cliente && !p.is_fornecedor && !p.is_tecnico && <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[9px] font-bold uppercase">Sem Tag</span>}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modalNovo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users className="h-5 w-5 text-indigo-400" /> {form.id ? 'Editar Cadastro' : 'Nova Pessoa Fís./Jur.'}
+              </h2>
+              <button onClick={() => setModalNovo(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+
+            <form onSubmit={handleSalvar} className="p-6 space-y-5 text-sm">
+              <div className="flex gap-4 p-1 bg-slate-950 border border-slate-800 rounded-xl w-fit">
+                <label className={`px-4 py-2 rounded-lg cursor-pointer font-bold text-xs transition flex items-center gap-2 ${form.tipo_pessoa === 'PF' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}>
+                  <input type="radio" name="tipo_pessoa" value="PF" checked={form.tipo_pessoa === 'PF'} onChange={(e) => setForm({...form, tipo_pessoa: e.target.value})} className="hidden" />
+                  <UserIcon className="h-4 w-4" /> Pessoa Física (RH)
+                </label>
+                <label className={`px-4 py-2 rounded-lg cursor-pointer font-bold text-xs transition flex items-center gap-2 ${form.tipo_pessoa === 'PJ' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}>
+                  <input type="radio" name="tipo_pessoa" value="PJ" checked={form.tipo_pessoa === 'PJ'} onChange={(e) => setForm({...form, tipo_pessoa: e.target.value})} className="hidden" />
+                  <Building2 className="h-4 w-4" /> Pessoa Jurídica
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">{form.tipo_pessoa === 'PF' ? 'CPF *' : 'CNPJ *'}</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={form.cpf_cnpj}
+                      onChange={(e) => setForm({ ...form, cpf_cnpj: e.target.value })}
+                      placeholder={form.tipo_pessoa === 'PF' ? 'Apenas números...' : 'CNPJ sem pontuação...'}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 mb-1">{form.tipo_pessoa === 'PF' ? 'Nome Completo *' : 'Razão Social *'}</label>
+                  <input type="text" required value={form.nome_razao_social} onChange={(e) => setForm({ ...form, nome_razao_social: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white uppercase focus:border-indigo-500" />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 mb-1">{form.tipo_pessoa === 'PF' ? 'Apelido (Opcional)' : 'Nome Fantasia'}</label>
+                  <input type="text" value={form.nome_fantasia_apelido} onChange={(e) => setForm({ ...form, nome_fantasia_apelido: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-indigo-500" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">E-mail Principal</label>
+                  <input type="email" value={form.email_principal} onChange={(e) => setForm({ ...form, email_principal: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Telefone / WhatsApp</label>
+                  <input type="text" value={form.telefone_principal} onChange={(e) => setForm({ ...form, telefone_principal: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-indigo-500" />
+                </div>
+              </div>
+
+              {/* Tags de Classificação */}
+              <div className="pt-4 border-t border-slate-800">
+                <label className="block text-xs font-bold text-slate-400 mb-3 flex items-center gap-1.5"><Tag className="h-4 w-4" /> Classificações no ERP (Tags)</label>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                    <input type="checkbox" checked={form.is_cliente} onChange={(e) => setForm({...form, is_cliente: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600 cursor-pointer" />
+                    Cliente
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                    <input type="checkbox" checked={form.is_fornecedor} onChange={(e) => setForm({...form, is_fornecedor: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600 cursor-pointer" />
+                    Fornecedor
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                    <input type="checkbox" checked={form.is_tecnico} onChange={(e) => setForm({...form, is_tecnico: e.target.checked})} className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-600 cursor-pointer" />
+                    Técnico de Campo
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovo(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold transition shadow-lg shadow-indigo-600/30 cursor-pointer">Gravar no Diretório</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Importação CSV mantido inalterado... */}
+      {modalImportacao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <UploadCloud className="h-5 w-5 text-emerald-400" /> Importação em Lote
+              </h2>
+              <button onClick={() => setModalImportacao(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={handleImportarCsv} className="p-6 space-y-4 text-xs text-slate-300">
+              <p>Envie uma planilha CSV (separada por ponto e vírgula) com as seguintes colunas na ordem exata:</p>
+              <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg font-mono text-[10px] text-indigo-300 overflow-x-auto whitespace-nowrap">
+                NOME ; CPF_CNPJ ; EMAIL ; TELEFONE ; TIPO_PERFIL
+              </div>
+              <p className="text-[10px] text-slate-500 italic">Dica: TIPO_PERFIL pode ser CLIENTE, FORNECEDOR ou AMBOS. A primeira linha (cabeçalho) será ignorada.</p>
+
+              <div className="pt-2">
+                <input
+                  type="file"
+                  accept=".csv"
+                  required
+                  onChange={(e) => setArquivoCsv(e.target.files[0])}
+                  className="w-full text-slate-300 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-white cursor-pointer border border-slate-800 rounded-lg bg-slate-950"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalImportacao(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={importando} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold rounded-xl transition shadow-lg cursor-pointer">
+                  {importando ? 'Processando...' : 'Iniciar Importação'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\compras\ComprasPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
+import { useHardwareStore } from '../../store/useHardwareStore';
+import { ZplEncoder } from '../../utils/ZplEncoder';
+import {
+  ShoppingCart, Plus, RefreshCw, CheckCircle2,
+  AlertTriangle, X, Trash2, UserPlus, Building2,
+  FileCode, Upload, Layers, Scale, Printer, Barcode
+} from 'lucide-react';
+
+export default function ComprasPage() {
+  const navigate = useNavigate();
+  const [compras, setCompras] = useState([]);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [depositos, setDepositos] = useState([]);
+  const [itensCatalogo, setItensCatalogo] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Hardware Global Store
+  const {
+    pesoBalanca, balancaConectada, conectarBalanca, desconectarBalanca,
+    impressoraConectada, conectarImpressora, imprimirCupom
+  } = useHardwareStore();
+
+  // Modais
+  const [modalNovaCompra, setModalNovaCompra] = useState(false);
+  const [modalNovoFornecedor, setModalNovoFornecedor] = useState(false);
+  const [modalImportarXml, setModalImportarXml] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  // Forms
+  const [formCompra, setFormCompra] = useState({
+    fornecedor_id: '',
+    deposito_destino_id: '',
+    numero_nota: '',
+    serie_nota: '1',
+    data_emissao: new Date().toISOString().split('T')[0],
+    data_vencimento: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+    valor_frete: 0,
+    valor_desconto: 0,
+    itens: [
+      { item_id: '', quantidade: 1, valor_unitario: 0, lote: '', data_validade: '' }
+    ]
+  });
+
+  const [formFornecedor, setFormFornecedor] = useState({
+    tipo_pessoa: 'PJ',
+    nome_razao_social: '',
+    nome_fantasia_apelido: '',
+    cpf_cnpj: '',
+    email_principal: '',
+    telefone_principal: '',
+    is_fornecedor: true,
+    is_cliente: false
+  });
+
+  const [formXml, setFormXml] = useState({
+    xml_file: null,
+    deposito_id: ''
+  });
+  const [importandoXml, setImportandoXml] = useState(false);
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      const [resCompras, resPessoas, resDeps, resItens] = await Promise.all([
+        api.get('/compras'),
+        api.get('/pessoas'),
+        api.get('/wms/depositos'),
+        api.get('/itens')
+      ]);
+
+      const comprasRaw = resCompras.data?.data || resCompras.data || [];
+      setCompras(Array.isArray(comprasRaw) ? comprasRaw : (comprasRaw.data || []));
+
+      const todasPessoas = resPessoas.data?.data || resPessoas.data || [];
+      const forns = Array.isArray(todasPessoas) ? todasPessoas.filter(p => p.is_fornecedor) : [];
+      setFornecedores(forns.length > 0 ? forns : (Array.isArray(todasPessoas) ? todasPessoas : []));
+
+      const deps = resDeps.data?.data || resDeps.data || [];
+      const listaDeps = Array.isArray(deps) ? deps : [];
+      setDepositos(listaDeps);
+
+      const itensRaw = resItens.data?.data || resItens.data || [];
+      setItensCatalogo(Array.isArray(itensRaw) ? itensRaw : (itensRaw.data || []));
+
+      const depPadrao = listaDeps.find(d => d.is_padrao) || listaDeps[0];
+      if (depPadrao) {
+        setFormCompra(prev => ({ ...prev, deposito_destino_id: prev.deposito_destino_id || depPadrao.id }));
+        setFormXml(prev => ({ ...prev, deposito_id: prev.deposito_id || depPadrao.id }));
+      }
+    } catch (err) {
+      console.error('Erro ao carregar compras:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, []);
+
+  const handleAddItem = () => {
+    setFormCompra({
+      ...formCompra,
+      itens: [...formCompra.itens, { item_id: '', quantidade: 1, valor_unitario: 0, lote: '', data_validade: '' }]
+    });
+  };
+
+  const handleRemoveItem = (index) => {
+    if (formCompra.itens.length === 1) return;
+    const novosItens = formCompra.itens.filter((_, i) => i !== index);
+    setFormCompra({ ...formCompra, itens: novosItens });
+  };
+
+  const handleItemChange = (index, field, value) => {
+    const novosItens = [...formCompra.itens];
+    novosItens[index][field] = value;
+
+    if (field === 'item_id') {
+      const itemAchado = itensCatalogo.find(i => i.id === value);
+      if (itemAchado) {
+        novosItens[index].valor_unitario = parseFloat(itemAchado.preco_custo || 0);
+      }
+    }
+
+    setFormCompra({ ...formCompra, itens: novosItens });
+  };
+
+  const handleSalvarCompra = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/compras', formCompra);
+
+      // Impressão ZPL para a Etiquetadora Zebra
+      if (impressoraConectada) {
+        for (const item of formCompra.itens) {
+          const produto = itensCatalogo.find(i => i.id === item.item_id);
+          if (produto) {
+            const skuValido = produto.codigo_sku && produto.codigo_sku.length > 2 ? produto.codigo_sku : "000000";
+            const dataAtual = new Date().toLocaleDateString('pt-BR');
+            const zplBytes = ZplEncoder.buildLabel(produto.nome, item.quantidade, dataAtual, skuValido);
+            await imprimirCupom(zplBytes);
+
+            // Pausa de 100ms para evitar sobrecarga no buffer serial da impressora
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+      }
+
+      setModalNovaCompra(false);
+      setFeedback({ tipo: 'sucesso', msg: 'Mercadoria recebida, estoque creditado e etiquetas emitidas!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao registrar compra.' });
+    }
+  };
+
+  const handleSalvarFornecedor = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/pessoas', formFornecedor);
+      const novoForn = res.data?.data;
+      setModalNovoFornecedor(false);
+      setFormFornecedor({
+        tipo_pessoa: 'PJ',
+        nome_razao_social: '',
+        nome_fantasia_apelido: '',
+        cpf_cnpj: '',
+        email_principal: '',
+        telefone_principal: '',
+        is_fornecedor: true,
+        is_cliente: false
+      });
+      setFeedback({ tipo: 'sucesso', msg: 'Fornecedor cadastrado com sucesso!' });
+      await carregarDados();
+      if (novoForn?.id) {
+        setFormCompra(prev => ({ ...prev, fornecedor_id: novoForn.id }));
+      }
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || err.response?.data?.message || 'Erro ao cadastrar fornecedor.' });
+    }
+  };
+
+  const handleImportarXml = async (e) => {
+    e.preventDefault();
+    if (!formXml.xml_file || !formXml.deposito_id) return;
+
+    setImportandoXml(true);
+    const data = new FormData();
+    data.append('xml_file', formXml.xml_file);
+    data.append('deposito_id', formXml.deposito_id);
+
+    try {
+      const res = await api.post('/wms/importar-xml', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setModalImportarXml(false);
+      setFormXml(prev => ({ ...prev, xml_file: null }));
+      setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'XML de NF-e importado e estoque provisionado com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao importar XML de NF-e.' });
+    } finally {
+      setImportandoXml(false);
+    }
+  };
+
+  const calcularTotalForm = () => {
+    const totalItens = formCompra.itens.reduce((acc, i) => acc + (parseFloat(i.quantidade || 0) * parseFloat(i.valor_unitario || 0)), 0);
+    return Math.max(0, totalItens + parseFloat(formCompra.valor_frete || 0) - parseFloat(formCompra.valor_desconto || 0));
+  };
+
+  return (
+    <div className="p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5 max-w-7xl mx-auto text-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <ShoppingCart className="h-6 w-6 sm:h-7 sm:w-7 text-indigo-500 shrink-0" />
+            Compras & Recebimento (WMS)
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Conferência de entradas, pesagem de recebimento e etiquetagem de gôndola.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-2 mr-2">
+            <button
+              onClick={balancaConectada ? desconectarBalanca : conectarBalanca}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${balancaConectada ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Scale className="h-3.5 w-3.5" /> {balancaConectada ? `Conferência: ${pesoBalanca} KG` : 'Ligar Balança'}
+            </button>
+            <button
+              onClick={conectarImpressora}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${impressoraConectada ? 'bg-indigo-950/40 border-indigo-800 text-indigo-400 shadow-inner' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Barcode className="h-3.5 w-3.5" /> {impressoraConectada ? 'Etiquetadora ZPL ON' : 'Ligar Etiquetadora ZPL'}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/app/compras/cotacoes')}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 text-xs font-bold cursor-pointer transition shadow-sm"
+          >
+            <Layers className="h-4 w-4" />
+            Mapa de Cotações
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalImportarXml(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-emerald-400 text-xs font-bold cursor-pointer transition shadow-sm"
+          >
+            <FileCode className="h-4 w-4" />
+            Importar XML NF-e
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalNovoFornecedor(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 text-xs font-bold cursor-pointer transition shadow-sm"
+          >
+            <UserPlus className="h-4 w-4 text-indigo-400" />
+            Novo Fornecedor
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalNovaCompra(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4" />
+            Entrada de Mercadoria
+          </button>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2 min-w-0">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span className="truncate">{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs sm:text-sm text-slate-300 min-w-[700px]">
+            <thead className="bg-slate-950/80 border-b border-slate-800 text-[10px] sm:text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3.5 px-4">DOCUMENTO / NF</th>
+                <th className="py-3.5 px-4">FORNECEDOR</th>
+                <th className="py-3.5 px-4">DEPÓSITO ENTRADA</th>
+                <th className="py-3.5 px-4">DATA ENTRADA</th>
+                <th className="py-3.5 px-4 text-right">VALOR TOTAL</th>
+                <th className="py-3.5 px-4 text-center">STATUS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs font-mono">
+              {loading ? (
+                <tr>
+                  <td colSpan="6" className="text-center py-12 text-slate-500 font-sans">
+                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-indigo-500" />
+                    Carregando pedidos de suprimentos...
+                  </td>
+                </tr>
+              ) : compras.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="text-center py-12 text-slate-500 font-sans">
+                    Nenhum registro de compras localizado.
+                  </td>
+                </tr>
+              ) : (
+                compras.map((compra) => (
+                  <tr key={compra.id} className="hover:bg-slate-800/40 transition font-sans">
+                    <td className="py-3.5 px-4 font-mono font-bold text-indigo-400">
+                      {compra.numero_nota ? `NF ${compra.numero_nota}` : `DOC-${compra.id.substring(0, 8).toUpperCase()}`}
+                    </td>
+                    <td className="py-3.5 px-4 text-white font-medium">
+                      {compra.fornecedor?.nome_razao_social || 'Fornecedor Diversos'}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-300">
+                      {compra.deposito_destino?.nome || compra.depositoDestino?.nome || '-'}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-400 font-mono">
+                      {compra.data_entrada ? new Date(compra.data_entrada).toLocaleDateString('pt-BR') : (compra.data_emissao ? new Date(compra.data_emissao).toLocaleDateString('pt-BR') : '-')}
+                    </td>
+                    <td className="py-3.5 px-4 text-right text-emerald-400 font-bold font-mono">
+                      R$ {parseFloat(compra.valor_total || 0).toFixed(2)}
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        compra.status === 'RECEBIDO'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                      }`}>
+                        {compra.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modalImportarXml && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <FileCode className="h-5 w-5 text-emerald-400" />
+                Importar XML de NF-e
+              </h2>
+              <button type="button" onClick={() => setModalImportarXml(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleImportarXml} className="p-4 sm:p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Arquivo XML da NF-e *</label>
+                <input
+                  type="file"
+                  accept=".xml"
+                  required
+                  onChange={(e) => setFormXml({ ...formXml, xml_file: e.target.files[0] })}
+                  className="w-full text-slate-300 text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Depósito de Entrada *</label>
+                <select
+                  required
+                  value={formXml.deposito_id}
+                  onChange={(e) => setFormXml({ ...formXml, deposito_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                >
+                  {depositos.map(d => (
+                    <option key={d.id} value={d.id}>{d.nome} ({d.codigo})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalImportarXml(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={importandoXml} className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold cursor-pointer">
+                  {importandoXml ? 'Processando XML...' : 'Importar & Dar Entrada'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {modalNovoFornecedor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-indigo-400" />
+                Novo Fornecedor
+              </h2>
+              <button type="button" onClick={() => setModalNovoFornecedor(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSalvarFornecedor} className="p-4 sm:p-6 space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Razão Social / Nome *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Distribuidora de Peças Ltda"
+                  value={formFornecedor.nome_razao_social}
+                  onChange={(e) => setFormFornecedor({ ...formFornecedor, nome_razao_social: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">CNPJ / CPF *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="00.000.000/0001-00"
+                  value={formFornecedor.cpf_cnpj}
+                  onChange={(e) => setFormFornecedor({ ...formFornecedor, cpf_cnpj: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">E-mail</label>
+                  <input
+                    type="email"
+                    value={formFornecedor.email_principal}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, email_principal: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Telefone</label>
+                  <input
+                    type="text"
+                    value={formFornecedor.telefone_principal}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, telefone_principal: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoFornecedor(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer shadow-md">Salvar Fornecedor</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {modalNovaCompra && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-indigo-400" />
+                Nova Entrada e Etiquetagem (WMS)
+              </h2>
+              <button type="button" onClick={() => setModalNovaCompra(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarCompra} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-400">Fornecedor *</label>
+                    <button
+                      type="button"
+                      onClick={() => setModalNovoFornecedor(true)}
+                      className="text-[11px] text-indigo-400 hover:underline cursor-pointer"
+                    >
+                      + Cadastrar Novo
+                    </button>
+                  </div>
+                  <select
+                    required
+                    value={formCompra.fornecedor_id}
+                    onChange={(e) => setFormCompra({ ...formCompra, fornecedor_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  >
+                    <option value="">Selecione um fornecedor...</option>
+                    {fornecedores.map(f => (
+                      <option key={f.id} value={f.id}>{f.nome_razao_social} ({f.cpf_cnpj})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Depósito de Entrada *</label>
+                  <select
+                    required
+                    value={formCompra.deposito_destino_id}
+                    onChange={(e) => setFormCompra({ ...formCompra, deposito_destino_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  >
+                    {depositos.map(d => (
+                      <option key={d.id} value={d.id}>{d.nome} ({d.codigo})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Número da Nota Fiscal</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 1234"
+                    value={formCompra.numero_nota}
+                    onChange={(e) => setFormCompra({ ...formCompra, numero_nota: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Data de Emissão</label>
+                  <input
+                    type="date"
+                    value={formCompra.data_emissao}
+                    onChange={(e) => setFormCompra({ ...formCompra, data_emissao: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Vencimento do Pagamento *</label>
+                  <input
+                    type="date"
+                    required
+                    value={formCompra.data_vencimento}
+                    onChange={(e) => setFormCompra({ ...formCompra, data_vencimento: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Itens Recebidos na Doca</span>
+                  <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="px-2.5 py-1 text-xs rounded-lg bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 font-bold cursor-pointer"
+                  >
+                    + Adicionar Item
+                  </button>
+                </div>
+
+                {formCompra.itens.map((item, idx) => (
+                  <div key={idx} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+
+                    <div className="sm:col-span-4">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Item do Catálogo *</label>
+                      <select
+                        required
+                        value={item.item_id}
+                        onChange={(e) => handleItemChange(idx, 'item_id', e.target.value)}
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+                      >
+                        <option value="">Selecione o produto...</option>
+                        {itensCatalogo.map(it => (
+                          <option key={it.id} value={it.id}>{it.nome} ({it.codigo_sku})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1 flex justify-between">
+                        <span>Qtd. NF *</span>
+                        {balancaConectada && <span className="text-emerald-400 flex items-center gap-1"><Scale className="w-3 h-3"/> Auditoria Ativa</span>}
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.0001"
+                          required
+                          value={item.quantidade}
+                          onChange={(e) => handleItemChange(idx, 'quantidade', e.target.value)}
+                          className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
+                        />
+                        {balancaConectada && (
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(idx, 'quantidade', parseFloat(pesoBalanca))}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1.5 rounded-lg text-[10px] font-bold shadow-md cursor-pointer transition whitespace-nowrap"
+                            title="Substituir pela leitura da balança física"
+                          >
+                            Puxar {pesoBalanca}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Vl. Unit (R$) *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={item.valor_unitario}
+                        onChange={(e) => handleItemChange(idx, 'valor_unitario', e.target.value)}
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-400 mb-1">Lote</label>
+                      <input
+                        type="text"
+                        value={item.lote}
+                        onChange={(e) => handleItemChange(idx, 'lote', e.target.value)}
+                        className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white uppercase"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-1 flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(idx)}
+                        className="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer bg-slate-900 rounded"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center p-3.5 bg-slate-950 border border-slate-800 rounded-xl mt-4">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-2">
+                  Total Financeiro da Nota:
+                  {impressoraConectada && <span className="bg-indigo-900/50 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded text-[9px] uppercase font-bold flex items-center gap-1"><Printer className="w-3 h-3"/> Etiquetas serão impressas ao salvar</span>}
+                </span>
+                <span className="text-lg font-bold font-mono text-emerald-400">
+                  R$ {calcularTotalForm().toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800 shrink-0">
+                <button type="button" onClick={() => setModalNovaCompra(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer shadow-md flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4"/> Efetivar Recebimento
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\compras\CotacoesComprasPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { 
+  ShoppingCart, Plus, Trophy, CheckCircle2, 
+  AlertTriangle, X, Building2, Calendar, FileText, ArrowRight
+} from 'lucide-react';
+
+export default function CotacoesComprasPage() {
+  const [cotacoes, setCotacoes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modalNovaCotacao, setModalNovaCotacao] = useState(false);
+  const [modalProposta, setModalProposta] = useState(false);
+  const [cotacaoSelecionada, setCotacaoSelecionada] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+
+  const [depositos, setDepositos] = useState([]);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [itensCatalogo, setItensCatalogo] = useState([]);
+
+  // Form Nova Cotação
+  const [formCotacao, setFormCotacao] = useState({
+    titulo: '', deposito_destino_id: '', data_limite_resposta: '', observacoes: '',
+    itens: [{ item_id: '', quantidade: 1 }]
+  });
+
+  // Form Proposta
+  const [formProposta, setFormProposta] = useState({
+    fornecedor_id: '', valor_frete: 0, prazo_entrega_dias: 3, condicoes_pagamento: 'Boleto 30 dias',
+    itens: []
+  });
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      const [resCot, resDeps, resForn, resItens] = await Promise.all([
+        api.get('/compras/cotacoes'),
+        api.get('/wms/depositos'),
+        api.get('/pessoas', { params: { tipo: 'FORNECEDOR' } }),
+        api.get('/itens')
+      ]);
+      setCotacoes(resCot.data?.data || (Array.isArray(resCot.data) ? resCot.data : []));
+      setDepositos(resDeps.data?.data || []);
+      setFornecedores(resForn.data?.data || []);
+      setItensCatalogo(resItens.data?.data || []);
+
+      if (resDeps.data?.data?.length > 0 && !formCotacao.deposito_destino_id) {
+        setFormCotacao(prev => ({ ...prev, deposito_destino_id: resDeps.data.data[0].id }));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, []);
+
+  const handleSalvarCotacao = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/compras/cotacoes', formCotacao);
+      setModalNovaCotacao(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao abrir cotação.' });
+    }
+  };
+
+  const handleAbrirModalProposta = (cot) => {
+    setCotacaoSelecionada(cot);
+    setFormProposta({
+      fornecedor_id: '', valor_frete: 0, prazo_entrega_dias: 3, condicoes_pagamento: 'Boleto 30 dias',
+      itens: cot.itens.map(i => ({ cotacao_item_id: i.id, valor_unitario: 0 }))
+    });
+    setModalProposta(true);
+  };
+
+  const handleSalvarProposta = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post(`/compras/cotacoes/${cotacaoSelecionada.id}/propostas`, formProposta);
+      setModalProposta(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao registrar proposta no mapa comparativo.' });
+    }
+  };
+
+  const handleAprovarProposta = async (cotacaoId, propostaId) => {
+    try {
+      const res = await api.put(`/compras/cotacoes/${cotacaoId}/propostas/${propostaId}/aprovar`);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao aprovar proposta vencedora.' });
+    }
+  };
+
+  return (
+    <div className="p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5 max-w-7xl mx-auto text-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white flex items-center gap-2">
+            <ShoppingCart className="h-6 w-6 text-indigo-500 shrink-0" />
+            Mapa Comparativo de Cotações (Suprimentos)
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Quadro comparativo de múltiplos fornecedores e aprovação de compras em 2 etapas
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalNovaCotacao(true)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 cursor-pointer"
+        >
+          <Plus className="h-4 w-4" /> Nova Cotação
+        </button>
+      </div>
+
+      {feedback && (
+        <div className={`p-3 rounded-xl flex items-center justify-between text-xs ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span>{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Lista de Cotações e Mapas Comparativos */}
+      <div className="space-y-4">
+        {cotacoes.length === 0 ? (
+          <div className="text-center py-12 text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">
+            Nenhuma cotação de compras em andamento.
+          </div>
+        ) : (
+          cotacoes.map((cot) => (
+            <div key={cot.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-sm sm:text-base">{cot.titulo}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      cot.status === 'CONCLUIDA' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                    }`}>
+                      {cot.status}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">Depósito Destino: {cot.deposito?.nome}</span>
+                </div>
+
+                {cot.status === 'ABERTA' && (
+                  <button
+                    type="button"
+                    onClick={() => handleAbrirModalProposta(cot)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-400 text-xs font-bold border border-slate-700 flex items-center gap-1 self-start sm:self-center cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Inserir Proposta de Fornecedor
+                  </button>
+                )}
+              </div>
+
+              {/* Quadro Comparativo de Propostas */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Propostas Recebidas no Mapa:</span>
+                {cot.propostas?.length === 0 ? (
+                  <div className="text-xs text-slate-500 italic py-2">Aguardando inserção de propostas de fornecedores...</div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {cot.propostas.map((prop) => (
+                      <div key={prop.id} className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-3 ${
+                        prop.is_vencedora ? 'bg-emerald-950/30 border-emerald-600' : 'bg-slate-950 border-slate-800'
+                      }`}>
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-start">
+                            <span className="font-bold text-white text-xs">{prop.fornecedor?.nome_razao_social}</span>
+                            {prop.is_vencedora && <span className="bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">Vencedora</span>}
+                          </div>
+                          <div className="text-base font-bold font-mono text-emerald-400">R$ {parseFloat(prop.valor_total).toFixed(2)}</div>
+                          <div className="text-[10px] text-slate-400">Frete: R$ {parseFloat(prop.valor_frete).toFixed(2)} | Prazo: {prop.prazo_entrega_dias} dias</div>
+                          <div className="text-[10px] text-slate-500 font-medium">Condições: {prop.condicoes_pagamento}</div>
+                        </div>
+
+                        {cot.status === 'ABERTA' && (
+                          <button
+                            type="button"
+                            onClick={() => handleAprovarProposta(cot.id, prop.id)}
+                            className="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-md cursor-pointer"
+                          >
+                            <Trophy className="h-3.5 w-3.5" /> Aprovar Fornecedor
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Modal Nova Cotação */}
+      {modalNovaCotacao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-indigo-400" /> Abrir Cotação de Compras</h3>
+              <button type="button" onClick={() => 

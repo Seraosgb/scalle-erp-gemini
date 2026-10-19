@@ -1,14 +1,52 @@
 @echo off
 chcp 65001 >nul
-set "PASTA_SAIDA=%~dp0consolidado_FRONTEND.txt"
+cls
 
-if exist "%PASTA_SAIDA%" del "%PASTA_SAIDA%"
+:MENU
+echo ===================================================
+echo        GERADOR DE CONSOLIDADO FRONTEND - SCALLE ERP
+echo ===================================================
+echo [1] Gerar Consolidado Completo (Dividido em Partes)
+echo [2] Gerar Apenas Controladores  (Controllers)
+echo [3] Gerar Apenas Modelos e Servicos (Models/Services)
+echo [4] Sair
+echo ===================================================
+set /p "opcao=Escolha uma opcao (1-4): "
 
-echo [Iniciando a varredura blindada...]
+if "%opcao%"=="1" goto GERAR_COMPLETO
+if "%opcao%"=="2" goto GERAR_CONTROLLERS
+if "%opcao%"=="3" goto GERAR_MODELS_SERVICES
+if "%opcao%"=="4" exit
+goto MENU
+
+:GERAR_COMPLETO
+set "FILTRO_MODULO=TODOS"
+goto EXECUTAR
+
+:GERAR_CONTROLLERS
+set "FILTRO_MODULO=Controllers"
+goto EXECUTAR
+
+:GERAR_MODELS_SERVICES
+set "FILTRO_MODULO=Models_Services"
+goto EXECUTAR
+
+:EXECUTAR
+echo.
+echo [Iniciando a varredura e fragmentacao inteligente (%FILTRO_MODULO%)...]
 echo.
 
-powershell -Command "$root = '%~dp0'; $output = '%PASTA_SAIDA%'; $extensions = @('.txt', '.html', '.json', '.js', '.vba', '.css', '.xml', '.csv', '.php','.jsx','.tsx','.gitignore'); $ignoredFolders = '\\node_modules\\|\\.git\\|\\vendor\\|\\dist\\'; $forbiddenFiles = '\.env$'; Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.FullName -notmatch $ignoredFolders -and $_.FullName -notmatch $forbiddenFiles -and $extensions -contains $_.Extension -and $_.FullName -ne $output } | ForEach-Object { Add-Content -Path $output -Value \"`n`n========================================`nARQUIVO: $($_.FullName)`n========================================`n\"; Get-Content -Path $_.FullName -Raw | Add-Content -Path $output }"
+:: Limpa partes antigas corretamente
+for %%f in ("%~dp0consolidado_FRONTEND_Parte_*.txt") do del "%%f"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = '%~dp0'; $modo = '%FILTRO_MODULO%'; $exts = @('.html','.json','.js','.css','.xml','.jsx','.tsx'); $ign = @('\node_modules\','\.git\','\dist\','\public\'); $forb = @('consolidado','.env','package-lock.json'); $files = Get-ChildItem -Path $root -Recurse -File; $allText = ''; foreach ($f in $files) { $skip = $false; foreach ($i in $ign) { if ($f.FullName.Contains($i)) { $skip = $true; break; } } foreach ($fb in $forb) { if ($f.Name.Contains($fb)) { $skip = $true; break; } } if ($modo -eq 'Controllers' -and -not $f.FullName.Contains('Controllers')) { $skip = $true; } if ($modo -eq 'Models_Services' -and -not ($f.FullName.Contains('Models') -or $f.FullName.Contains('Services'))) { $skip = $true; } if ($skip -eq $false -and $exts -contains $f.Extension) { $nl = [Environment]::NewLine; $relPath = $f.FullName.Replace($root, ''); $header = $nl + $nl + '========================================' + $nl + 'ARQUIVO: ' + $relPath + $nl + '========================================' + $nl; $content = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8; $allText += $header + $content; } } if ($allText.Length -gt 0) { $charsPerPart = 130000; $partIndex = 1; for ($i = 0; $i -lt $allText.Length; $i += $charsPerPart) { $len = [Math]::Min($charsPerPart, $allText.Length - $i); $subText = $allText.Substring($i, $len); $partPath = Join-Path $root ('consolidado_FRONTEND_Parte_' + $partIndex + '.txt'); Set-Content -LiteralPath $partPath -Value $subText -Encoding UTF8; $partIndex++; } } else { Write-Host 'Nenhum arquivo correspondente encontrado.' }"
 
 echo.
-echo Processo concluido! O arquivo foi gerado em: %PASTA_SAIDA%
+echo ===================================================
+echo Processo concluido com sucesso!
+echo Os arquivos foram fracionados na pasta do projeto.
+echo Voce pode enviar as partes separadamente para o chat.
+echo ===================================================
 pause
+cls
+goto MENU

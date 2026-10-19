@@ -1,0 +1,2265 @@
+﻿os Globais (F2, F3, F4)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F3') {
+        e.preventDefault();
+        if (carrinho.length > 0) setModalPagamento(true);
+      }
+      if (e.key === 'F4') {
+        e.preventDefault();
+        setCarrinho([]); // Cancela venda
+      }
+      if (e.key === 'Escape') {
+        setModalPagamento(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [carrinho]);
+
+  // Processa o Código de Barras (Enter do Leitor USB)
+  const processarCodigoBarras = async (e) => {
+    e.preventDefault();
+    if (!codigoBarras.trim()) return;
+
+    // TODO: Num cenário real, faremos um api.get(`/itens/sku/${codigoBarras}`)
+    // Mock Temporário para validar o fluxo
+    const mockProduto = {
+      id: crypto.randomUUID(),
+      nome: codigoBarras === '2020' ? 'Picanha Bovina Resfriada' : `Produto SKU ${codigoBarras}`,
+      preco_venda: codigoBarras === '2020' ? 89.90 : 15.50,
+      unidade: codigoBarras === '2020' ? 'KG' : 'UN'
+    };
+
+    // Se a unidade for KG e a balança estiver conectada, injeta o peso real
+    const quantidadeFinal = mockProduto.unidade === 'KG' && balancaConectada
+      ? parseFloat(pesoBalanca)
+      : 1.000;
+
+    setCarrinho(prev => [...prev, {
+      ...mockProduto,
+      quantidade: quantidadeFinal,
+      total: mockProduto.preco_venda * quantidadeFinal
+    }]);
+
+    setCodigoBarras('');
+  };
+
+  const totalVenda = carrinho.reduce((acc, item) => acc + item.total, 0);
+
+  const finalizarVenda = async () => {
+    // TODO: Num cenário real, fazemos um api.post('/vendas/faturar', payload)
+
+    if (config.impressaoAutomatica && impressoraConectada) {
+      const comandos = [
+        EscPosEncoder.init(),
+        EscPosEncoder.align(1),
+        EscPosEncoder.bold(true),
+        EscPosEncoder.text("SCALLE ERP - TICKET DE VENDA"),
+        EscPosEncoder.bold(false),
+        EscPosEncoder.text("--------------------------------\n"),
+        EscPosEncoder.align(0),
+      ];
+
+      carrinho.forEach(item => {
+        comandos.push(EscPosEncoder.text(`${item.quantidade}x ${item.nome.substring(0, 15)}... R$ ${item.total.toFixed(2)}`));
+      });
+
+      comandos.push(EscPosEncoder.text("--------------------------------\n"));
+      comandos.push(EscPosEncoder.align(2));
+      comandos.push(EscPosEncoder.bold(true));
+      comandos.push(EscPosEncoder.text(`TOTAL: R$ ${totalVenda.toFixed(2)}\n`));
+      comandos.push(EscPosEncoder.bold(false));
+      comandos.push(EscPosEncoder.text("\n\n\n"));
+      comandos.push(EscPosEncoder.cut());
+      comandos.push(EscPosEncoder.openDrawer());
+
+      await imprimirCupom(EscPosEncoder.build(comandos));
+    } else if (!config.impressaoAutomatica && impressoraConectada) {
+       // Se parametrizado para não imprimir automático, exibiria um modal aqui.
+       alert("Venda finalizada. Impressão ignorada pelas configurações do Tenant.");
+    }
+
+    setCarrinho([]);
+    setModalPagamento(false);
+  };
+
+  return (
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-950 text-slate-200">
+      {/* Coluna Esquerda: Carrinho e Input */}
+      <div className="flex-1 flex flex-col p-4 space-y-4">
+        {/* Input Leitor de Código de Barras Oculto/Focado */}
+        <form onSubmit={processarCodigoBarras} className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-6 w-6 text-indigo-500" />
+          <input
+            ref={barcodeInputRef}
+            type="text"
+            value={codigoBarras}
+            onChange={(e) => setCodigoBarras(e.target.value)}
+            placeholder="Passe o leitor de código de barras ou digite o SKU..."
+            className="w-full pl-12 pr-4 py-4 bg-slate-900 border-2 border-indigo-500/50 rounded-2xl text-xl font-mono text-white focus:outline-none focus:border-indigo-400 shadow-lg shadow-indigo-900/20"
+            autoFocus
+          />
+        </form>
+
+        {/* Cupom Fiscal Visual */}
+        <div className="flex-1 bg-slate-100 rounded-2xl p-6 overflow-y-auto shadow-inner border border-slate-300 relative">
+          <div className="w-full max-w-lg mx-auto font-mono text-slate-800 text-sm">
+            <div className="text-center border-b-2 border-dashed border-slate-400 pb-4 mb-4">
+              <h2 className="font-bold text-lg">CUPOM DE VENDA</h2>
+              <p className="text-xs">Operador: Caixa 01</p>
+            </div>
+
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-300 text-left">
+                  <th className="pb-2">ITEM</th>
+                  <th className="pb-2 text-right">QTD</th>
+                  <th className="pb-2 text-right">VL.UN</th>
+                  <th className="pb-2 text-right">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {carrinho.map((item, idx) => (
+                  <tr key={idx} className="border-b border-slate-200/50">
+                    <td className="py-2 pr-2 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">{item.nome}</td>
+                    <td className="py-2 text-right">{item.quantidade} {item.unidade}</td>
+                    <td className="py-2 text-right">{item.preco_venda.toFixed(2)}</td>
+                    <td className="py-2 text-right font-bold">{item.total.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {carrinho.length === 0 && (
+              <div className="text-center py-20 text-slate-400 italic">Caixa Livre. Aguardando leitura de itens...</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Coluna Direita: Dashboard do Caixa & Hardware */}
+      <div className="w-96 bg-slate-900 border-l border-slate-800 p-6 flex flex-col justify-between">
+        <div className="space-y-6">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <ShoppingCart className="h-6 w-6 text-indigo-400" /> PDV Balcão
+          </h2>
+
+          {/* Painel Hardware Global */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-bold text-slate-400 flex items-center gap-1.5"><Scale className="h-4 w-4"/> Balança:</span>
+              {balancaConectada ? (
+                <span className="text-emerald-400 font-bold bg-emerald-950/50 px-2 py-0.5 rounded cursor-pointer" onClick={desconectarBalanca}>Ativa</span>
+              ) : (
+                <button onClick={conectarBalanca} className="text-indigo-400 underline hover:text-indigo-300 cursor-pointer">Ligar</button>
+              )}
+            </div>
+
+            {/* Visor Grande Balança */}
+            <div className={`p-4 rounded-lg text-right font-mono text-4xl tabular-nums font-bold tracking-tight shadow-inner ${balancaConectada ? 'bg-emerald-950/20 text-emerald-400 border border-emerald-900/50' : 'bg-slate-900 text-slate-600 border border-slate-800'}`}>
+              {pesoBalanca} <span className="text-sm">KG</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-800">
+              <span className="font-bold text-slate-400 flex items-center gap-1.5"><Printer className="h-4 w-4"/> Impressora USB:</span>
+              {impressoraConectada ? (
+                <span className="text-emerald-400 font-bold bg-emerald-950/50 px-2 py-0.5 rounded">Pronta</span>
+              ) : (
+                <button onClick={conectarImpressora} className="text-indigo-400 underline hover:text-indigo-300 cursor-pointer">Autorizar</button>
+              )}
+            </div>
+            <div className="flex justify-between items-center text-[10px] text-slate-500">
+               <span>Impressão Automática</span>
+               <button onClick={toggleImpressaoAutomatica} className={`px-2 py-0.5 rounded ${config.impressaoAutomatica ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                 {config.impressaoAutomatica ? 'LIGADA' : 'DESLIGADA'}
+               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Painel de Fechamento */}
+        <div className="space-y-4">
+          <div className="bg-slate-950 p-6 rounded-2xl border border-indigo-900/50 shadow-[0_0_15px_rgba(79,70,229,0.1)]">
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Total a Pagar</p>
+            <p className="text-5xl font-black text-emerald-400 tabular-nums tracking-tighter">
+              R$ {totalVenda.toFixed(2)}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs font-bold font-mono">
+             <button className="bg-slate-800 text-slate-400 py-3 rounded-xl border border-slate-700">F2 - BUSCAR</button>
+             <button onClick={() => setCarrinho([])} className="bg-rose-950/50 text-rose-400 py-3 rounded-xl border border-rose-900/50 hover:bg-rose-900 cursor-pointer transition">F4 - CANCELAR</button>
+          </div>
+
+          <button
+            onClick={() => setModalPagamento(true)}
+            disabled={carrinho.length === 0}
+            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg cursor-pointer transition shadow-lg shadow-indigo-600/20"
+          >
+            <CreditCard className="h-6 w-6" />
+            [F3] RECEBER VENDA
+          </button>
+        </div>
+      </div>
+
+      {/* Modal de Pagamento Rápido */}
+      {modalPagamento && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-8 shadow-2xl space-y-6">
+            <h2 className="text-2xl font-bold text-white text-center">Liquidar Venda</h2>
+
+            <div className="text-center bg-slate-950 py-6 rounded-2xl border border-indigo-500/30">
+              <span className="text-emerald-400 font-black text-5xl">R$ {totalVenda.toFixed(2)}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={finalizarVenda} className="py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex flex-col items-center gap-1 cursor-pointer transition">
+                <span>DINHEIRO</span>
+              </button>
+              <button onClick={finalizarVenda} className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex flex-col items-center gap-1 cursor-pointer transition">
+                <span>PIX / CARTÃO</span>
+              </button>
+            </div>
+
+            <button onClick={() => setModalPagamento(false)} className="w-full py-3 text-slate-400 hover:text-white font-bold text-sm cursor-pointer mt-4">
+              [ESC] Voltar ao Caixa
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\portal\PortalClientePage.jsx
+========================================
+import React from 'react';
+import { useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../services/api';
+import { 
+  ShieldCheck, 
+  Wrench, 
+  CheckCircle2, 
+  QrCode, 
+  FileText, 
+  Layers 
+} from 'lucide-react';
+
+export default function PortalClientePage() {
+  const { token } = useParams();
+
+  const { data: portalData, isLoading, error } = useQuery({
+    queryKey: ['portal-os', token],
+    queryFn: async () => {
+      const res = await api.get(`/portal/os/${token}`);
+      return res.data.data;
+    },
+    retry: 1
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="text-slate-400 text-sm font-medium">Carregando dados do serviço...</div>
+      </div>
+    );
+  }
+
+  if (error || !portalData) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-md text-center">
+          <p className="text-rose-400 text-sm font-semibold mb-2">Ordem de Serviço Não Encontrada</p>
+          <p className="text-slate-500 text-xs">O link informado é inválido ou já expirou.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8">
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* Top Header */}
+        <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl flex items-center justify-between shadow-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white tracking-tight">{portalData.empresa?.nome}</h1>
+              <p className="text-xs text-slate-400">Portal de Atendimento ao Cliente</p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            {portalData.status}
+          </span>
+        </div>
+
+        {/* Detalhes do Equipamento */}
+        <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Wrench className="w-5 h-5 text-indigo-400" />
+              <span>Ordem de Serviço #{portalData.numero_os}</span>
+            </h2>
+            <span className="font-mono text-xs text-slate-400">
+              {new Date(portalData.data_abertura).toLocaleDateString('pt-BR')}
+            </span>
+          </div>
+
+          <div className="p-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl space-y-2">
+            <p className="text-sm font-semibold text-white">{portalData.equipamento}</p>
+            {portalData.marca_modelo && (
+              <p className="text-xs text-slate-400">Modelo: {portalData.marca_modelo}</p>
+            )}
+            <p className="text-xs text-slate-500 pt-2 border-t border-slate-800/80">
+              Defeito Informado: {portalData.defeito_reclamado}
+            </p>
+          </div>
+
+          {portalData.laudo_tecnico && (
+            <div className="p-4 bg-indigo-950/20 border border-indigo-500/20 rounded-2xl space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300">Laudo Técnico</span>
+              <p className="text-sm text-slate-300">{portalData.laudo_tecnico}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Resumo de Valores e PIX */}
+        <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Valor Total do Atendimento</span>
+            <h3 className="text-3xl font-mono font-bold text-emerald-400 mt-1">
+              R$ {portalData.valor_total.toFixed(2)}
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-2 rounded-xl">
+              <ShieldCheck className="w-4 h-4" />
+              <span>Assinatura Digital Coletada</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\portal\PortalColaboradorPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import {
+  Clock, FileText, Target, MapPin,
+  CheckCircle2, AlertTriangle, X, Download, Star
+} from 'lucide-react';
+
+export default function PortalColaboradorPage() {
+  const [activeTab, setActiveTab] = useState('ponto');
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  // Estados dos Dados
+  const [batidasHoje, setBatidasHoje] = useState([]);
+  const [holerites, setHolerites] = useState([]);
+  const [campanhas, setCampanhas] = useState([]);
+
+  // Estados eNPS
+  const [modalEnps, setModalEnps] = useState(false);
+  const [campanhaSelecionada, setCampanhaSelecionada] = useState(null);
+  const [formResposta, setFormResposta] = useState({ nota: 10, comentario: '' });
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === 'ponto') {
+        const res = await api.get('/rh/ponto/hoje');
+        setBatidasHoje(res.data?.data || []);
+      } else if (activeTab === 'holerites') {
+        // Rota blindada: Traz APENAS os holerites deste usuário logado
+        const res = await api.get('/rh/holerites/meus');
+        setHolerites(res.data?.data || res.data || []);
+      } else if (activeTab === 'enps') {
+        const res = await api.get('/rh/enps/campanhas');
+        const ativas = (res.data?.data || []).filter(c => c.status === 'ATIVA');
+        setCampanhas(ativas);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { carregarDados(); }, [activeTab]);
+
+  // --- LÓGICA DE DOWNLOAD DO PDF ---
+  const handleBaixarHolerite = async (holeriteId, competencia) => {
+    try {
+      setFeedback({ tipo: 'sucesso', msg: 'Gerando PDF, aguarde...' });
+
+      const res = await api.get(`/rh/holerites/meus/${holeriteId}/pdf`, { responseType: 'blob' });
+
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Holerite_${competencia.replace('/', '_')}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setFeedback(null);
+    } catch (err) {
+      // MÁGICA: Se o erro vier em formato de arquivo (Blob), ele converte de volta para texto para lermos!
+      if (err.response && err.response.data instanceof Blob) {
+        const textError = await err.response.data.text();
+        try {
+          const jsonError = JSON.parse(textError);
+          setFeedback({ tipo: 'erro', msg: jsonError.error?.message || 'Erro ao gerar o arquivo PDF.' });
+        } catch (e) {
+          setFeedback({ tipo: 'erro', msg: 'Erro fatal no servidor ao gerar o PDF.' });
+        }
+      } else {
+        setFeedback({ tipo: 'erro', msg: 'Falha na comunicação ao tentar baixar o PDF.' });
+      }
+    }
+  };
+
+  // --- LÓGICA DO PONTO COM GPS ---
+  const registrarPonto = () => {
+    if (!navigator.geolocation) {
+      setFeedback({ tipo: 'erro', msg: 'Geolocalização não suportada pelo navegador.' });
+      return;
+    }
+
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      try {
+        const payload = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+        const res = await api.post('/rh/ponto/registrar', payload);
+        setFeedback({ tipo: 'sucesso', msg: res.data?.data?.message || 'Ponto registrado!' });
+        carregarDados();
+      } catch (err) {
+        setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao registrar ponto.' });
+      } finally {
+        setLoading(false);
+      }
+    }, (error) => {
+      setLoading(false);
+      setFeedback({ tipo: 'erro', msg: 'Permita o acesso à localização para bater o ponto.' });
+    });
+  };
+
+  // --- LÓGICA DO ENPS ---
+  const handleResponderEnps = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(`/rh/enps/campanhas/${campanhaSelecionada.id}/responder`, formResposta);
+      setModalEnps(false);
+      setFormResposta({ nota: 10, comentario: '' });
+      setFeedback({ tipo: 'sucesso', msg: 'Sua resposta foi enviada anonimamente. Obrigado!' });
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Erro ao enviar pesquisa.');
+    }
+  };
+
+  return (
+    <div className="min-h-[calc(100vh-4rem)] bg-slate-950 text-slate-200 p-4 md:p-8">
+      <div className="max-w-3xl mx-auto">
+
+        <div className="mb-8 text-center md:text-left">
+          <h1 className="text-2xl font-black text-white">Meu Portal</h1>
+          <p className="text-sm text-slate-400 mt-1">Serviços e Autoatendimento</p>
+        </div>
+
+        {/* Abas Navegação */}
+        <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 mb-6 overflow-x-auto">
+          <button onClick={() => setActiveTab('ponto')} className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition whitespace-nowrap ${activeTab === 'ponto' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+            <Clock className="h-4 w-4" /> Ponto Eletrônico
+          </button>
+          <button onClick={() => setActiveTab('holerites')} className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition whitespace-nowrap ${activeTab === 'holerites' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+            <FileText className="h-4 w-4" /> Holerites
+          </button>
+          <button onClick={() => setActiveTab('enps')} className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition whitespace-nowrap ${activeTab === 'enps' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+            <Target className="h-4 w-4" /> Pesquisas
+          </button>
+        </div>
+
+        {feedback && (
+          <div className={`p-4 rounded-xl flex items-center justify-between text-sm mb-6 ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+            <div className="flex items-center gap-2">
+              {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+              <span className="font-medium">{feedback.msg}</span>
+            </div>
+            <button onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
+          </div>
+        )}
+
+        {/* CONTEÚDO: PONTO */}
+        {activeTab === 'ponto' && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center shadow-2xl">
+              <div className="w-20 h-20 bg-indigo-900/50 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-indigo-500/20">
+                <MapPin className="h-8 w-8 text-indigo-400" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Registro de Ponto</h2>
+              <p className="text-sm text-slate-400 mb-6">O registro utiliza o GPS do seu dispositivo para validação legal.</p>
+
+              <button
+                onClick={registrarPonto}
+                disabled={loading}
+                className="w-full md:w-auto px-10 py-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-black text-lg rounded-2xl transition shadow-xl shadow-indigo-600/20 disabled:opacity-50"
+              >
+                {loading ? 'Obtendo Localização...' : 'BATER PONTO AGORA'}
+              </button>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-slate-300 mb-4 px-2">Minhas Batidas de Hoje</h3>
+              <div className="space-y-3">
+                {batidasHoje.length === 0 ? (
+                  <p className="text-sm text-slate-500 px-2">Nenhum registro encontrado hoje.</p>
+                ) : (
+                  batidasHoje.map(batida => (
+                    <div key={batida.id} className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                        <div>
+                          <div className="font-bold text-white">{new Date(batida.data_hora_registro).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                          <div className="text-xs text-slate-400">{batida.tipo_registro.replace('_', ' ')}</div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-1 rounded">
+                        GPS OK
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CONTEÚDO: HOLERITES */}
+        {activeTab === 'holerites' && (
+          <div className="space-y-4">
+            {loading ? <p className="text-center text-slate-500 py-10">Carregando...</p> :
+             holerites.length === 0 ? <p className="text-center text-slate-500 py-10">Nenhum holerite disponível.</p> :
+             holerites.map(holerite => (
+              <div key={holerite.id} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-bold text-white text-lg">Competência: {holerite.competencia}</h3>
+                  <p className="text-sm text-slate-400">Líquido a receber: <span className="font-mono text-emerald-400 font-bold">R$ {parseFloat(holerite.valor_liquido).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></p>
+                </div>
+                <button
+                  onClick={() => handleBaixarHolerite(holerite.id, holerite.competencia)}
+                  className="flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition"
+                >
+                  <Download className="h-4 w-4" /> Baixar PDF
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* CONTEÚDO: eNPS */}
+        {activeTab === 'enps' && (
+          <div className="space-y-4">
+            <div className="bg-indigo-950/50 border border-indigo-900/50 p-4 rounded-2xl mb-6 text-sm text-indigo-200">
+              <Star className="h-5 w-5 inline mr-2 text-indigo-400" />
+              Sua opinião importa! As pesquisas de clima são <strong>100% anônimas</strong> e protegidas pelo sistema.
+            </div>
+            {loading ? <p className="text-center text-slate-500 py-10">Carregando...</p> :
+             campanhas.length === 0 ? <p className="text-center text-slate-500 py-10">Nenhuma pesquisa ativa no momento.</p> :
+             campanhas.map(campanha => (
+              <div key={campanha.id} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-bold text-white text-lg">{campanha.titulo}</h3>
+                  <p className="text-xs text-slate-400 font-mono">Encerra em: {campanha.data_fim}</p>
+                </div>
+                <button
+                  onClick={() => { setCampanhaSelecionada(campanha); setModalEnps(true); }}
+                  className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/20"
+                >
+                  Responder
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MODAL RESPONDER eNPS */}
+      {modalEnps && campanhaSelecionada && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="bg-indigo-600 p-6 text-center">
+              <h2 className="font-black text-white text-xl mb-1">Pesquisa de Clima</h2>
+              <p className="text-indigo-200 text-sm">Sua resposta é segura e anônima.</p>
+            </div>
+            <form onSubmit={handleResponderEnps} className="p-6 space-y-6">
+              <div className="text-center">
+                <label className="block text-sm font-bold text-slate-300 mb-4">Em uma escala de 0 a 10, o quanto você recomendaria a empresa como um bom lugar para se trabalhar?</label>
+                <input
+                  type="number" required min="0" max="10"
+                  value={formResposta.nota}
+                  onChange={e => setFormResposta({...formResposta, nota: parseInt(e.target.value)})}
+                  className="w-24 text-center px-2 py-3 bg-slate-950 border-2 border-indigo-500 rounded-xl text-white text-3xl font-black mx-auto block focus:outline-none focus:ring-4 focus:ring-indigo-500/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2">Por que você deu essa nota? (Opcional)</label>
+                <textarea
+                  rows="3"
+                  value={formResposta.comentario}
+                  onChange={e => setFormResposta({...formResposta, comentario: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500"
+                  placeholder="Deixe sua sugestão ou elogio..."
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setModalEnps(false)} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition">Cancelar</button>
+                <button type="submit" className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-emerald-600/20">Enviar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\portal\PortalOsPage.jsx
+========================================
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import axios from 'axios';
+import { 
+  Wrench, CheckCircle2, QrCode, Copy, ShieldCheck, MapPin, 
+  Calendar, FileText, Camera, Check, AlertTriangle, UserCheck
+} from 'lucide-react';
+
+export default function PortalOsPage() {
+  const { token } = useParams();
+  const [os, setOs] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  const [copiado, setCopiado] = useState(false);
+
+  // Assinatura Canvas
+  const [nomeAssinante, setNomeAssinante] = useState('');
+  const [docAssinante, setDocAssinante] = useState('');
+  const [isDesenhando, setIsDesenhando] = useState(false);
+  const [geoLoc, setGeoLoc] = useState({ lat: null, lng: null });
+  const [salvandoAssinatura, setSalvandoAssinatura] = useState(false);
+
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    carregarOs();
+    // Captura geolocalização para metadados da assinatura
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setGeoLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.log('Geolocalização opcional não autorizada.')
+      );
+    }
+  }, [token]);
+
+  const carregarOs = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`/api/portal/os/${token}`);
+      setOs(res.data?.data);
+    } catch (err) {
+      setErro(err.response?.data?.error?.message || 'Ordem de Serviço não localizada ou link expirado.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAprovarOrcamento = async () => {
+    try {
+      await axios.post(`/api/portal/os/${token}/aprovar`);
+      setFeedback({ tipo: 'sucesso', msg: 'Orçamento aprovado com sucesso! A equipe técnica foi notificada.' });
+      carregarOs();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Falha ao aprovar orçamento.' });
+    }
+  };
+
+  const copiarPix = () => {
+    if (os?.pix?.payload_copia_cola) {
+      navigator.clipboard.writeText(os.pix.payload_copia_cola);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 3000);
+    }
+  };
+
+  // Funções do Canvas de Assinatura
+  const iniciarDesenho = (e) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches[0].clientX) - rect.left;
+    const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDesenhando(true);
+  };
+
+  const desenhar = (e) => {
+    if (!isDesenhando) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches[0].clientX) - rect.left;
+    const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  };
+
+  const pararDesenho = () => {
+    setIsDesenhando(false);
+  };
+
+  const limparCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleSalvarAssinatura = async (e) => {
+    e.preventDefault();
+    if (!nomeAssinante.trim()) {
+      alert('Por favor, informe seu nome completo.');
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const assinaturaBase64 = canvas.toDataURL('image/png');
+
+    setSalvandoAssinatura(true);
+    try {
+      await axios.post(`/api/portal/os/${token}/assinar`, {
+        nome_responsavel: nomeAssinante,
+        documento_responsavel: docAssinante,
+        assinatura_base64: assinaturaBase64,
+        latitude: geoLoc.lat,
+        longitude: geoLoc.lng,
+      });
+
+      setFeedback({ tipo: 'sucesso', msg: 'Assinatura digital gravada com validade jurídica confirmada!' });
+      carregarOs();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao registrar assinatura digital.' });
+    } finally {
+      setSalvandoAssinatura(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="text-center text-slate-400 text-sm">Carregando Ordem de Serviço...</div>
+      </div>
+    );
+  }
+
+  if (erro || !os) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-md text-center space-y-3">
+          <AlertTriangle className="h-10 w-10 text-rose-500 mx-auto" />
+          <h2 className="text-white font-bold text-base">Acesso Não Autorizado</h2>
+          <p className="text-xs text-slate-400">{erro}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 py-6 px-3 sm:px-6">
+      <div className="max-w-3xl mx-auto space-y-5">
+        {/* Cabeçalho da Empresa */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h1 className="text-lg font-bold text-white flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-indigo-400" />
+              {os.empresa?.nome || 'Scalle ERP'}
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">Laudo Técnico & Autoatendimento de Ordem de Serviço</p>
+          </div>
+          <div className="text-right">
+            <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800">
+              OS #{os.numero_os}
+            </span>
+          </div>
+        </div>
+
+        {feedback && (
+          <div className={`p-4 rounded-xl text-xs flex items-center gap-2 ${
+            feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+          }`}>
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{feedback.msg}</span>
+          </div>
+        )}
+
+        {/* Detalhes do Equipamento e Defeito */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <FileText className="h-4 w-4 text-indigo-400" /> Dados do Equipamento & Diagnóstico
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+              <span className="text-slate-500 block text-[10px]">Equipamento / Descrição</span>
+              <strong className="text-white block mt-0.5">{os.equipamento}</strong>
+              <span className="text-slate-400 text-[11px] block mt-1">Marca/Modelo: {os.marca_modelo || '-'}</span>
+              <span className="text-slate-400 text-[11px] block">Nº de Série: {os.numero_serie || '-'}</span>
+            </div>
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+              <span className="text-slate-500 block text-[10px]">Defeito Relatado</span>
+              <p className="text-slate-300 mt-0.5">{os.defeito_reclamado}</p>
+              {os.diagnostico_tecnico && (
+                <div className="mt-2 pt-2 border-t border-slate-900">
+                  <span className="text-indigo-400 font-bold block text-[10px]">Parecer Técnico:</span>
+                  <p className="text-slate-300 text-[11px]">{os.diagnostico_tecnico}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Evidências Fotográficas */}
+        {os.fotos && os.fotos.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Camera className="h-4 w-4 text-indigo-400" /> Evidências Fotográficas
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {os.fotos.map((f) => (
+                <div key={f.id} className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
+                  <img src={f.url_arquivo} alt={f.descricao} className="w-full h-32 object-cover" />
+                  <div className="p-2 text-[10px] text-slate-400 truncate">
+                    <span className="font-bold text-white uppercase block">{f.tipo_etapa}</span>
+                    {f.descricao}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Resumo Financeiro & Pagamento PIX */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Resumo Financeiro & Pagamento</h2>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+            <div className="space-y-2 text-xs bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <div className="flex justify-between text-slate-400">
+                <span>Serviços / Mão de Obra:</span>
+                <span className="font-mono text-white">R$ {os.valor_servicos.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Peças e Materiais:</span>
+                <span className="font-mono text-white">R$ {os.valor_pecas.toFixed(2)}</span>
+              </div>
+              {os.valor_desconto > 0 && (
+                <div className="flex justify-between text-rose-400">
+                  <span>Desconto Aplicado:</span>
+                  <span className="font-mono">- R$ {os.valor_desconto.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm font-bold text-white pt-2 border-t border-slate-800">
+                <span>Valor Total da OS:</span>
+                <span className="font-mono text-emerald-400 text-base">R$ {os.valor_total.toFixed(2)}</span>
+              </div>
+
+              {os.status === 'ABERTA' && (
+                <button
+                  type="button"
+                  onClick={handleAprovarOrcamento}
+                  className="w-full mt-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs cursor-pointer shadow-lg shadow-indigo-600/30 transition"
+                >
+                  Aprovar Orçamento e Iniciar Execução
+                </button>
+              )}
+            </div>
+
+            {/* QR Code PIX */}
+            <div className="flex flex-col items-center justify-center p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2 text-center">
+              <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                <QrCode className="h-4 w-4 text-emerald-400" /> Pague com PIX Instantâneo
+              </span>
+              <img 
+                src={os.pix?.qr_code_url} 
+                alt="QR Code PIX" 
+                className="w-36 h-36 rounded-lg bg-white p-1.5 shadow-md"
+              />
+              <button
+                type="button"
+                onClick={copiarPix}
+                className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition"
+              >
+                {copiado ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-indigo-400" />}
+                {copiado ? 'Chave Copiada!' : 'Copiar Chave PIX'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Assinatura Digital do Cliente */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-indigo-400" />
+            <div>
+              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Assinatura Digital & Aceite do Laudo</h2>
+              <span className="text-[10px] text-slate-400">Assinatura eletrônica com validade jurídica (MP nº 2.200-2/2001)</span>
+            </div>
+          </div>
+
+          {os.assinatura_cliente_base64 ? (
+            <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2 text-xs">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                <UserCheck className="h-4 w-4" /> Laudo Assinado por: {os.nome_responsavel_recebimento}
+              </div>
+              <img src={os.assinatura_cliente_base64} alt="Assinatura" className="h-20 bg-white p-2 rounded-lg" />
+              <div className="text-[10px] text-slate-500 font-mono space-y-0.5 pt-1">
+                <div>Data/Hora: {new Date(os.assinado_em).toLocaleString('pt-BR')}</div>
+                <div className="truncate">Hash SHA-256: {os.hash_assinatura_sha256}</div>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSalvarAssinatura} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">Nome Completo do Responsável *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Seu nome completo"
+                    value={nomeAssinante}
+                    onChange={(e) => setNomeAssinante(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-semibold mb-1">CPF ou Documento (Opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 000.000.000-00"
+                    value={docAssinante}
+                    onChange={(e) => setDocAssinante(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-slate-400 font-semibold">Desenhe sua assinatura abaixo:</label>
+                  <button type="button" onClick={limparCanvas} className="text-rose-400 text-[10px] hover:underline cursor-pointer">
+                    Limpar
+                  </button>
+                </div>
+                <canvas
+                  ref={canvasRef}
+                  width={500}
+                  height={150}
+                  onMouseDown={iniciarDesenho}
+                  onMouseMove={desenhar}
+                  onMouseUp={pararDesenho}
+                  onTouchStart={iniciarDesenho}
+                  onTouchMove={desenhar}
+                  onTouchEnd={pararDesenho}
+                  className="w-full h-36 bg-white rounded-xl border border-slate-700 cursor-crosshair touch-none shadow-inner"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={salvandoAssinatura}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition"
+              >
+                {salvandoAssinatura ? 'Registrando...' : 'Confirmar Assinatura Digital do Laudo'}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\Projetos\KanbanBoard.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+// Instância extraída do componente para evitar recriação a cada renderização (Gasto de Memória)
+const api = axios.create({
+    baseURL: '/api',
+    headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        // 'Authorization': `Bearer ${localStorage.getItem('token')}` // Descomente conforme a auth
+    }
+});
+
+export default function KanbanBoard({ projetoId }) {
+    const [projeto, setProjeto] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [draggedTarefa, setDraggedTarefa] = useState(null);
+
+    useEffect(() => {
+        carregarBoard();
+    }, [projetoId]);
+
+    const carregarBoard = async () => {
+        try {
+            const idBuscar = projetoId || (projeto ? projeto.id : null);
+            if (!idBuscar) return;
+
+            const response = await api.get(`/projetos/${idBuscar}/board`);
+            setProjeto(response.data.data);
+        } catch (error) {
+            console.error("Falta na zaga ao carregar o quadro:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // ==========================================
+    // MECÂNICA DE DRAG AND DROP (Arrastar)
+    // ==========================================
+    const handleDragStart = (e, tarefa) => {
+        setDraggedTarefa(tarefa);
+        e.dataTransfer.effectAllowed = "move";
+        // Efeito visual aprimorado ao segurar o card (diminui levemente e fica opaco)
+        setTimeout(() => e.target.classList.add('opacity-50', 'scale-95'), 0);
+    };
+
+    const handleDragEnd = (e) => {
+        e.target.classList.remove('opacity-50', 'scale-95');
+        setDraggedTarefa(null);
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = async (e, novaEtapaId) => {
+        e.preventDefault();
+        if (!draggedTarefa || draggedTarefa.etapa_id === novaEtapaId) return;
+
+        const projetoAntigo = { ...projeto };
+
+        const novasEtapas = projeto.etapas.map(etapa => {
+            if (etapa.id === draggedTarefa.etapa_id) {
+                return { ...etapa, tarefas: etapa.tarefas.filter(t => t.id !== draggedTarefa.id) };
+            }
+            if (etapa.id === novaEtapaId) {
+                return { ...etapa, tarefas: [{ ...draggedTarefa, etapa_id: novaEtapaId }, ...etapa.tarefas] };
+            }
+            return etapa;
+        });
+
+        setProjeto({ ...projeto, etapas: novasEtapas });
+
+        try {
+            await api.patch(`/projetos/tarefas/${draggedTarefa.id}/mover`, {
+                nova_etapa_id: novaEtapaId
+            });
+        } catch (error) {
+            console.error("Erro ao mover a tarefa", error);
+            setProjeto(projetoAntigo);
+            alert("Erro ao mover a tarefa. O VAR anulou a jogada.");
+        }
+    };
+
+    // ==========================================
+    // MECÂNICA DO TIMESHEET (Play / Stop)
+    // ==========================================
+    const toggleTimer = async (tarefa, isRodando) => {
+        try {
+            if (isRodando) {
+                await api.put(`/projetos/tarefas/${tarefa.id}/stop`, { descricao: 'Pausa/Fim do trabalho' });
+                alert('Cronômetro parado!');
+            } else {
+                await api.post(`/projetos/tarefas/${tarefa.id}/play`);
+                alert('Cronômetro rolando!');
+            }
+            carregarBoard();
+        } catch (error) {
+            alert(error.response?.data?.error?.message || "Erro ao acionar o cronômetro.");
+        }
+    };
+
+    if (loading) return <div className="p-8 text-center text-gray-500 font-bold">Aquecendo os motores...</div>;
+    if (!projeto) return <div className="p-8 text-center text-red-500">Projeto não encontrado no vestiário.</div>;
+
+    return (
+        <div className="p-6 min-h-screen bg-gray-50">
+            <header className="mb-6">
+                <h1 className="text-3xl font-extrabold text-gray-800">{projeto.nome}</h1>
+                <p className="text-gray-500 mt-1">Orçamento Previsto: R$ {Number(projeto.orcamento_previsto).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+            </header>
+
+            <div className="flex space-x-4 overflow-x-auto pb-4">
+                {projeto.etapas.map((etapa) => (
+                    <div
+                        key={etapa.id}
+                        className="bg-gray-100 rounded-lg shadow-sm min-w-[320px] max-w-[320px] flex flex-col"
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, etapa.id)}
+                    >
+                        <div
+                            className="p-3 font-bold text-white rounded-t-lg flex justify-between items-center shadow-sm"
+                            style={{ backgroundColor: etapa.cor_hex || '#3b82f6' }}
+                        >
+                            <span>{etapa.nome}</span>
+                            <span className="bg-white text-gray-800 text-xs py-1 px-2 rounded-full">
+                                {etapa.tarefas?.length || 0}
+                            </span>
+                        </div>
+
+                        <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[150px]">
+                            {etapa.tarefas?.map((tarefa) => {
+                                // Validação dinâmica do apontamento
+                                const isRodando = tarefa.apontamentos?.some(ap => ap.fim === null) || false;
+
+                                return (
+                                    <div
+                                        key={tarefa.id}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, tarefa)}
+                                        onDragEnd={handleDragEnd}
+                                        className={`bg-white p-4 rounded shadow-sm border-l-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-all relative ${
+                                            isRodando ? 'ring-2 ring-red-400' : ''
+                                        }`}
+                                        style={{ borderLeftColor: etapa.cor_hex || '#3b82f6' }}
+                                    >
+                                        <h3 className="font-semibold text-gray-800 text-sm">{tarefa.titulo}</h3>
+
+                                        <div className="mt-4 flex justify-between items-center">
+                                            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">
+                                                Prioridade {tarefa.prioridade}
+                                            </span>
+
+                                            <button
+                                                onClick={() => toggleTimer(tarefa, isRodando)}
+                                                className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ${
+                                                    isRodando
+                                                    ? 'bg-red-100 hover:bg-red-200 text-red-700 animate-pulse'
+                                                    : 'bg-green-100 hover:bg-green-200 text-green-700'
+                                                }`}
+                                                title={isRodando ? "Parar Apontamento" : "Iniciar Apontamento"}
+                                            >
+                                                {isRodando ? '⏹' : '▶'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+
+========================================
+ARQUIVO: src\pages\Projetos\ProjetoDashboard.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
+import { ArrowLeft, Kanban, DollarSign, Users, PackageCheck, Paperclip, Link as LinkIcon, Trash2, CheckSquare, Play, Square, Settings, X, CalendarDays, Activity, Edit2, Plus } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+
+export default function ProjetoDashboard() {
+    const { id: projetoId } = useParams();
+    const navigate = useNavigate();
+
+    const [projeto, setProjeto] = useState(null);
+    const [activeTab, setActiveTab] = useState('board');
+    const [loading, setLoading] = useState(true);
+
+    const [parametrosStatus, setParametrosStatus] = useState([]);
+    const [parametrosPrioridades, setParametrosPrioridades] = useState([]);
+    const [clientes, setClientes] = useState([]);
+
+    // Configurações do Projeto
+    const [modalConfig, setModalConfig] = useState(false);
+    const [formConfig, setFormConfig] = useState({ nome: '', descricao: '', cliente_id: '' });
+
+    // Blockers (Dependências)
+    const [modalBlocker, setModalBlocker] = useState(null);
+    const [dependenciaIdSelecionada, setDependenciaIdSelecionada] = useState('');
+
+    // Modais Dinâmicos
+    const [modalStatus, setModalStatus] = useState(false);
+    const [novoStatusId, setNovoStatusId] = useState('');
+
+    const [modalPrioridade, setModalPrioridade] = useState({ open: false, tarefaId: '' });
+    const [novaPrioridadeId, setNovaPrioridadeId] = useState('');
+
+    const [modalTarefa, setModalTarefa] = useState({ open: false, etapaId: '' });
+    const [formTarefa, setFormTarefa] = useState({ titulo: '', prioridade_id: '' });
+
+    const [modalBudget, setModalBudget] = useState(false);
+    const [novoBudget, setNovoBudget] = useState('');
+
+    const [modalChecklist, setModalChecklist] = useState({ open: false, tarefaId: '' });
+    const [novoChecklistDesc, setNovoChecklistDesc] = useState('');
+
+    const [modalEtapa, setModalEtapa] = useState({ open: false, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' });
+
+    useEffect(() => {
+        if (projetoId) {
+            carregarProjeto();
+            api.get('/pessoas?tipo=CLIENTE').then(res => setClientes(res.data?.data?.data || res.data?.data || []));
+            api.get('/projetos/parametros/status').then(res => {
+                const stat = res.data?.data || [];
+                setParametrosStatus(stat);
+            });
+            api.get('/projetos/parametros/prioridades').then(res => setParametrosPrioridades(res.data?.data || []));
+        }
+    }, [projetoId]);
+
+    const carregarProjeto = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get(`/projetos/${projetoId}/board`);
+            const projData = response.data.data || response.data;
+            setProjeto(projData);
+            setFormConfig({
+                nome: projData.nome,
+                descricao: projData.descricao || '',
+                cliente_id: projData.cliente_id || ''
+            });
+            setNovoBudget(projData.orcamento_previsto || '');
+        } catch (error) {
+            console.error("Erro ao buscar o projeto:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const salvarConfiguracoes = async (e) => {
+        e.preventDefault();
+        try {
+            await api.put(`/projetos/${projetoId}`, formConfig);
+            setModalConfig(false);
+            carregarProjeto();
+        } catch (error) { alert("Erro ao atualizar projeto."); }
+    };
+
+    const salvarBudget = async (e) => {
+        e.preventDefault();
+        try {
+            await api.put(`/projetos/${projetoId}/orcamento`, { orcamento_previsto: parseFloat(novoBudget) });
+            setModalBudget(false);
+            carregarProjeto();
+        } catch (error) { alert("Erro ao atualizar budget."); }
+    };
+
+    const alterarStatusProjeto = async (e) => {
+        e.preventDefault();
+        if (!novoStatusId) {
+            alert('Por favor, selecione um status.');
+            return;
+        }
+
+        try {
+            // CORREÇÃO AQUI: Garante que estamos a enviar um payload limpo com o UUID.
+            await api.patch(`/projetos/${projetoId}/status`, {
+                status_projeto_id: novoStatusId
+            });
+            setModalStatus(false);
+            carregarProjeto();
+        } catch (error) {
+            console.error(error.response);
+            alert("Erro ao alterar status. " + (error.response?.data?.message || 'Verifique o console para detalhes.'));
+        }
+    };
+
+    const adicionarTarefa = async (e) => {
+        e.preventDefault();
+        if (!formTarefa.titulo) return;
+        try {
+            await api.post(`/projetos/etapas/${modalTarefa.etapaId}/tarefas`, formTarefa);
+            setModalTarefa({ open: false, etapaId: '' });
+            setFormTarefa({ titulo: '', prioridade_id: '' });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao criar tarefa."); }
+    };
+
+    const alterarPrioridade = async (e) => {
+        e.preventDefault();
+        if (!novaPrioridadeId) return;
+        try {
+            await api.patch(`/projetos/tarefas/${modalPrioridade.tarefaId}/prioridade`, { prioridade_id: novaPrioridadeId });
+            setModalPrioridade({ open: false, tarefaId: '' });
+            setNovaPrioridadeId('');
+            carregarProjeto();
+        } catch (error) { alert("Erro ao alterar prioridade."); }
+    };
+
+    const salvarEtapa = async (e) => {
+        e.preventDefault();
+        if (!modalEtapa.nome) return;
+        try {
+            if (modalEtapa.isEdit) {
+                await api.put(`/projetos/etapas/${modalEtapa.id}`, { nome: modalEtapa.nome, cor_hex: modalEtapa.cor_hex });
+            } else {
+                await api.post(`/projetos/${projetoId}/etapas`, { nome: modalEtapa.nome, cor_hex: modalEtapa.cor_hex });
+            }
+            setModalEtapa({ open: false, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' });
+            carregarProjeto();
+        } catch (error) { alert("Erro ao salvar etapa."); }
+    };
+
+    const deletarEtapa = async (id) => {
+        if (!window.confirm("Deseja realmente excluir esta coluna? Apenas colunas vazias podem ser excluídas.")) return;
+        try {
+            await api.delete(`/projetos/etapas/${id}`);
+            carregarProjeto();
+        } catch (error) {
+            alert(error.response?.data?.message || "Erro ao excluir etapa.");
+        }
+    };
+
+    const handleDragEnd = async (result) => {
+        const { destination, source, draggableId } = result;
+        if (!destination) return;
+        if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+
+        const projetoAntigo = { ...projeto };
+        const novasEtapas = [...projeto.etapas];
+
+        const etapaOrigemIndex = novasEtapas.findIndex(e => String(e.id) === source.droppableId);
+        const etapaDestinoIndex = novasEtapas.findIndex(e => String(e.id) === destination.droppableId);
+
+        const etapaOrigem = { ...novasEtapas[etapaOrigemIndex] };
+        const etapaDestino = source.droppableId === destination.droppableId ? etapaOrigem : { ...novasEtapas[etapaDestinoIndex] };
+
+        const tarefasOrigem = [...(etapaOrigem.tarefas || [])];
+        const [tarefaMovida] = tarefasOrigem.splice(source.index, 1);
+
+        if (tarefaMovida.dependencias?.length > 0 && source.droppableId !== destination.droppableId) {
+            alert(`⚠️ TAREFA BLOQUEADA\n\nEsta tarefa depende de pré-requisitos. Conclua as dependências primeiro.`);
+            return;
+        }
+
+        if (source.droppableId === destination.droppableId) {
+            tarefasOrigem.splice(destination.index, 0, tarefaMovida);
+            etapaOrigem.tarefas = tarefasOrigem;
+            novasEtapas[etapaOrigemIndex] = etapaOrigem;
+            setProjeto({ ...projeto, etapas: novasEtapas });
+        } else {
+            const tarefasDestino = [...(etapaDestino.tarefas || [])];
+            tarefasDestino.splice(destination.index, 0, { ...tarefaMovida, etapa_id: destination.droppableId });
+
+            etapaOrigem.tarefas = tarefasOrigem;
+            etapaDestino.tarefas = tarefasDestino;
+            novasEtapas[etapaOrigemIndex] = etapaOrigem;
+            novasEtapas[etapaDestinoIndex] = etapaDestino;
+            setProjeto({ ...projeto, etapas: novasEtapas });
+
+            try {
+                await api.patch(`/projetos/tarefas/${draggableId}/mover`, { nova_etapa_id: destination.droppableId });
+            } catch (error) {
+                setProjeto(projetoAntigo);
+                alert("Erro ao mover a tarefa.");
+            }
+        }
+    };
+
+    const toggleTimer = async (tarefa, isRunning) => {
+        try {
+            if (isRunning) {
+                const res = await api.put(`/projetos/tarefas/${tarefa.id}/stop`, { descricao: 'Pausa/Fim via Board' });
+                alert(res.data?.data?.message || 'Cronômetro parado e horas apropriadas!');
+            } else {
+                await api.post(`/projetos/tarefas/${tarefa.id}/play`);
+            }
+            carregarProjeto();
+        } catch (error) { alert('Falha ao processar apontamento.'); }
+    };
+
+    const salvarChecklist = async (e) => {
+        e.preventDefault();
+        if (!novoChecklistDesc) return;
+        try {
+            await api.post(`/projetos/tarefas/${modalChecklist.tarefaId}/checklists`, { descricao: novoChecklistDesc });
+            setModalChecklist({ open: false, tarefaId: '' });
+            setNovoChecklistDesc('');
+            carregarProjeto();
+        } catch (error) { alert("Erro ao adicionar checklist."); }
+    };
+
+    const toggleChecklist = async (checklistId) => {
+        try {
+            const novasEtapas = projeto.etapas.map(e => ({
+                ...e,
+                tarefas: e.tarefas.map(t => ({
+                    ...t,
+                    checklists: t.checklists?.map(c => c.id === checklistId ? { ...c, concluido: !c.concluido } : c)
+                }))
+            }));
+            setProjeto({ ...projeto, etapas: novasEtapas });
+            await api.patch(`/projetos/tarefas/checklists/${checklistId}/toggle`);
+        } catch (error) { carregarProjeto(); }
+    };
+
+    const handleFileUpload = async (tarefaId, event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('arquivo', file);
+        formData.append('entidade_type', 'App\\Models\\Tarefa');
+        formData.append('entidade_id', tarefaId);
+        try {
+            await api.post('/ged/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
+            alert('Arquivo anexado com sucesso!');
+            carregarProjeto();
+        } catch (error) { alert('Erro ao anexar arquivo.'); }
+    };
+
+    const adicionarDependencia = async (e) => {
+        e.preventDefault();
+        if (!dependenciaIdSelecionada) return;
+        try {
+            await api.post(`/projetos/tarefas/${modalBlocker.id}/dependencias`, { depende_de_id: dependenciaIdSelecionada });
+            setModalBlocker(null);
+            setDependenciaIdSelecionada('');
+            carregarProjeto();
+        } catch (error) { alert("Erro ao criar dependência."); }
+    };
+
+    const removerDependencia = async (tarefaId, dependeDeId) => {
+        if (!window.confirm("Remover esta dependência?")) return;
+        try {
+            await api.delete(`/projetos/tarefas/${tarefaId}/dependencias/${dependeDeId}`);
+            carregarProjeto();
+        } catch (error) { alert("Erro ao remover dependência."); }
+    };
+
+    const todasAsTarefas = projeto?.etapas?.flatMap(e => e.tarefas) || [];
+
+    if (loading) return <div className="p-8 text-center text-slate-500 font-bold">Carregando painel do projeto...</div>;
+    if (!projeto) return <div className="p-8 text-center text-rose-500">Projeto não encontrado.</div>;
+
+    const statusDinamico = parametrosStatus.find(s => s.id === projeto.status_projeto_id);
+    const statusNome = statusDinamico?.nome || projeto.status || 'ATIVO';
+    const statusCor = statusDinamico?.cor_hex || '#4f46e5';
+
+    return (
+        <div className="min-h-screen flex flex-col space-y-4 relative text-slate-200">
+            <header className="bg-slate-900 border border-slate-800 shadow-sm rounded-2xl p-5">
+                <div className="flex justify-between items-start border-b border-slate-800 pb-4">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => navigate('/app/projetos')} className="p-2 bg-slate-950 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-400 hover:text-white transition cursor-pointer" title="Voltar aos Projetos">
+                            <ArrowLeft className="h-5 w-5" />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                                {projeto.nome}
+                                <button
+                                    onClick={() => {
+                                        setNovoStatusId(projeto.status_projeto_id || (parametrosStatus.length > 0 ? parametrosStatus[0].id : ''));
+                                        setModalStatus(true);
+                                    }}
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase cursor-pointer hover:opacity-80 transition shadow-sm border"
+                                    style={{ backgroundColor: `${statusCor}20`, color: statusCor, borderColor: `${statusCor}50` }}
+                                    title="Clique para alterar o status do projeto"
+                                >
+                                    {statusNome}
+                                </button>
+                                {!projeto.cliente_id && (
+                                    <span className="text-[10px] bg-rose-950/40 text-rose-400 border border-rose-900 px-2 py-0.5 rounded-full font-bold uppercase">Sem Cliente</span>
+                                )}
+                            </h1>
+                            <p className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-2">
+                                Budget: R$ {Number(projeto.orcamento_previsto).toLocaleString('pt-BR')}
+                                <button onClick={() => setModalBudget(true)} className="text-indigo-400 hover:text-indigo-300 cursor-pointer" title="Editar Orçamento">✏️</button>
+                                &nbsp; • &nbsp; Custo Real: <span className="text-rose-400">R$ {Number(projeto.custo_total_real || 0).toLocaleString('pt-BR')}</span>
+                            </p>
+                        </div>
+                    </div>
+                    <button onClick={() => setModalConfig(true)} className="p-2 bg-slate-950 border border-slate-700 hover:border-slate-500 rounded-lg text-slate-400 hover:text-white transition cursor-pointer" title="Configurações do Projeto">
+                        <Settings className="h-5 w-5" />
+                    </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-4">
+                    {[
+                        { id: 'board', label: 'Kanban', icon: Kanban },
+                        { id: 'gantt', label: 'Gantt & Capacidade', icon: CalendarDays },
+                        { id: 'entregaveis', label: 'Entregáveis', icon: PackageCheck },
+                        { id: 'custos', label: 'Custos & Despesas', icon: DollarSign },
+                        { id: 'equipe', label: 'Alocação Equipe', icon: Users }
+                    ].map(tab => {
+                        const Icon = tab.icon;
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                                    activeTab === tab.id ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200 hover:bg-slate-800'
+                                }`}
+                            >
+                                <Icon className="h-4 w-4" /> {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            </header>
+
+            {activeTab === 'board' && (
+                <DragDropContext onDragEnd={handleDragEnd}>
+                    <div className="flex space-x-4 overflow-x-auto h-full pb-4 items-start">
+                        {projeto.etapas?.map(etapa => (
+                            <div key={etapa.id} className="bg-slate-900 border border-slate-800 rounded-xl min-w-[320px] max-w-[320px] flex flex-col max-h-[75vh]">
+                                <div className="p-3 font-bold text-slate-100 rounded-t-xl flex justify-between items-center border-b border-slate-800 bg-slate-950/40 group">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: etapa.cor_hex || '#3b82f6' }}></span>
+                                        <span
+                                            className="text-sm uppercase tracking-wider cursor-pointer hover:text-indigo-400 flex items-center gap-1"
+                                            title="Editar Taxonomia da Etapa"
+                                            onClick={() => setModalEtapa({ open: true, isEdit: true, id: etapa.id, nome: etapa.nome, cor_hex: etapa.cor_hex || '#3b82f6' })}
+                                        >
+                                            {etapa.nome} <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] py-0.5 px-2 rounded-full font-mono">
+                                            {etapa.tarefas?.length || 0}
+                                        </span>
+                                        <button onClick={() => deletarEtapa(etapa.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-opacity cursor-pointer" title="Excluir Coluna">
+                                            <Trash2 size={12}/>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <Droppable droppableId={String(etapa.id)}>
+                                    {(provided, snapshot) => (
+                                        <div
+                                            ref={provided.innerRef}
+                                            {...provided.droppableProps}
+                                            className={`p-3 flex-1 overflow-y-auto space-y-3 min-h-[150px] transition-colors ${snapshot.isDraggingOver ? 'bg-slate-800/30' : ''}`}
+                                        >
+                                            {etapa.tarefas?.map((tarefa, index) => {
+                                                const isRodando = tarefa.apontamentos && tarefa.apontamentos.length > 0;
+                                                const prioNome = tarefa.prioridade_dinamica?.nome || `Prio: ${tarefa.prioridade}`;
+                                                const prioCor = tarefa.prioridade_dinamica?.cor_hex || '#64748b';
+
+                                                return (
+                                                    <Draggable key={tarefa.id} draggableId={String(tarefa.id)} index={index}>
+                                                        {(provided, snapshot) => (
+                                                            <div
+                                                                ref={provided.innerRef}
+                                                                {...provided.draggableProps}
+                                                                {...provided.dragHandleProps}
+                                                                className={`group bg-slate-950 p-4 rounded-xl border relative transition-shadow ${
+                                                                    snapshot.isDragging ? 'border-indigo-500 shadow-xl shadow-indigo-500/20 z-50' : 'border-slate-800 hover:border-slate-600'
+                                                                } ${isRodando ? 'ring-1 ring-rose-500' : ''}`}
+                                                                style={{
+                                                                    ...provided.draggableProps.style,
+                                                                    borderLeftWidth: '4px',
+                                                                    borderLeftColor: etapa.cor_hex || '#3b82f6'
+                                                                }}
+                                                            >
+                                                                <div className="absolute top-2 right-2 flex gap-1 transition-opacity duration-200">
+                                                                    <button onClick={() => setModalBlocker(tarefa)} className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Dependência (Blocker)">
+                                                                        <LinkIcon size={14}/>
+                                                                    </button>
+                                                                    <label className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Anexar Arquivo (GED)">
+                                                                        <Paperclip size={14}/>
+                                                                        <input type="file" className="hidden" onChange={(e) => handleFileUpload(tarefa.id, e)} />
+                                                                    </label>
+                                                                    <button onClick={() => setModalChecklist({ open: true, tarefaId: tarefa.id })} className="p-1.5 bg-slate-800 text-slate-300 hover:text-indigo-400 hover:bg-slate-700 rounded-md cursor-pointer" title="Adicionar Item Checklist">
+                                                                        <CheckSquare size={14}/>
+                                                                    </button>
+                                                                </div>
+
+                                                                <h3 className="font-semibold text-slate-200 text-sm leading-tight pr-20">{tarefa.titulo}</h3>
+
+                                                                {tarefa.dependencias && tarefa.dependencias.length > 0 && (
+                                                                    <div className="mt-2 text-[10px] bg-rose-950/40 text-rose-400 border border-rose-900/50 p-1.5 rounded font-bold flex flex-col gap-1">
+                                                                        <div className="flex items-center gap-1">⚠️ Depende de:</div>
+                                                                        {tarefa.dependencias.map(dep => (
+                                                                            <div key={dep.id} className="flex justify-between items-center text-rose-300/80 bg-rose-950/40 px-1 rounded">
+                                                                                <span className="truncate max-w-[200px]">- {dep.titulo}</span>
+                                                                                <button onClick={() => removerDependencia(tarefa.id, dep.id)} className="hover:text-white cursor-pointer p-1"><Trash2 size={10}/></button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {tarefa.checklists && tarefa.checklists.length > 0 && (
+                                                                    <div className="mt-3 space-y-1.5 bg-slate-900/50 p-2 border border-slate-800/80 rounded-lg">
+                                                                        <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Checklist</div>
+                                                                        {tarefa.checklists.map(item => (
+                                                                            <label key={item.id} className="flex items-start gap-2 text-xs text-slate-300 cursor-pointer group/chk">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={item.concluido}
+                                                                                    onChange={() => toggleChecklist(item.id)}
+                                                                                    className="mt-0.5 rounded border-slate-700 text-indigo-600 bg-slate-950 cursor-pointer"
+                                                                                />
+                                                                                <span className={`transition-all ${item.concluido ? "line-through text-slate-600" : "group-hover/chk:text-white"}`}>
+                                                                                    {item.descricao}
+                                                                                </span>
+                                                                            </label>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {tarefa.anexos && tarefa.anexos.length > 0 && (
+                                                                    <div className="mt-2 flex flex-wrap gap-1">
+                                                                        {tarefa.anexos.map(anexo => (
+                                                                            <a key={anexo.id} href={`${api.defaults.baseURL.replace('/api', '')}/storage/${anexo.caminho_s3}`} target="_blank" rel="noreferrer" className="text-[9px] bg-slate-800 text-indigo-300 border border-slate-700 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-slate-700">
+                                                                                <Paperclip size={10}/> {anexo.nome_original.substring(0, 15)}...
+                                                                            </a>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="mt-3 flex justify-between items-center pt-3 border-t border-slate-800/50">
+                                                                    <span
+                                                                        onClick={() => { setNovaPrioridadeId(tarefa.prioridade_id); setModalPrioridade({ open: true, tarefaId: tarefa.id }); }}
+                                                                        title="Clique para mudar a prioridade"
+                                                                        className="text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer hover:opacity-80 transition border uppercase"
+                                                                        style={{ backgroundColor: `${prioCor}20`, color: prioCor, borderColor: `${prioCor}50` }}
+                                                                    >
+                                                                        {prioNome}
+                                                                    </span>
+
+                                                                    <button
+                                                                        onClick={() => toggleTimer(tarefa, isRodando)}
+                                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer shadow-sm ${
+                                                                            isRodando
+                                                                                ? 'bg-rose-600 text-white animate-pulse shadow-rose-600/30'
+                                                                                : 'bg-emerald-950 text-emerald-400 border border-emerald-800 hover:bg-emerald-900'
+                                                                        }`}
+                                                                        title={isRodando ? "Parar Cronômetro" : "Iniciar Cronômetro"}
+                                                                    >
+                                                                        {isRodando ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+                                                                        {isRodando ? 'STOP' : 'PLAY'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </Draggable>
+                                                );
+                                            })}
+                                            {provided.placeholder}
+
+                                            <button
+                                                onClick={() => setModalTarefa({ open: true, etapaId: etapa.id })}
+                                                className="w-full py-2 mt-2 rounded-lg border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-xs font-bold"
+                                            >
+                                                + Nova Tarefa
+                                            </button>
+                                        </div>
+                                    )}
+                                </Droppable>
+                            </div>
+                        ))}
+
+                        <div className="min-w-[320px] flex items-start">
+                            <button
+                                onClick={() => setModalEtapa({ open: true, isEdit: false, id: '', nome: '', cor_hex: '#3b82f6' })}
+                                className="w-full bg-slate-900/50 border border-dashed border-slate-700 rounded-xl p-4 text-slate-400 hover:text-white hover:border-indigo-500 hover:bg-slate-800 transition cursor-pointer text-sm font-bold flex items-center justify-center gap-2"
+                            >
+                                <Plus size={18} /> Nova Coluna (Etapa)
+                            </button>
+                        </div>
+                    </div>
+                </DragDropContext>
+            )}
+
+            {/* MODAL: CRIAR OU EDITAR ETAPA (TAXONOMIA DO FLUXO) */}
+            {modalEtapa.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarEtapa} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">
+                            {modalEtapa.isEdit ? 'Editar Coluna Kanban' : 'Nova Coluna Kanban'}
+                        </h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nome da Etapa</label>
+                            <input type="text" required value={modalEtapa.nome} onChange={e => setModalEtapa({...modalEtapa, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Cor de Identificação</label>
+                            <div className="flex gap-3 items-center">
+                                <input type="color" value={modalEtapa.cor_hex} onChange={e => setModalEtapa({...modalEtapa, cor_hex: e.target.value})} className="w-12 h-12 rounded cursor-pointer bg-slate-950 border border-slate-800" />
+                                <span className="text-sm font-mono text-slate-300">{modalEtapa.cor_hex}</span>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalEtapa({ open: false, isEdit: false, id: '', nome: '', cor_hex: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar Etapa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: MUDAR STATUS DO PROJETO */}
+            {modalStatus && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={alterarStatusProjeto} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alterar Status do Projeto</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Selecione o novo status:</label>
+                            <select required value={novoStatusId} onChange={e => setNovoStatusId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Selecione...</option>
+                                {parametrosStatus.map(s => (
+                                    <option key={s.id} value={s.id}>{s.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalStatus(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Aplicar Status</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: BUDGET DO PROJETO */}
+            {modalBudget && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarBudget} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Orçamento Previsto</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Valor (R$)</label>
+                            <input type="number" step="0.01" required value={novoBudget} onChange={e => setNovoBudget(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalBudget(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Atualizar Budget</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: NOVA TAREFA (COM PRIORIDADE DINÂMICA) */}
+            {modalTarefa.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={adicionarTarefa} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Criar Nova Tarefa</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Título da Tarefa *</label>
+                            <input type="text" required value={formTarefa.titulo} onChange={e => setFormTarefa({...formTarefa, titulo: e.target.value})} placeholder="O que precisa ser feito?" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nível de Prioridade</label>
+                            <select value={formTarefa.prioridade_id} onChange={e => setFormTarefa({...formTarefa, prioridade_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Padrão (Média)</option>
+                                {parametrosPrioridades.map(p => (
+                                    <option key={p.id} value={p.id}>{p.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalTarefa({ open: false, etapaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Criar Tarefa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: CHECKLIST */}
+            {modalChecklist.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarChecklist} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Novo Item de Verificação</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Descrição do Checklist</label>
+                            <input type="text" required value={novoChecklistDesc} onChange={e => setNovoChecklistDesc(e.target.value)} placeholder="Ex: Validar assinaturas do documento" className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500" />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalChecklist({ open: false, tarefaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* MODAL: ALTERAR PRIORIDADE IN-LINE */}
+            {modalPrioridade.open && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={alterarPrioridade} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alterar Prioridade</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Selecione a nova prioridade:</label>
+                            <select required value={novaPrioridadeId} onChange={e => setNovaPrioridadeId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Selecione...</option>
+                                {parametrosPrioridades.map(p => (
+                                    <option key={p.id} value={p.id}>{p.nome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalPrioridade({ open: false, tarefaId: '' })} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Modal de Dependências (Blockers) */}
+            {modalBlocker && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={adicionarDependencia} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-md space-y-4 shadow-2xl">
+                        <div className="flex items-center gap-2 text-rose-400 mb-2">
+                            <LinkIcon size={20} />
+                            <h3 className="font-bold text-lg">Criar Dependência</h3>
+                        </div>
+                        <p className="text-sm text-slate-400">
+                            A tarefa <strong className="text-white">{modalBlocker.titulo}</strong> só poderá ser iniciada após a conclusão de:
+                        </p>
+                        <select required value={dependenciaIdSelecionada} onChange={e => setDependenciaIdSelecionada(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-3 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                            <option value="">Selecione a tarefa pré-requisito...</option>
+                            {todasAsTarefas.filter(t => t.id !== modalBlocker.id).map(t => (
+                                <option key={t.id} value={t.id}>{t.titulo}</option>
+                            ))}
+                        </select>
+                        <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalBlocker(null)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-bold transition shadow-lg shadow-rose-600/20 cursor-pointer">Bloquear Tarefa</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Modal de Configurações (Vincular Cliente) */}
+            {modalConfig && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvarConfiguracoes} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-md space-y-4 shadow-2xl">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                                <Settings className="h-5 w-5 text-indigo-400" /> Configurações do Projeto
+                            </h3>
+                            <button type="button" onClick={() => setModalConfig(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1">Nome do Projeto *</label>
+                            <input type="text" required value={formConfig.nome} onChange={e => setFormConfig({...formConfig, nome: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1">Descrição</label>
+                            <textarea rows="2" value={formConfig.descricao} onChange={e => setFormConfig({...formConfig, descricao: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500"></textarea>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1">Cliente Vinculado (Obrigatório para Faturamento)</label>
+                            <select value={formConfig.cliente_id} onChange={e => setFormConfig({...formConfig, cliente_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:border-indigo-500 cursor-pointer">
+                                <option value="">Sem cliente vinculado</option>
+                                {clientes.map(c => (
+                                    <option key={c.id} value={c.id}>{c.nome_razao_social} ({c.cpf_cnpj})</option>
+                                ))}
+                            </select>
+                            <p className="text-[10px] text-amber-500 mt-1 font-semibold">Sem este vínculo o Motor Fiscal não consegue emitir a Nota (NF-e/NFS-e).</p>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModalConfig(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition cursor-pointer">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition shadow-md cursor-pointer">Salvar Configurações</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Renderização Dinâmica das Abas */}
+            {activeTab === 'equipe' && projeto && <TabEquipe projeto={projeto} api={api} onReload={carregarProjeto} />}
+            {activeTab === 'custos' && projeto && <TabCustos projeto={projeto} api={api} onReload={carregarProjeto} />}
+            {activeTab === 'entregaveis' && projeto && <TabEntregaveis projeto={projeto} api={api} onReload={carregarProjeto} />}
+            {activeTab === 'gantt' && projeto && <TabGanttCapacidade projetoId={projeto.id} api={api} />}
+        </div>
+    );
+}
+
+// ==========================================
+// SUB-COMPONENTES DAS ABAS
+// ==========================================
+
+function TabGanttCapacidade({ projetoId, api }) {
+    return (
+        <div className="flex flex-col gap-6">
+            <GanttChart projetoId={projetoId} api={api} />
+            <ResourceCapacity projetoId={projetoId} api={api} />
+        </div>
+    );
+}
+
+function GanttChart({ projetoId, api }) {
+    const [tarefas, setTarefas] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get(`/projetos/${projetoId}/gantt`).then(res => {
+            setTarefas(res.data.data);
+            setLoading(false);
+        }).catch(() => setLoading(false));
+    }, [projetoId, api]);
+
+    if (loading) return <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-400">Carregando cronograma...</div>;
+    if (tarefas.length === 0) return <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-500">Nenhuma tarefa com datas definidas (Início e Fim) para compor o Gantt.</div>;
+
+    const minDate = new Date(Math.min(...tarefas.map(t => new Date(t.data_inicio_prevista))));
+    const maxDate = new Date(Math.max(...tarefas.map(t => new Date(t.data_fim_prevista))));
+    const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 overflow-x-auto shadow-sm">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><CalendarDays className="h-5 w-5 text-indigo-400" /> Cronograma (Gantt)</h3>
+            <div className="min-w-[800px]">
+                <div className="flex border-b border-slate-800 pb-2 mb-4 text-xs text-slate-400 font-mono">
+                    <div className="w-64 shrink-0 font-bold">Tarefa & Responsável</div>
+                    <div className="flex-1 flex justify-between px-2">
+                        <span>{minDate.toLocaleDateString('pt-BR')}</span>
+                        <span>{maxDate.toLocaleDateString('pt-BR')}</span>
+                    </div>
+                </div>
+                {tarefas.map(t => {
+                    const tStart = new Date(t.data_inicio_prevista);
+                    const tEnd = new Date(t.data_fim_prevista);
+                    const offsetDays = Math.ceil((tStart - minDate) / (1000 * 60 * 60 * 24));
+                    const durationDays = Math.ceil((tEnd - tStart) / (1000 * 60 * 60 * 24)) + 1;
+
+                    const leftPercent = (offsetDays / totalDays) * 100;
+                    const widthPercent = (durationDays / totalDays) * 100;
+
+                    return (
+                        <div key={t.id} className="flex items-center mb-3 text-sm group">
+                            <div className="w-64 shrink-0 pr-4">
+                                <div className="text-slate-200 truncate font-semibold" title={t.titulo}>{t.titulo}</div>
+                                <div className="text-[10px] text-slate-500 truncate">{t.responsavel?.name || 'Sem responsável'}</div>
+                            </div>
+                            <div className="flex-1 relative h-7 bg-slate-950 rounded-md border border-slate-800">
+                                <div
+                                    className="absolute top-0 h-full rounded-md bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-md cursor-pointer flex items-center justify-center px-2 text-[10px] text-white font-bold whitespace-nowrap overflow-hidden"
+                                    style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+                                    title={`${t.titulo} (${durationDays} dias)`}
+                                >
+                                    {durationDays}d
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function ResourceCapacity({ projetoId, api }) {
+    const [capacidade, setCapacidade] = useState([]);
+
+    useEffect(() => {
+        api.get(`/projetos/${projetoId}/capacidade`).then(res => setCapacidade(res.data.data));
+    }, [projetoId, api]);
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Activity className="h-5 w-5 text-emerald-400" /> Gestão de Capacidade da Equipe</h3>
+            <div className="space-y-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {capacidade.length === 0 ? <p className="text-slate-500 text-sm">Nenhum membro com horas alocadas neste projeto.</p> : capacidade.map(membro => (
+                    <div key={membro.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                        <div className="flex justify-between items-end mb-2">
+                            <div>
+                                <span className="font-bold text-slate-200">{membro.nome}</span>
+                                <p className="text-xs text-slate-400 mt-0.5">Limite: {membro.limite_horas}h / semana</p>
+                            </div>
+                            <div className="text-right">
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                    membro.status === 'OVERBOOKED' ? 'bg-rose-950 text-rose-400 border border-rose-900' :
+                                    membro.status === 'ATENCAO' ? 'bg-amber-950 text-amber-400 border border-amber-900' :
+                                    'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                                }`}>
+                                    {membro.horas_realizadas}h consumidas ({membro.percentual_uso}%)
+                                </span>
+                            </div>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                    membro.percentual_uso > 90 ? 'bg-rose-500' : membro.percentual_uso > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                                }`}
+                                style={{ width: `${Math.min(membro.percentual_uso, 100)}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function TabEquipe({ projeto, api, onReload }) {
+    const [equipe, setEquipe] = useState([]);
+    const [usuarios, setUsuarios] = useState([]);
+    const [modal, setModal] = useState(false);
+    const [form, setForm] = useState({ usuario_id: '', custo_hora: '', limite_horas_semanais: '40' });
+
+    const carregar = () => api.get(`/projetos/${projeto.id}/equipe`).then(res => setEquipe(res.data.data));
+
+    useEffect(() => {
+        carregar();
+        api.get('/usuarios').then(res => setUsuarios(res.data?.data?.usuarios || []));
+    }, [projeto.id]);
+
+    const salvar = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post(`/projetos/${projeto.id}/equipe`, form);
+            setModal(false);
+            carregar();
+        } catch (err) { alert("Erro ao alocar membro."); }
+    };
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-4">
+                <h3 className="text-white font-bold text-lg flex items-center gap-2"><Users className="h-5 w-5 text-indigo-400"/> Alocação de Equipe e Custo-Hora</h3>
+                <button onClick={() => setModal(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-md">+ Adicionar Membro</button>
+            </div>
+            <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
+                    <tr>
+                        <th className="p-4">Membro da Equipe</th>
+                        <th className="p-4 text-center">Carga Máxima</th>
+                        <th className="p-4 text-right">Custo Hora (R$)</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                    {equipe.length === 0 ? (
+                        <tr><td colSpan="3" className="p-8 text-center text-slate-500">Nenhum membro alocado ao projeto.</td></tr>
+                    ) : equipe.map(m => (
+                        <tr key={m.id} className="hover:bg-slate-800/40 transition">
+                            <td className="p-4 text-white font-medium">{m.nome_usuario || 'Usuário do Sistema'}</td>
+                            <td className="p-4 text-center text-slate-400 font-mono">{m.limite_horas_semanais || '40.00'}h / sem</td>
+                            <td className="p-4 text-right font-mono font-bold text-emerald-400">R$ {Number(m.custo_hora).toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            {modal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-md space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Alocar Novo Membro</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Usuário do Sistema</label>
+                            <select required value={form.usuario_id} onChange={e => setForm({...form, usuario_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                <option value="">Selecione...</option>
+                                {usuarios.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Custo Hora (R$)</label>
+                                <input type="number" step="0.01" required value={form.custo_hora} onChange={e => setForm({...form, custo_hora: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Limite (Horas/Semana)</label>
+                                <input type="number" step="1" required value={form.limite_horas_semanais} onChange={e => setForm({...form, limite_horas_semanais: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-indigo-500" />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TabCustos({ projeto, api, onReload }) {
+    const [custos, setCustos] = useState([]);
+    const [modal, setModal] = useState(false);
+    const [form, setForm] = useState({ descricao: '', valor: '', data_custo: new Date().toISOString().split('T')[0] });
+
+    const carregar = () => api.get(`/projetos/${projeto.id}/custos`).then(res => setCustos(res.data.data));
+    useEffect(() => { carregar(); }, [projeto.id]);
+
+    const salvar = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post(`/projetos/${projeto.id}/custos`, form);
+            setModal(false);
+            setForm({ descricao: '', valor: '', data_custo: new Date().toISOString().split('T')[0] });
+            carregar();
+            onReload();
+        } catch (err) { alert("Erro ao lançar despesa."); }
+    };
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-4">
+                <h3 className="text-white font-bold text-lg flex items-center gap-2"><DollarSign className="h-5 w-5 text-rose-400"/> Despesas Externas e Terceirizações</h3>
+                <button onClick={() => setModal(true)} className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-md">+ Lançar Custo</button>
+            </div>
+            <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-950/70 border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
+                    <tr><th className="p-4">Data</th><th className="p-4">Descrição do Gasto</th><th className="p-4 text-right">Valor (R$)</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                    {custos.length === 0 ? (
+                        <tr><td colSpan="3" className="p-8 text-center text-slate-500">Nenhuma despesa externa lançada neste projeto.</td></tr>
+                    ) : custos.map(c => (
+                        <tr key={c.id} className="hover:bg-slate-800/40 transition">
+                            <td className="p-4 text-slate-400 font-mono">{new Date(c.data_custo).toLocaleDateString('pt-BR')}</td>
+                            <td className="p-4 text-white">{c.descricao}</td>
+                            <td className="p-4 text-right font-mono text-rose-400 font-bold">R$ {Number(c.valor).toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            {modal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Lançar Nova Despesa</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Descrição do Custo</label>
+                            <input type="text" required value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} placeholder="Ex: Aluguel de andaime" className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Valor (R$)</label>
+                                <input type="number" step="0.01" required value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-rose-500" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Data</label>
+                                <input type="date" required value={form.data_custo} onChange={e => setForm({...form, data_custo: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500" />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-700 transition">Cancelar</button>
+                            <button type="submit" className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-bold cursor-pointer transition shadow-md">Salvar Custo</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TabEntregaveis({ projeto, api, onReload }) {
+    const [entregaveis, setEntregaveis] = useState([]);
+    const [modal, setModal] = useState(false);
+    const [form, setForm] = useState({ titulo: '', data_prevista: '', valor_faturamento: '' });
+
+    const carregar = () => api.get(`/projetos/${projeto.id}/entregaveis`).then(res => setEntregaveis(res.data.data));
+    useEffect(() => { carregar(); }, [projeto.id]);
+
+    const salvar = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post(`/projetos/${projeto.id}/entregaveis`, form);
+            setModal(false);
+            setForm({ titulo: '', data_prevista: '', valor_faturamento: '' });
+            carregar();
+        } catch (err) { alert("Erro ao criar entregável."); }
+    };
+
+    const faturar = async (entregavel) => {
+        if (!projeto.cliente_id) {
+            alert("Atenção: Este projeto não possui um Cliente vinculado na sua raiz. Clique no ícone de engrenagem no cabeçalho do projeto para vincular um cliente antes de faturar.");
+            return;
+        }
+
+        if (!window.confirm(`Deseja aprovar e faturar o marco "${entregavel.titulo}" no valor de R$ ${Number(entregavel.valor_faturamento).toFixed(2)}? Isso irá gerar um Pedido de Venda.`)) return;
+
+        try {
+            await api.post(`/projetos/entregaveis/${entregavel.id}/faturar`);
+            alert("Fatura gerada com sucesso e enviada ao contas a receber!");
+            carregar();
+        } catch (err) {
+            alert("O motor financeiro e fiscal receberá este comando na Sprint 3. A estrutura visual já está amarrada.");
+        }
+    };
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-4">
+                <div>
+                    <h3 className="text-white font-bold text-lg flex items-center gap-2"><PackageCheck className="h-5 w-5 text-emerald-400"/> Marcos de Faturamento (Milestones)</h3>
+                    <p className="text-xs text-slate-400 mt-1">Vincule as entregas do projeto a parcelas de faturamento</p>
+                </div>
+                <button onClick={() => setModal(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-md">+ Novo Entregável</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {entregaveis.length === 0 ? (
+                    <div className="md:col-span-2 xl:col-span-3 p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">Sem entregáveis mapeados neste projeto.</div>
+                ) : entregaveis.map(e => (
+                    <div key={e.id} className="p-5 bg-slate-950 border border-slate-800 hover:border-emerald-500/30 rounded-xl flex flex-col justify-between transition-colors shadow-sm">
+                        <div className="mb-4">
+                            <div className="flex justify-between items-start">
+                                <h4 className="font-bold text-white text-sm leading-tight pr-2">{e.titulo}</h4>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${e.status === 'FATURADO' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-400'}`}>
+                                    {e.status}
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1.5 font-mono">Previsão: {e.data_prevista ? new Date(e.data_prevista).toLocaleDateString('pt-BR') : 'A definir'}</p>
+                        </div>
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-800/60">
+                            <span className="font-mono font-bold text-lg text-emerald-400">R$ {Number(e.valor_faturamento).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                            {e.status !== 'FATURADO' && (
+                                <button onClick={() => faturar(e)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg cursor-pointer transition shadow-md">
+                                    Gerar Fatura
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {modal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <form onSubmit={salvar} className="bg-slate-900 p-6 rounded-2xl border border-slate-700 w-full max-w-sm space-y-4 shadow-2xl">
+                        <h3 className="text-white font-bold text-lg border-b border-slate-800 pb-2">Mapear Novo Entregável</h3>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 mb-1 block">Nome da Etapa / Milestone</label>
+                            <input type="text" required value={form.titulo} onChange={e => setForm({...form, titulo: e.target.value})} placeholder="Ex: Fase 1 - Infraestrutura" className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Valor Faturado (R$)</label>
+                                <input type="number" step="0.01" required value={form.valor_faturamento} onChange={e => setForm({...form, valor_faturamento: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-emerald-500" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 mb-1 block">Previsão Entrega</label>
+                                <input type="date" value={form.data_prevista} onChange={e => setForm({...form, data_prevista: e.target.value})} className="w-full bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500" />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" onClick={() => setModal(false)} className="px-4 py-2 bg-slate-800 tex

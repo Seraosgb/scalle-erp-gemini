@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToEmpresa;
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Traits\BelongsToEmpresa;
 
 class Empresa extends Model
 {
@@ -23,6 +23,15 @@ class Empresa extends Model
         'cnpj',
         'inscricao_estadual',
         'regime_tributario',
+        'csc_token',
+        'csc_id',
+        'cep',
+        'logradouro',
+        'numero',
+        'bairro',
+        'cidade',
+        'uf',
+        'codigo_ibge',
         'is_matriz',
     ];
 }

@@ -1,4 +1,552 @@
-﻿ase
+﻿de Taxonomia de Fluxos (Etapas)
+        Route::post('/{projetoId}/etapas', [KanbanController::class, 'criarEtapa']);
+        Route::delete('/etapas/{etapaId}', [KanbanController::class, 'excluirEtapa']);
+
+        // Financeiro do PMO: Custos e Entregáveis
+        Route::get('/{projetoId}/custos', [ProjetoController::class, 'custos']);
+        Route::post('/{projetoId}/custos', [ProjetoController::class, 'storeCusto']);
+
+        Route::get('/{projetoId}/entregaveis', [ProjetoController::class, 'entregaveis']);
+        Route::post('/{projetoId}/entregaveis', [ProjetoController::class, 'storeEntregavel']);
+        Route::post('/entregaveis/{entregavelId}/faturar', [ProjetoController::class, 'faturarEntregavel']);
+    });
+
+    // ==========================================
+    // MÓDULO GED (Cofre Digital)
+    // ==========================================
+    Route::prefix('ged')->group(function () {
+        Route::get('/listar', [GedController::class, 'listar']);
+        Route::post('/pastas', [GedController::class, 'criarPasta']);
+        Route::post('/upload', [GedController::class, 'upload']);
+
+        Route::post('/upload/tarefa/{tarefaId}', function(\Illuminate\Http\Request $request, $tarefaId) {
+            $request->merge([
+                'entidade_type' => 'App\Models\Tarefa',
+                'entidade_id' => $tarefaId
+            ]);
+            return app(GedController::class)->upload($request);
+        });
+    });
+});
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\routes\console.php
+========================================
+<?php
+
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
+// Agendamento do comando de geração de preventivas
+Schedule::command('scalle:gerar-preventivas')->dailyAt('00:01');
+
+// Agendamento do comando de apuração de ponto
+Schedule::command('rh:apurar-ponto')->dailyAt('00:02');
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\routes\web.php
+========================================
+<?php
+
+use Illuminate\Support\Facades\Route;
+
+// Health Check do Backend
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'OK',
+        'sistema' => 'Scalle ERP',
+        'versao' => '2.0.0 Enterprise',
+        'timestamp' => now()->toIso8601String(),
+    ]);
+});
+
+// Fallback SPA: qualquer rota de frontend (ex: /wms, /pdv, /os, /financeiro, /login) carrega o SPA
+Route::get('/{any}', function () {
+    $indexPath = public_path('app/index.html');
+    
+    if (file_exists($indexPath)) {
+        return response()->file($indexPath);
+    }
+
+    return response()->json([
+        'error' => 'Build SPA não encontrado em public/app/index.html'
+    ], 404);
+})->where('any', '^(?!api|health).*$');
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\tests\TestCase.php
+========================================
+<?php
+
+namespace Tests;
+
+use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+
+abstract class TestCase extends BaseTestCase
+{
+    //
+}
+
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\tests\Feature\BillingWebhookTest.php
+========================================
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Assinatura;
+use App\Models\Plano;
+use App\Models\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+class BillingWebhookTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_webhook_asaas_confirma_pagamento_e_reativa_tenant()
+    {
+        // 1. Força a configuração de um token válido apenas para o ambiente de testes
+        $tokenTeste = 'token_secreto_asaas_123';
+        config(['services.asaas.webhook_token' => $tokenTeste]);
+
+        $plano = Plano::create([
+            'id' => (string) Str::uuid(),
+            'nome' => 'Plano Pro',
+            'slug' => 'pro',
+            'valor_mensal' => 199.00,
+            'limite_usuarios' => 10,
+            'limite_empresas' => 2,
+            'cota_storage_bytes' => 21474836480,
+            'is_ativo' => true,
+        ]);
+
+        $tenant = Tenant::create([
+            'id' => (string) Str::uuid(),
+            'nome_fantasia' => 'Empresa Teste',
+            'razao_social' => 'Empresa Teste LTDA',
+            'documento' => '12345678000199',
+            'status' => 'soft_lock', // Bloqueado por falta de pagamento
+        ]);
+
+        $assinatura = Assinatura::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'plano_id' => $plano->id,
+            'status' => 'SOFT_LOCK',
+            'data_inicio' => now()->subMonth(),
+            'data_proximo_vencimento' => now()->subDays(5),
+        ]);
+
+        $payloadAsaas = [
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => [
+                'id' => 'pay_test_998877',
+                'externalReference' => $tenant->id,
+                'value' => 199.00,
+                'status' => 'RECEIVED',
+                'billingType' => 'PIX',
+                'paymentDate' => now()->toDateString(),
+            ]
+        ];
+
+        // 2. Dispara a requisição enviando o HEADER de segurança que o Controller exige
+        $response = $this->withHeaders([
+            'asaas-access-token' => $tokenTeste,
+        ])->postJson('/api/billing/webhook/asaas', $payloadAsaas);
+
+        // 3. Validações
+        $response->assertStatus(200);
+
+        // Valida se o Tenant voltou a ficar Ativo e se a Assinatura foi prorrogada
+        $this->assertDatabaseHas('sis_tenants', [
+            'id' => $tenant->id,
+            'status' => 'ativo',
+        ]);
+
+        $this->assertDatabaseHas('sis_assinaturas', [
+            'id' => $assinatura->id,
+            'status' => 'ATIVO',
+        ]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\tests\Feature\ExampleTest.php
+========================================
+<?php
+
+namespace Tests\Feature;
+
+use Tests\TestCase;
+
+class ExampleTest extends TestCase
+{
+    public function test_rota_raiz_e_acessivel(): void
+    {
+        $response = $this->get('/');
+        // Aceita 200 (se carregar a view diretamente) ou 302 (se redirecionar para /app/)
+        $this->assertTrue(in_array($response->getStatusCode(), [200, 302]));
+    }
+
+    public function test_health_check_retorna_status_200(): void
+    {
+        $response = $this->get('/health');
+        $response->assertStatus(200)
+            ->assertJson([
+                'status' => 'OK',
+                'sistema' => 'Scalle ERP',
+                'versao' => '2.0.0 Enterprise'
+            ]);
+    }
+
+    public function test_rota_app_spa_carrega_index(): void
+    {
+        $response = $this->get('/app');
+        $this->assertTrue(in_array($response->getStatusCode(), [200, 301, 302]));
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\tests\Feature\OrdemServicoIntegrationTest.php
+========================================
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Deposito;
+use App\Models\Empresa;
+use App\Models\Item;
+use App\Models\OrdemServico;
+use App\Models\Pessoa;
+use App\Models\Tenant;
+use App\Models\TituloFinanceiro;
+use App\Models\User;
+use App\Services\EstoqueService;
+use App\Services\OrdemServicoService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+class OrdemServicoIntegrationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_ciclo_completo_cmms_com_baixa_wms_assinatura_e_faturamento(): void
+    {
+        $tenant = Tenant::create([
+            'id' => (string) Str::uuid(),
+            'nome_fantasia' => 'Tenant CMMS Teste',
+            'razao_social' => 'Tenant CMMS Teste LTDA',
+            'documento' => '12345678000100',
+            'status' => 'ativo',
+        ]);
+        app()->instance('current_tenant_id', $tenant->id);
+
+        $empresa = Empresa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'nome_fantasia' => 'Matriz',
+            'razao_social' => 'Matriz LTDA',
+            'cnpj' => '12345678000100',
+            'regime_tributario' => 'simples_nacional',
+            'is_matriz' => true,
+        ]);
+
+        $tecnico = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'empresa_padrao_id' => $empresa->id,
+            'name' => 'Técnico Especialista',
+            'email' => 'tecnico@scalle.com',
+            'password' => '123456',
+            'is_ativo' => true,
+        ]);
+
+        $cliente = Pessoa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'tipo_pessoa' => 'PJ',
+            'nome_razao_social' => 'Cliente Corporativo',
+            'cpf_cnpj' => '98765432000199',
+            'is_cliente' => true,
+            'is_ativo' => true,
+        ]);
+
+        $deposito = Deposito::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'empresa_id' => $empresa->id,
+            'nome' => 'Almoxarifado Peças',
+            'codigo' => 'ALMOX-01',
+            'is_padrao' => true,
+            'is_ativo' => true,
+        ]);
+
+        $peca = Item::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'nome' => 'Válvula de Expansão',
+            'codigo_sku' => 'VALV-EXP',
+            'tipo_item' => 'PRODUTO',
+            'preco_venda' => 150.00,
+            'unidade_medida' => 'UN',
+            'controla_estoque' => true,
+            'is_ativo' => true,
+        ]);
+
+        EstoqueService::movimentar($deposito->id, $peca->id, 10.0, 'ENTRADA_COMPRA', $tecnico->id, 'teste', null, null, 80.00);
+
+        // 1. Abertura da OS
+        $os = OrdemServico::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'empresa_id' => $empresa->id,
+            'cliente_id' => $cliente->id,
+            'tecnico_responsavel_id' => $tecnico->id,
+            'deposito_saida_id' => $deposito->id,
+            'numero_os' => 1001,
+            'status' => 'ABERTA',
+            'prioridade' => 'ALTA',
+            'tipo_manutencao' => 'CORRETIVA',
+            'equipamento_descricao' => 'Chiller 100TR',
+            'defeito_reclamado' => 'Baixa pressão de sucção',
+            'data_abertura' => now(),
+        ]);
+
+        // 2. Conclusão da OS com Peças e Assinatura MP 2.200-2
+        $itensUtilizados = [
+            ['item_id' => $peca->id, 'tipo_item' => 'PRODUTO', 'quantidade' => 2.0, 'valor_unitario' => 150.00],
+        ];
+
+        $osConcluida = OrdemServicoService::concluirOrdemServico(
+            $os,
+            $itensUtilizados,
+            'Substituição de válvula e teste de estanqueidade realizado.',
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            'Carlos Alberto Gerente',
+            '123.456.789-00',
+            $tecnico,
+            -22.7654,
+            -43.3987,
+            '189.100.20.5'
+        );
+
+        // 3. Validações de Sucesso
+        $this->assertEquals('CONCLUIDA', $osConcluida->status);
+        $this->assertEquals(300.00, $osConcluida->valor_total);
+        $this->assertNotEmpty($osConcluida->hash_assinatura_sha256);
+
+        // Verifica baixa física no Kardex do depósito
+        $saldoPeca = \App\Models\EstoqueDeposito::where('deposito_id', $deposito->id)->where('item_id', $peca->id)->first();
+        $this->assertEquals(8.0, (float) $saldoPeca->quantidade_saldo);
+
+        // Verifica geração do Contas a Receber
+        $titulo = TituloFinanceiro::where('origem_tipo', 'os')->where('origem_id', $osConcluida->id)->first();
+        $this->assertNotNull($titulo);
+        $this->assertEquals(300.00, (float) $titulo->valor_original);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\tests\Feature\TenantIsolationTest.php
+========================================
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Empresa;
+use App\Models\Item;
+use App\Models\Tenant;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+class TenantIsolationTest extends TestCase
+{
+    use RefreshDatabase; // Reseta o banco SQLite em memória a cada teste
+
+    private function criarEcossistemaTenant(string $nome): array
+    {
+        $tenant = Tenant::create([
+            'id' => (string) Str::uuid(),
+            'nome_fantasia' => "Tenant {$nome}",
+            'razao_social' => "Razão Social {$nome}",
+            'documento' => '000000000001' . rand(10, 99),
+            'status' => 'ativo',
+        ]);
+
+        $empresa = Empresa::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'nome_fantasia' => "Empresa {$nome}",
+            'razao_social' => "Empresa {$nome} LTDA",
+            'cnpj' => $tenant->documento,
+            'regime_tributario' => 'simples_nacional',
+            'is_matriz' => true,
+        ]);
+
+        $user = User::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenant->id,
+            'empresa_padrao_id' => $empresa->id,
+            'name' => "Admin {$nome}",
+            'email' => "admin@{$nome}.com",
+            'password' => Hash::make('password'),
+            'is_ativo' => true,
+        ]);
+
+        return ['tenant' => $tenant, 'empresa' => $empresa, 'user' => $user];
+    }
+
+    public function test_usuario_tenant_a_nao_consegue_ver_itens_do_tenant_b()
+    {
+        // 1. Prepara o Terreno
+        $ecossistemaA = $this->criarEcossistemaTenant('A');
+        $ecossistemaB = $this->criarEcossistemaTenant('B');
+
+        // Cria um item exclusivo para o Tenant B
+        $itemTenantB = Item::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $ecossistemaB['tenant']->id,
+            'codigo_sku' => 'SKU-TENANT-B',
+            'nome' => 'Produto Secreto B',
+            'tipo_item' => 'PRODUTO',
+            'preco_venda' => 100.00,
+            'unidade_medida' => 'UN',
+            'is_ativo' => true,
+        ]);
+
+        // 2. Ação: Loga como Usuário do Tenant A e tenta listar itens
+        $response = $this->actingAs($ecossistemaA['user'])->getJson('/api/itens');
+
+        // 3. Validação: A resposta deve ser 200 OK, mas a lista NÃO DEVE conter o Produto B
+        $response->assertStatus(200);
+        $response->assertJsonMissing([
+            'codigo_sku' => 'SKU-TENANT-B',
+            'nome' => 'Produto Secreto B',
+        ]);
+    }
+
+    public function test_usuario_tenant_a_recebe_404_ao_tentar_editar_item_do_tenant_b()
+    {
+        // 1. Prepara o Terreno
+        $ecossistemaA = $this->criarEcossistemaTenant('A');
+        $ecossistemaB = $this->criarEcossistemaTenant('B');
+
+        $itemTenantB = Item::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $ecossistemaB['tenant']->id,
+            'codigo_sku' => 'SKU-B-PROTEGIDO',
+            'nome' => 'Produto Intocável',
+            'tipo_item' => 'PRODUTO',
+            'preco_venda' => 50.00,
+            'unidade_medida' => 'UN',
+            'is_ativo' => true,
+        ]);
+
+        // 2. Ação: Loga como Usuário do Tenant A e tenta atualizar o item do Tenant B passando o ID exato
+        $payloadMalicioso = [
+            'nome' => 'Produto Hackeado',
+            'codigo_sku' => 'SKU-HACK',
+            'tipo_item' => 'PRODUTO',
+            'preco_venda' => 1.00,
+            'unidade_medida' => 'UN',
+            'controla_estoque' => false,
+        ];
+
+        $response = $this->actingAs($ecossistemaA['user'])
+                         ->putJson("/api/itens/{$itemTenantB->id}", $payloadMalicioso);
+
+        // 3. Validação: O GlobalScopeTenant deve ocultar a existência do registro e retornar 404 (Not Found)
+        $response->assertStatus(404);
+        
+        // Verifica se o item original continua intacto no banco de dados
+        $this->assertDatabaseHas('pro_itens', [
+            'id' => $itemTenantB->id,
+            'nome' => 'Produto Intocável',
+        ]);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\tests\Unit\AuthApiTest.php
+========================================
+<?php
+
+namespace Tests\Unit;
+
+use App\Models\Perfil;
+use App\Models\Tenant;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Hash;
+use Tests\TestCase;
+
+class AuthApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_login_retorna_token_sanctum_valido(): void
+    {
+        $tenant = Tenant::create([
+            'nome_fantasia' => 'Tenant API Teste',
+            'razao_social' => 'API Teste LTDA',
+            'documento' => '12345678000199',
+        ]);
+
+        App::instance('current_tenant_id', $tenant->id);
+
+        $perfil = Perfil::create([
+            'nome' => 'Administrador',
+            'slug' => 'admin',
+            'is_admin' => true,
+        ]);
+
+        $user = User::create([
+            'name' => 'Bruno Dev',
+            'email' => 'bruno@scalle.com.br',
+            'password' => Hash::make('senhaSegura123'),
+            'perfil_id' => $perfil->id,
+            'is_ativo' => true,
+        ]);
+
+        $token = $user->createToken('test_token')->plainTextToken;
+
+        $this->assertNotEmpty($token);
+        $this->assertTrue($user->is_ativo);
+    }
+}
+
+========================================
+ARQUIVO: C:\Projetos\scalle-erp-gemini\tests\Unit\EstoqueWmsTest.php
+========================================
+<?php
+
+namespace Tests\Unit;
+
+use App\Models\Deposito;
+use App\Models\Empresa;
+use App\Models\Item;
+use App\Models\Tenant;
+use App\Services\EstoqueService;
+use Exception;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\App;
+use Tests\TestCase;
+
+class EstoqueWmsTest extends TestCase
 {
     use RefreshDatabase;
 

@@ -1,0 +1,2696 @@
+﻿celar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Perfil ACL */}
+      {modalPerfil && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Shield className="h-5 w-5 text-indigo-400" />
+                {editandoId ? 'Editar Perfil de Acesso' : 'Novo Perfil de Acesso'}
+              </h2>
+              <button type="button" onClick={() => setModalPerfil(false)} className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSalvarPerfil} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm overflow-y-auto">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Nome do Perfil *</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={formPerfil.nome}
+                  onChange={(e) => setFormPerfil({ ...formPerfil, nome: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Descrição</label>
+                <input 
+                  type="text" 
+                  value={formPerfil.descricao}
+                  onChange={(e) => setFormPerfil({ ...formPerfil, descricao: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <input 
+                  type="checkbox" 
+                  id="perfil_admin_modal"
+                  checked={formPerfil.is_admin}
+                  onChange={(e) => setFormPerfil({ ...formPerfil, is_admin: e.target.checked })}
+                  className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0"
+                />
+                <label htmlFor="perfil_admin_modal" className="text-xs text-slate-300 font-medium cursor-pointer">
+                  Acesso de Administrador Total (Ignora restrições granulares)
+                </label>
+              </div>
+
+              {!formPerfil.is_admin && (
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    Matriz de Permissões Granulares
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-slate-950/60 rounded-xl border border-slate-800">
+                    {permissoesDisponiveis.map((perm) => (
+                      <label key={perm.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-900 rounded-lg cursor-pointer">
+                        <input 
+                          type="checkbox"
+                          checked={formPerfil.permissoes.includes(perm.id)}
+                          onChange={() => togglePermissao(perm.id)}
+                          className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs text-white font-medium truncate">{perm.nome}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">{perm.slug}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800 shrink-0">
+                <button type="button" onClick={() => setModalPerfil(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Gestão de MFA / 2FA */}
+      {modalMfa && usuarioMfaSelecionado && (
+        <MfaConfigModal
+          usuario={usuarioMfaSelecionado}
+          onClose={() => {
+            setModalMfa(false);
+            setUsuarioMfaSelecionado(null);
+          }}
+          onAtualizado={(status) => {
+            setUsuarios(prev => prev.map(u => u.id === usuarioMfaSelecionado.id ? { ...u, mfa_ativo: status } : u));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\vendas\PdvPage.jsx
+========================================
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  ShoppingCart, Scale, Printer, CreditCard, X, Search,
+  Trash2, Banknote, MonitorCheck, AlertCircle, SearchCode, CheckCircle2, Tag, Loader2
+} from 'lucide-react';
+import { useHardwareStore } from '../../store/useHardwareStore';
+import { EscPosEncoder } from '../../utils/EscPosEncoder';
+import { api } from '../../services/api';
+
+// Função auxiliar para formatação de moeda BRL
+const formatarMoeda = (valor) => {
+  return Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+// Função auxiliar para formatação de peso
+const formatarPeso = (valor) => {
+  return String(valor).replace('.', ',');
+};
+
+export default function PdvPage() {
+  const barcodeInputRef = useRef(null);
+  const paymentInputRef = useRef(null);
+  const discountInputRef = useRef(null);
+
+  // Hardware Global Store
+  const {
+    pesoBalanca, balancaConectada, conectarBalanca, desconectarBalanca,
+    impressoraConectada, conectarImpressora, imprimirCupom, config
+  } = useHardwareStore();
+
+  // Estado do PDV e Integração DB
+  const [depositos, setDepositos] = useState([]);
+  const [depositoSelecionado, setDepositoSelecionado] = useState('');
+  const [codigoBarras, setCodigoBarras] = useState('');
+  const [carrinho, setCarrinho] = useState([]);
+  const [buscandoItem, setBuscandoItem] = useState(false);
+  const [processandoVenda, setProcessandoVenda] = useState(false);
+
+  // Modais
+  const [modalPagamento, setModalPagamento] = useState(false);
+  const [modalDesconto, setModalDesconto] = useState(false);
+  const [modalSucesso, setModalSucesso] = useState(false);
+
+  // Estado Financeiro
+  const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
+  const [valorRecebido, setValorRecebido] = useState('');
+  const [descontoReal, setDescontoReal] = useState(0);
+  const [valorDescontoTemp, setValorDescontoTemp] = useState('');
+
+  // Valores Congelados para a Tela de Sucesso
+  const [trocoFinal, setTrocoFinal] = useState(0);
+  const [totalFinal, setTotalFinal] = useState(0);
+
+  // Cálculos de Totais
+  const subtotal = useMemo(() => carrinho.reduce((acc, item) => acc + item.total, 0), [carrinho]);
+  const totalGeral = useMemo(() => Math.max(0, subtotal - descontoReal), [subtotal, descontoReal]);
+  const valorFaltante = useMemo(() => Math.max(0, totalGeral - (parseFloat(valorRecebido.replace(',', '.')) || 0)), [totalGeral, valorRecebido]);
+  const troco = useMemo(() => Math.max(0, (parseFloat(valorRecebido.replace(',', '.')) || 0) - totalGeral), [totalGeral, valorRecebido]);
+
+  // Busca do Depósito Padrão ao abrir o PDV
+  useEffect(() => {
+    const carregarDepositos = async () => {
+      try {
+        const res = await api.get('/wms/depositos');
+        const deps = res.data?.data || [];
+        setDepositos(deps);
+        const depPadrao = deps.find(d => d.is_padrao) || deps[0];
+        if (depPadrao) setDepositoSelecionado(depPadrao.id);
+      } catch (err) {
+        console.error("Erro ao carregar depósitos:", err);
+      }
+    };
+    carregarDepositos();
+  }, []);
+
+  // Foco Perpétuo
+  useEffect(() => {
+    const focusTimer = setInterval(() => {
+      const isAnyModalOpen = modalPagamento || modalDesconto || modalSucesso;
+      if (!isAnyModalOpen && !buscandoItem && !processandoVenda && barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
+        barcodeInputRef.current.focus();
+      }
+    }, 1500);
+    return () => clearInterval(focusTimer);
+  }, [modalPagamento, modalDesconto, modalSucesso, buscandoItem, processandoVenda]);
+
+  useEffect(() => {
+    if (modalPagamento && paymentInputRef.current) {
+      setTimeout(() => paymentInputRef.current.focus(), 100);
+    }
+  }, [modalPagamento, formaPagamento]);
+
+  useEffect(() => {
+    if (modalDesconto && discountInputRef.current) {
+      setTimeout(() => discountInputRef.current.focus(), 100);
+    }
+  }, [modalDesconto]);
+
+  // Atalhos de Teclado Globais
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (modalSucesso && (e.key === 'Enter' || e.key === 'Escape')) {
+        e.preventDefault();
+        setModalSucesso(false);
+        return;
+      }
+      if (e.key === 'F3') {
+        e.preventDefault();
+        if (carrinho.length > 0 && !modalDesconto) setModalPagamento(true);
+      }
+      if (e.key === 'F8') {
+        e.preventDefault();
+        if (carrinho.length > 0 && !modalPagamento) setModalDesconto(true);
+      }
+      if (e.key === 'F4') {
+        e.preventDefault();
+        if (!modalPagamento && !modalDesconto && window.confirm("Cancelar venda atual?")) {
+          setCarrinho([]);
+          setDescontoReal(0);
+        }
+      }
+      if (e.key === 'Escape') {
+        if (modalPagamento || modalDesconto) {
+          setModalPagamento(false);
+          setModalDesconto(false);
+          setValorRecebido('');
+          setValorDescontoTemp('');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [carrinho, modalPagamento, modalDesconto, modalSucesso]);
+
+  const processarCodigoBarras = async (e) => {
+    e.preventDefault();
+    const codigo = codigoBarras.trim();
+    if (!codigo) return;
+
+    setBuscandoItem(true);
+    try {
+      const res = await api.get('/itens', { params: { search: codigo } });
+      const itensEncontrados = res.data?.data?.data || res.data?.data || [];
+
+      const produtoReal = itensEncontrados.find(i =>
+        i.codigo_sku === codigo || i.codigo_barras_ean === codigo
+      );
+
+      if (!produtoReal) {
+        alert("Produto não encontrado no catálogo do ERP!");
+        setCodigoBarras('');
+        setBuscandoItem(false);
+        return;
+      }
+
+      const isPesavel = produtoReal.unidade_medida === 'KG';
+      const quantidadeFinal = isPesavel && balancaConectada ? parseFloat(pesoBalanca) : 1.000;
+
+      if (quantidadeFinal <= 0) {
+        alert("Atenção: O produto é vendido a KG. Coloque o item na balança antes de bipar o código.");
+        setCodigoBarras('');
+        setBuscandoItem(false);
+        return;
+      }
+
+      setCarrinho(prev => [{
+        id: produtoReal.id,
+        nome: produtoReal.nome,
+        codigo_sku: produtoReal.codigo_sku,
+        unidade: produtoReal.unidade_medida,
+        preco_venda: parseFloat(produtoReal.preco_venda),
+        quantidade: quantidadeFinal,
+        total: parseFloat(produtoReal.preco_venda) * quantidadeFinal
+      }, ...prev]);
+
+      setCodigoBarras('');
+    } catch (err) {
+      alert("Erro ao comunicar com o servidor: " + err.message);
+    } finally {
+      setBuscandoItem(false);
+    }
+  };
+
+  const removerItem = (index) => {
+    setCarrinho(prev => prev.filter((_, i) => i !== index));
+    if (carrinho.length === 1) setDescontoReal(0);
+  };
+
+  const aplicarDesconto = (e) => {
+    e.preventDefault();
+    const descFormated = parseFloat(valorDescontoTemp.replace(',', '.')) || 0;
+
+    if (descFormated > subtotal) {
+      alert("O desconto não pode ser maior que o valor da venda!");
+      return;
+    }
+
+    setDescontoReal(descFormated);
+    setModalDesconto(false);
+    setValorDescontoTemp('');
+  };
+
+  const finalizarVenda = async () => {
+    if (valorFaltante > 0 && formaPagamento === 'DINHEIRO') {
+      alert("Valor recebido é menor que o total da venda!");
+      return;
+    }
+
+    if (!depositoSelecionado) {
+      alert("Atenção: O sistema não encontrou um Depósito de Saída configurado. Contacte o Suporte.");
+      return;
+    }
+
+    setProcessandoVenda(true);
+
+    try {
+      const valorDinheiro = parseFloat(valorRecebido.replace(',', '.')) || 0;
+      const valorRecebidoFinal = formaPagamento === 'DINHEIRO' ? valorDinheiro : totalGeral;
+
+      const payload = {
+        deposito_id: depositoSelecionado,
+        cliente_id: null,
+        desconto_geral: descontoReal,
+        itens: carrinho.map(item => ({
+          item_id: item.id,
+          quantidade: item.quantidade,
+          preco_unitario: item.preco_venda,
+          desconto_unitario: 0
+        })),
+        pagamentos: [{
+          forma_pagamento: formaPagamento,
+          valor_pago: valorRecebidoFinal,
+          valor_troco: formaPagamento === 'DINHEIRO' ? troco : 0
+        }],
+        emitir_cupom_fiscal: false
+      };
+
+      const { data } = await api.post('/vendas/faturar', payload);
+      const numPedido = data?.data?.pedido?.numero_pedido || 'N/D';
+
+      setTrocoFinal(troco);
+      setTotalFinal(totalGeral);
+
+      if (impressoraConectada && config.impressaoAutomatica) {
+        const comandos = [
+          EscPosEncoder.init(),
+          EscPosEncoder.align(1),
+          EscPosEncoder.bold(true),
+          EscPosEncoder.text("SCALLE ERP - CUPOM NAO FISCAL\n"),
+          EscPosEncoder.bold(false),
+          EscPosEncoder.text(`PEDIDO #${numPedido}\n`),
+          EscPosEncoder.text("--------------------------------\n"),
+          EscPosEncoder.align(0),
+        ];
+
+        carrinho.forEach(item => {
+            comandos.push(EscPosEncoder.text(`${item.codigo_sku} - ${item.nome.substring(0, 18)}\n`));
+            comandos.push(EscPosEncoder.text(`${formatarPeso(item.quantidade.toFixed(3))} ${item.unidade} x R$ ${formatarMoeda(item.preco_venda)} = R$ ${formatarMoeda(item.total)}\n`));
+        });
+
+        comandos.push(EscPosEncoder.text("--------------------------------\n"));
+        if (descontoReal > 0) {
+          comandos.push(EscPosEncoder.text(`SUBTOTAL: R$ ${formatarMoeda(subtotal)}\n`));
+          comandos.push(EscPosEncoder.text(`DESCONTO: R$ ${formatarMoeda(descontoReal)}\n`));
+        }
+
+        comandos.push(EscPosEncoder.align(2));
+        comandos.push(EscPosEncoder.bold(true));
+        comandos.push(EscPosEncoder.text(`TOTAL: R$ ${formatarMoeda(totalGeral)}\n`));
+        comandos.push(EscPosEncoder.bold(false));
+        comandos.push(EscPosEncoder.text(`PAGO EM: ${formaPagamento}\n`));
+        if (formaPagamento === 'DINHEIRO') {
+           comandos.push(EscPosEncoder.text(`VALOR RECEBIDO: R$ ${formatarMoeda(valorRecebidoFinal)}\n`));
+           comandos.push(EscPosEncoder.text(`TROCO: R$ ${formatarMoeda(troco)}\n`));
+        }
+
+        comandos.push(EscPosEncoder.align(1));
+        comandos.push(EscPosEncoder.text("\nObrigado pela preferencia!\n"));
+        comandos.push(EscPosEncoder.text("\n\n\n"));
+        comandos.push(EscPosEncoder.cut());
+        comandos.push(EscPosEncoder.openDrawer());
+
+        await imprimirCupom(EscPosEncoder.build(comandos));
+      }
+
+      setCarrinho([]);
+      setDescontoReal(0);
+      setValorRecebido('');
+      setModalPagamento(false);
+      setModalSucesso(true);
+
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message;
+      alert("Erro crítico ao faturar: " + msg);
+    } finally {
+      setProcessandoVenda(false);
+    }
+  };
+
+  return (
+    <div className="flex h-[calc(100vh-64px)] bg-slate-950 text-slate-200 overflow-hidden font-sans">
+
+      {/* COLUNA ESQUERDA: LISTA DE PRODUTOS */}
+      <div className="flex-1 flex flex-col p-4 sm:p-6 border-r border-slate-800">
+        <div className="flex justify-between items-end border-b border-slate-800 pb-4 mb-4">
+          <div>
+            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <ShoppingCart className="h-7 w-7 text-indigo-500" /> FRENTE DE CAIXA
+            </h1>
+            <p className="text-xs text-slate-400 mt-1 font-mono uppercase">Caixa Livre • Op: Admin • Terminal 01</p>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={balancaConectada ? desconectarBalanca : conectarBalanca}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${balancaConectada ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Scale className="h-3.5 w-3.5" /> {balancaConectada ? 'Balança ON' : 'Balança OFF'}
+            </button>
+            <button
+              onClick={conectarImpressora}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[10px] font-bold uppercase transition cursor-pointer ${impressoraConectada ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-white'}`}
+            >
+              <Printer className="h-3.5 w-3.5" /> {impressoraConectada ? 'Imp. Pronta' : 'Ligar Imp.'}
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={processarCodigoBarras} className="mb-4">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              {buscandoItem ? <Loader2 className="h-6 w-6 text-indigo-500 animate-spin" /> : <Search className="h-6 w-6 text-indigo-500" />}
+            </div>
+            <input
+              ref={barcodeInputRef}
+              type="text"
+              value={codigoBarras}
+              onChange={(e) => setCodigoBarras(e.target.value)}
+              disabled={buscandoItem || processandoVenda}
+              placeholder="Código de Barras ou SKU [ENTER]"
+              className="w-full pl-14 pr-4 py-4 bg-slate-900 border border-slate-700 rounded-xl text-xl font-mono text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner disabled:opacity-50"
+            />
+          </div>
+        </form>
+
+        <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm">
+          <div className="overflow-y-auto flex-1">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-950 sticky top-0 z-10 shadow-sm border-b border-slate-800 text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                <tr>
+                  <th className="py-3 px-4 w-12 text-center">Item</th>
+                  <th className="py-3 px-4">Descrição do Produto</th>
+                  <th className="py-3 px-4 text-right">Qtd</th>
+                  <th className="py-3 px-4 text-right">Vl. Unit (R$)</th>
+                  <th className="py-3 px-4 text-right">Total (R$)</th>
+                  <th className="py-3 px-4 w-12 text-center">Del</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 font-mono">
+                {carrinho.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-20 text-center text-slate-500 font-sans">
+                      <div className="flex flex-col items-center justify-center">
+                        <MonitorCheck className="h-12 w-12 text-slate-700 mb-3" />
+                        <span className="text-lg font-bold text-slate-400">CAIXA ABERTO E LIVRE</span>
+                        <span className="text-xs">Bipe o código de barras para iniciar a venda</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  carrinho.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-slate-800/50 transition">
+                      <td className="py-3 px-4 text-center text-slate-500">{carrinho.length - idx}</td>
+                      <td className="py-3 px-4 font-bold text-white font-sans truncate max-w-[200px]">{item.nome}</td>
+                      <td className="py-3 px-4 text-right text-indigo-400">{formatarPeso(item.quantidade.toFixed(3))} {item.unidade}</td>
+                      <td className="py-3 px-4 text-right">{formatarMoeda(item.preco_venda)}</td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-400">{formatarMoeda(item.total)}</td>
+                      <td className="py-3 px-4 text-center">
+                        <button onClick={() => removerItem(idx)} className="text-slate-500 hover:text-rose-400 transition cursor-pointer">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* COLUNA DIREITA: VALORES E ATALHOS */}
+      <div className="w-[400px] bg-slate-900 flex flex-col justify-between shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.3)] z-10 relative">
+        <div className="p-6 space-y-6">
+
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <span>Peso Balança</span>
+              <span className={balancaConectada ? 'text-emerald-500' : 'text-rose-500'}>{balancaConectada ? 'ON' : 'OFF'}</span>
+            </div>
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-right shadow-inner">
+              <span className="font-mono text-5xl font-black text-indigo-400 tracking-tighter">{formatarPeso(pesoBalanca)}</span>
+              <span className="text-slate-500 ml-2 font-bold">KG</span>
+            </div>
+          </div>
+
+          <hr className="border-slate-800" />
+
+          <div className="space-y-3">
+            <div className="flex justify-between items-center text-slate-400 font-mono">
+              <span className="text-sm">Subtotal</span>
+              <span className="text-lg">R$ {formatarMoeda(subtotal)}</span>
+            </div>
+            <div className="flex justify-between items-center text-rose-400 font-mono">
+              <span className="text-sm">Desconto</span>
+              <span className="text-lg">- R$ {formatarMoeda(descontoReal)}</span>
+            </div>
+            <div className="pt-3">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-1">Total a Pagar</span>
+              <div className="bg-emerald-950/20 border border-emerald-900/50 p-4 rounded-xl text-right">
+                <span className="font-mono text-6xl font-black text-emerald-400 tracking-tighter">
+                  {formatarMoeda(totalGeral)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 bg-slate-950 border-t border-slate-800 grid grid-cols-3 gap-3">
+          <button
+            disabled={carrinho.length === 0 || processandoVenda}
+            onClick={() => setModalPagamento(true)}
+            className="col-span-3 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-lg rounded-xl flex items-center justify-center gap-2 cursor-pointer transition shadow-lg shadow-indigo-600/20"
+          >
+            <Banknote className="h-6 w-6" /> [F3] RECEBER
+          </button>
+
+          <div className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:bg-slate-800 transition">
+            <span className="block text-xs font-bold text-slate-400 mb-0.5">[F2]</span>
+            <span className="text-[10px] text-slate-300 uppercase font-semibold">Buscar</span>
+          </div>
+
+          <button
+            disabled={carrinho.length === 0 || processandoVenda}
+            onClick={() => setModalDesconto(true)}
+            className="bg-slate-900 border border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:bg-slate-800 transition disabled:opacity-50"
+          >
+            <span className="block text-xs font-bold text-indigo-400 mb-0.5">[F8]</span>
+            <span className="text-[10px] text-slate-300 uppercase font-semibold">Desconto</span>
+          </button>
+
+          <button
+            disabled={carrinho.length === 0 || processandoVenda}
+            onClick={() => { if(window.confirm("Cancelar venda?")) { setCarrinho([]); setDescontoReal(0); } }}
+            className="bg-rose-950/30 border border-rose-900/50 p-2 rounded-lg text-center cursor-pointer hover:bg-rose-900/50 transition text-rose-400 disabled:opacity-50"
+          >
+            <span className="block text-xs font-bold mb-0.5">[F4]</span>
+            <span className="text-[10px] uppercase font-semibold">Cancelar</span>
+          </button>
+        </div>
+      </div>
+
+      {/* MODAL DE DESCONTO */}
+      {modalDesconto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center">
+            <div className="p-3 bg-indigo-950/50 text-indigo-400 rounded-full mb-4">
+              <Tag className="h-8 w-8" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-1">Aplicar Desconto</h2>
+            <p className="text-xs text-slate-400 mb-6">Subtotal atual: R$ {formatarMoeda(subtotal)}</p>
+
+            <form onSubmit={aplicarDesconto} className="w-full space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Valor (R$)</label>
+                <input
+                  ref={discountInputRef}
+                  type="text"
+                  required
+                  value={valorDescontoTemp}
+                  onChange={(e) => setValorDescontoTemp(e.target.value.replace(/[^0-9,]/g, ''))}
+                  className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-3 text-xl font-mono text-white focus:outline-none focus:border-indigo-400 text-center"
+                  placeholder="0,00"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalDesconto(false)} className="flex-1 py-3 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 font-bold rounded-xl text-sm transition cursor-pointer">
+                  [ESC] Cancelar
+                </button>
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 cursor-pointer">
+                  Confirmar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE PAGAMENTO TIER 1 */}
+      {modalPagamento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl shadow-2xl flex overflow-hidden min-h-[500px]">
+
+            <div className="w-1/2 p-8 border-r border-slate-800 bg-slate-900">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">Método de Pagamento</h2>
+                <button disabled={processandoVenda} onClick={() => { setModalPagamento(false); setValorRecebido(''); }} className="p-2 text-slate-400 hover:text-white cursor-pointer disabled:opacity-50"><X className="h-5 w-5"/></button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {[
+                  { id: 'DINHEIRO', label: 'Dinheiro', icon: Banknote },
+                  { id: 'PIX', label: 'PIX', icon: SearchCode },
+                  { id: 'DEBITO', label: 'Cartão Débito', icon: CreditCard },
+                  { id: 'CREDITO', label: 'Cartão Crédito', icon: CreditCard }
+                ].map(metodo => (
+                  <button
+                    key={metodo.id}
+                    disabled={processandoVenda}
+                    onClick={() => { setFormaPagamento(metodo.id); if(metodo.id !== 'DINHEIRO') setValorRecebido(formatarPeso(totalGeral.toFixed(2))); }}
+                    className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition cursor-pointer disabled:opacity-50 ${formaPagamento === metodo.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'}`}
+                  >
+                    <metodo.icon className="h-6 w-6" />
+                    <span className="text-xs font-bold uppercase">{metodo.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {formaPagamento === 'DINHEIRO' && (
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Valor Recebido (R$)</label>
+                  <input
+                    ref={paymentInputRef}
+                    type="text"
+                    disabled={processandoVenda}
+                    value={valorRecebido}
+                    onChange={(e) => setValorRecebido(e.target.value.replace(/[^0-9,]/g, ''))}
+                    className="w-full bg-slate-950 border-2 border-indigo-500/50 rounded-xl p-4 text-2xl font-mono text-white focus:outline-none focus:border-indigo-400 disabled:opacity-50"
+                    placeholder="0,00"
+                  />
+                  <div className="grid grid-cols-4 gap-2 pt-2">
+                    {[10, 20, 50, 100].map(val => (
+                      <button disabled={processandoVenda} key={val} onClick={() => setValorRecebido(formatarPeso(val.toFixed(2)))} className="bg-slate-800 text-slate-300 py-2 rounded-lg font-mono font-bold text-sm hover:bg-slate-700 cursor-pointer border border-slate-700 disabled:opacity-50">
+                        {val},00
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="w-1/2 p-8 bg-slate-950 flex flex-col justify-between relative">
+              <div className="space-y-6">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-800 pb-2">Resumo da Operação</h3>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Total a Pagar</span>
+                  <span className="text-2xl font-black text-white font-mono">R$ {formatarMoeda(totalGeral)}</span>
+                </div>
+
+                {formaPagamento === 'DINHEIRO' && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Faltante</span>
+                      <span className="text-lg font-bold text-rose-400 font-mono">R$ {formatarMoeda(valorFaltante)}</span>
+                    </div>
+                    <div className="p-4 bg-emerald-950/20 border border-emerald-900/50 rounded-xl flex justify-between items-center">
+                      <span className="text-emerald-500 font-bold uppercase tracking-wider">Troco</span>
+                      <span className="text-4xl font-black text-emerald-400 font-mono">R$ {formatarMoeda(troco)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-3 pt-6">
+                {(valorFaltante > 0 && formaPagamento === 'DINHEIRO') && (
+                  <div className="flex items-center gap-2 text-rose-400 text-xs font-bold bg-rose-950/30 p-3 rounded-lg border border-rose-900/50">
+                    <AlertCircle className="h-4 w-4" /> Valor recebido insuficiente para finalizar a venda.
+                  </div>
+                )}
+
+                <button
+                  onClick={finalizarVenda}
+                  disabled={(valorFaltante > 0 && formaPagamento === 'DINHEIRO') || processandoVenda}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-xl py-5 rounded-xl shadow-lg shadow-emerald-600/20 cursor-pointer transition flex items-center justify-center gap-2"
+                >
+                  {processandoVenda ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}
+                  {processandoVenda ? 'A FATURAR NA HOSTOO...' : 'CONFIRMAR PAGAMENTO [ENTER]'}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE SUCESSO E TROCO FINAL */}
+      {modalSucesso && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-8 shadow-2xl flex flex-col items-center text-center animate-in fade-in zoom-in duration-300">
+            <div className="p-4 bg-emerald-950/50 text-emerald-400 rounded-full mb-6 ring-4 ring-emerald-900/30">
+              <CheckCircle2 className="h-12 w-12" />
+            </div>
+
+            <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Venda Finalizada!</h2>
+
+            {(!impressoraConectada || !config.impressaoAutomatica) && (
+               <p className="text-xs text-amber-500 font-medium mb-6 bg-amber-950/30 px-3 py-1 rounded-full border border-amber-900/50">
+                 (Sem impressão de talão físico)
+               </p>
+            )}
+
+            <div className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-5 mb-6 shadow-inner">
+              <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
+              <p className="text-2xl font-bold text-slate-200 font-mono mb-4">R$ {formatarMoeda(totalFinal)}</p>
+
+              <p className="text-sm font-bold text-emerald-500 uppercase tracking-widest mb-1">Troco a Devolver</p>
+              <p className="text-5xl font-black text-emerald-400 font-mono tracking-tighter">R$ {formatarMoeda(trocoFinal)}</p>
+            </div>
+
+            <button
+              onClick={() => setModalSucesso(false)}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 cursor-pointer"
+            >
+              PRÓXIMO CLIENTE [ENTER]
+            </button>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+========================================
+ARQUIVO: src\pages\vendas\VendasPage.jsx
+========================================
+import React, { useState, useEffect, useRef } from 'react';
+import { api } from '../../services/api';
+import { 
+  ShoppingBag, Plus, Search, DollarSign, CheckCircle2, 
+  AlertTriangle, X, FileText, Ban, ShoppingCart, Check, Trash2, Calendar, Package
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+function formatarDataHora(dataValor, fallbackCreatedAt) {
+  const valor = (dataValor && !dataValor.includes('00:00:00')) ? dataValor : fallbackCreatedAt || dataValor;
+  if (!valor) return '-';
+  
+  const d = new Date(valor);
+  if (isNaN(d.getTime())) return valor;
+
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export default function VendasPage() {
+  const [pedidos, setPedidos] = useState([]);
+  const [metricas, setMetricas] = useState(null);
+  const [clientes, setClientes] = useState([]);
+  const [depositos, setDepositos] = useState([]);
+  const [itensCatalogo, setItensCatalogo] = useState([]);
+  const [saldosEstoque, setSaldosEstoque] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState('');
+  const [feedback, setFeedback] = useState(null);
+
+  // Modais
+  const [modalNovoOrcamento, setModalNovoOrcamento] = useState(false);
+  const [modalConverter, setModalConverter] = useState(false);
+  const [orcamentoSelecionado, setOrcamentoSelecionado] = useState(null);
+
+  // Form Orçamento
+  const [formOrcamento, setFormOrcamento] = useState({
+    cliente_id: '',
+    deposito_id: '',
+    desconto_geral: '0',
+    data_validade: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
+    itens: []
+  });
+
+  // Busca e Seleção de Item no Orçamento (Padrão PDV)
+  const [searchItemOrcamento, setSearchItemOrcamento] = useState('');
+  const [itemTemp, setItemTemp] = useState({ item_id: '', nome: '', sku: '', quantidade: 1, preco_unitario: 0, saldo_disponivel: 0 });
+
+  // Form Conversão
+  const [formaPagamentoConversao, setFormaPagamentoConversao] = useState('DINHEIRO');
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      const [resVendas, resMetricas, resCli, resDeps, resItens] = await Promise.all([
+        api.get('/vendas', { params: { search, status: filtroStatus } }).catch(() => ({ data: { data: [] } })),
+        api.get('/vendas/metricas').catch(() => ({ data: { data: null } })),
+        api.get('/pessoas', { params: { tipo: 'CLIENTE' } }).catch(() => ({ data: { data: [] } })),
+        api.get('/wms/depositos').catch(() => ({ data: { data: [] } })),
+        api.get('/itens').catch(() => ({ data: { data: [] } })),
+      ]);
+
+      const raw = resVendas.data?.data;
+      setPedidos(Array.isArray(raw) ? raw : (raw?.data || []));
+      setMetricas(resMetricas.data?.data);
+
+      const rawCli = resCli.data?.data;
+      setClientes(Array.isArray(rawCli) ? rawCli : (rawCli?.data || []));
+
+      const deps = resDeps.data?.data || [];
+      setDepositos(deps);
+      if (deps.length > 0 && !formOrcamento.deposito_id) {
+        setFormOrcamento(prev => ({ ...prev, deposito_id: deps[0].id }));
+      }
+
+      const rawItens = resItens.data?.data;
+      setItensCatalogo(Array.isArray(rawItens) ? rawItens : (rawItens?.data || []));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const carregarSaldosDoDeposito = async (depId) => {
+    if (!depId) return;
+    try {
+      const res = await api.get('/wms/saldos', { params: { deposito_id: depId } });
+      const mapa = {};
+      (res.data?.data || []).forEach((linha) => {
+        mapa[linha.item_id] = (mapa[linha.item_id] || 0) + parseFloat(linha.quantidade_saldo || 0);
+      });
+      setSaldosEstoque(mapa);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    const delay = setTimeout(carregarDados, 300);
+    return () => clearTimeout(delay);
+  }, [search, filtroStatus]);
+
+  useEffect(() => {
+    if (formOrcamento.deposito_id) {
+      carregarSaldosDoDeposito(formOrcamento.deposito_id);
+    }
+  }, [formOrcamento.deposito_id]);
+
+  const selecionarItemBusca = (prod) => {
+    const saldo = saldosEstoque[prod.id] || 0;
+    setItemTemp({
+      item_id: prod.id,
+      nome: prod.nome,
+      sku: prod.codigo_sku,
+      quantidade: 1,
+      preco_unitario: parseFloat(prod.preco_venda || 0),
+      saldo_disponivel: saldo
+    });
+    setSearchItemOrcamento('');
+  };
+
+  const handleAddItemOrcamento = () => {
+    if (!itemTemp.item_id || itemTemp.quantidade <= 0) return;
+
+    setFormOrcamento(prev => ({
+      ...prev,
+      itens: [
+        ...prev.itens,
+        {
+          item_id: itemTemp.item_id,
+          nome: itemTemp.nome,
+          sku: itemTemp.sku,
+          quantidade: parseFloat(itemTemp.quantidade),
+          preco_unitario: parseFloat(itemTemp.preco_unitario),
+          total: parseFloat(itemTemp.quantidade) * parseFloat(itemTemp.preco_unitario),
+          saldo_disponivel: itemTemp.saldo_disponivel
+        }
+      ]
+    }));
+
+    setItemTemp({ item_id: '', nome: '', sku: '', quantidade: 1, preco_unitario: 0, saldo_disponivel: 0 });
+  };
+
+  const handleRemoverItemOrcamento = (idx) => {
+    setFormOrcamento(prev => ({
+      ...prev,
+      itens: prev.itens.filter((_, i) => i !== idx)
+    }));
+  };
+
+  const subtotalOrcamento = formOrcamento.itens.reduce((acc, i) => acc + i.total, 0);
+  const totalLiquidoOrcamento = Math.max(0, subtotalOrcamento - (parseFloat(formOrcamento.desconto_geral) || 0));
+
+  const handleSalvarOrcamento = async (e) => {
+    e.preventDefault();
+    if (formOrcamento.itens.length === 0) {
+      alert('Adicione pelo menos um produto ao orçamento.');
+      return;
+    }
+
+    try {
+      const payload = {
+        cliente_id: formOrcamento.cliente_id,
+        deposito_id: formOrcamento.deposito_id,
+        desconto_geral: parseFloat(formOrcamento.desconto_geral) || 0,
+        data_validade: formOrcamento.data_validade,
+        itens: formOrcamento.itens.map(i => ({
+          item_id: i.item_id,
+          quantidade: i.quantidade,
+          preco_unitario: i.preco_unitario,
+        }))
+      };
+
+      const res = await api.post('/vendas/orcamento', payload);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      setModalNovoOrcamento(false);
+      setFormOrcamento({
+        cliente_id: '',
+        deposito_id: depositos[0]?.id || '',
+        desconto_geral: '0',
+        data_validade: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10),
+        itens: []
+      });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao criar orçamento.' });
+    }
+  };
+
+  const handleConfirmarConversao = async (e) => {
+    e.preventDefault();
+    if (!orcamentoSelecionado) return;
+
+    try {
+      const res = await api.post(`/vendas/${orcamentoSelecionado.id}/converter`, {
+        pagamentos: [
+          { forma_pagamento: formaPagamentoConversao, valor_pago: parseFloat(orcamentoSelecionado.valor_total_liquido) }
+        ]
+      });
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      setModalConverter(false);
+      setOrcamentoSelecionado(null);
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao converter orçamento.' });
+    }
+  };
+
+  const handleCancelar = async (pedido) => {
+    const motivo = window.prompt(`Motivo do cancelamento do Pedido #${pedido.numero_pedido}:`);
+    if (!motivo) return;
+
+    try {
+      const res = await api.post(`/vendas/${pedido.id}/cancelar`, { motivo });
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao cancelar pedido.' });
+    }
+  };
+
+  const itensFiltradosOrcamento = searchItemOrcamento
+    ? itensCatalogo.filter(
+        (i) =>
+          i.nome.toLowerCase().includes(searchItemOrcamento.toLowerCase()) ||
+          (i.codigo_sku && i.codigo_sku.toLowerCase().includes(searchItemOrcamento.toLowerCase())) ||
+          (i.codigo_barras_ean && i.codigo_barras_ean.includes(searchItemOrcamento))
+      )
+    : [];
+
+  return (
+    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto text-slate-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
+            <ShoppingBag className="h-6 w-6 text-indigo-500" />
+            Gestão Comercial: Pedidos & Orçamentos
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Criação de Propostas, Orçamentos com Reserva WMS e Faturamento Balcão
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalNovoOrcamento(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 text-xs font-bold transition cursor-pointer"
+          >
+            <Plus className="h-4 w-4" /> Novo Orçamento Comercial
+          </button>
+          <Link
+            to="/app/pdv"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition"
+          >
+            <ShoppingCart className="h-4 w-4" /> Abrir PDV Balcão
+          </Link>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      {metricas && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+            <span className="text-[11px] text-slate-400 font-semibold block">Vendas Hoje</span>
+            <span className="text-lg sm:text-xl font-bold font-mono text-emerald-400 mt-1 block">
+              R$ {metricas.faturamento_hoje.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+            <span className="text-[11px] text-slate-400 font-semibold block">Qtd Vendas Hoje</span>
+            <span className="text-lg sm:text-xl font-bold font-mono text-white mt-1 block">{metricas.vendas_hoje_qtd}</span>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+            <span className="text-[11px] text-slate-400 font-semibold block">Orçamentos em Aberto</span>
+            <span className="text-lg sm:text-xl font-bold font-mono text-amber-400 mt-1 block">{metricas.orcamentos_abertos_qtd}</span>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+            <span className="text-[11px] text-slate-400 font-semibold block">Faturamento Mês</span>
+            <span className="text-lg sm:text-xl font-bold font-mono text-indigo-400 mt-1 block">
+              R$ {metricas.faturamento_mes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div className="flex flex-col sm:flex-row justify-between gap-3 border-b border-slate-800 pb-2">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: '', label: 'Todos' },
+            { id: 'ORCAMENTO', label: 'Orçamentos Abertos' },
+            { id: 'FATURADO', label: 'Faturados' },
+            { id: 'AGUARDANDO_APROVACAO', label: 'Alçada Pendente' },
+            { id: 'CANCELADO', label: 'Cancelados' },
+          ].map((st) => (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => setFiltroStatus(st.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                filtroStatus === st.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+              }`}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por Nº Pedido ou Cliente..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <span>{feedback.msg}</span>
+          <button type="button" onClick={() => setFeedback(null)}><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Tabela de Vendas e Orçamentos */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <table className="w-full text-left text-sm text-slate-300">
+          <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+            <tr>
+              <th className="py-3 px-4">NÚMERO</th>
+              <th className="py-3 px-4">TIPO</th>
+              <th className="py-3 px-4">CLIENTE</th>
+              <th className="py-3 px-4 text-center">EMISSÃO</th>
+              <th className="py-3 px-4 text-right">TOTAL LÍQUIDO</th>
+              <th className="py-3 px-4 text-center">STATUS</th>
+              <th className="py-3 px-4 text-center">AÇÕES</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/60 text-xs">
+            {pedidos.length === 0 ? (
+              <tr><td colSpan="7" className="text-center py-10 text-slate-500">Nenhum registro comercial encontrado.</td></tr>
+            ) : (
+              pedidos.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-4 font-mono font-bold text-indigo-400">#{p.numero_pedido}</td>
+                  <td className="py-3 px-4">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      p.tipo_documento === 'ORCAMENTO' ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                    }`}>
+                      {p.tipo_documento}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-white font-medium">{p.cliente?.nome_razao_social}</td>
+                  <td className="py-3 px-4 text-center text-slate-300 font-mono text-xs whitespace-nowrap">
+                    {formatarDataHora(p.data_emissao, p.created_at)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                    R$ {parseFloat(p.valor_total_liquido).toFixed(2)}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      p.status === 'FATURADO' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                      p.status === 'ORCAMENTO' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                      p.status === 'AGUARDANDO_APROVACAO' ? 'bg-indigo-950 text-indigo-300 border border-indigo-800' :
+                      'bg-rose-950 text-rose-300 border border-rose-800'
+                    }`}>
+                      {p.status}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      {p.status === 'ORCAMENTO' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrcamentoSelecionado(p);
+                            setModalConverter(true);
+                          }}
+                          title="Converter em Venda Faturada"
+                          className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer shadow flex items-center gap-1"
+                        >
+                          <Check className="h-3.5 w-3.5" /> Converter
+                        </button>
+                      )}
+                      {p.status !== 'CANCELADO' && (
+                        <button
+                          type="button"
+                          onClick={() => handleCancelar(p)}
+                          title="Cancelar Pedido/Orçamento"
+                          className="p-1.5 rounded bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-800 cursor-pointer"
+                        >
+                          <Ban className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal Novo Orçamento Comercial com Busca Dinâmica */}
+      {modalNovoOrcamento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+            <div className="flex justify-between items-center p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FileText className="h-5 w-5 text-indigo-400" /> Elaborar Orçamento Comercial (Proposta)
+              </h3>
+              <button type="button" onClick={() => setModalNovoOrcamento(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+
+            <form onSubmit={handleSalvarOrcamento} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-400 mb-1">Cliente *</label>
+                  <select
+                    required
+                    value={formOrcamento.cliente_id}
+                    onChange={(e) => setFormOrcamento({ ...formOrcamento, cliente_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                  >
+                    <option value="">Selecione o Cliente...</option>
+                    {clientes.map(c => <option key={c.id} value={c.id}>{c.nome_razao_social}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-400 mb-1">Validade da Proposta</label>
+                  <input
+                    type="date"
+                    required
+                    value={formOrcamento.data_validade}
+                    onChange={(e) => setFormOrcamento({ ...formOrcamento, data_validade: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Almoxarifado de Saída / Reserva *</label>
+                <select
+                  required
+                  value={formOrcamento.deposito_id}
+                  onChange={(e) => setFormOrcamento({ ...formOrcamento, deposito_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                >
+                  {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                </select>
+              </div>
+
+              {/* Inclusão de Produtos via Busca Inteligente */}
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+                <span className="font-bold text-white block">Adicionar Produtos à Proposta</span>
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar por Código de Barras (EAN), SKU ou Nome..."
+                    value={searchItemOrcamento}
+                    onChange={(e) => setSearchItemOrcamento(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-indigo-500 font-medium"
+                  />
+                </div>
+
+                {/* Dropdown de Resultados */}
+                {searchItemOrcamento && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-2 max-h-48 overflow-y-auto space-y-1 shadow-lg">
+                    {itensFiltradosOrcamento.length === 0 ? (
+                      <div className="p-3 text-center text-slate-500 text-xs">Nenhum item encontrado.</div>
+                    ) : (
+                      itensFiltradosOrcamento.map((item) => {
+                        const saldoDisponivel = saldosEstoque[item.id] || 0;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => selecionarItemBusca(item)}
+                            className="flex justify-between items-center p-2 rounded-lg hover:bg-slate-800 transition cursor-pointer text-xs"
+                          >
+                            <div>
+                              <div className="font-semibold text-white">{item.nome}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                SKU: {item.codigo_sku} | Saldo: <strong className={saldoDisponivel > 0 ? 'text-emerald-400' : 'text-rose-400'}>{saldoDisponivel.toFixed(2)} {item.unidade_medida}</strong>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-mono font-bold text-emerald-400 block">
+                                R$ {parseFloat(item.preco_venda || 0).toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-indigo-400 font-bold">Selecionar</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* Linha de Inserção do Item */}
+                {itemTemp.item_id && (
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 bg-slate-900 p-2.5 rounded-lg border border-indigo-500/40 items-center">
+                    <div className="sm:col-span-6">
+                      <div className="text-white font-bold truncate">{itemTemp.nome}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        SKU: {itemTemp.sku} | Saldo Disp: <strong className="text-emerald-400">{itemTemp.saldo_disponivel}</strong>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Qtd"
+                        value={itemTemp.quantidade}
+                        onChange={(e) => setItemTemp({ ...itemTemp, quantidade: e.target.value })}
+                        className="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded text-white text-center font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Preço R$"
+                        value={itemTemp.preco_unitario}
+                        onChange={(e) => setItemTemp({ ...itemTemp, preco_unitario: e.target.value })}
+                        className="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded text-white text-right font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <button
+                        type="button"
+                        onClick={handleAddItemOrcamento}
+                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded cursor-pointer"
+                      >
+                        Inserir
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Grade de Itens Adicionados */}
+                <div className="space-y-1.5 mt-2 max-h-40 overflow-y-auto">
+                  {formOrcamento.itens.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 text-xs">Nenhum produto adicionado ao orçamento.</div>
+                  ) : (
+                    formOrcamento.itens.map((it, idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2 rounded bg-slate-900 text-xs border border-slate-800/80">
+                        <span className="truncate pr-2">{it.nome} ({it.quantidade} UN x R$ {it.preco_unitario.toFixed(2)})</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-emerald-400">R$ {it.total.toFixed(2)}</span>
+                          <button type="button" onClick={() => handleRemoverItemOrcamento(idx)} className="text-rose-400 p-1 hover:bg-rose-950 rounded cursor-pointer">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Totais do Orçamento */}
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Subtotal dos Produtos:</span>
+                  <span className="font-mono text-white">R$ {subtotalOrcamento.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Desconto Comercial (R$):</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formOrcamento.desconto_geral}
+                    onChange={(e) => setFormOrcamento({ ...formOrcamento, desconto_geral: e.target.value })}
+                    className="w-24 px-2 py-1 bg-slate-900 border border-slate-800 rounded text-right text-white font-mono"
+                  />
+                </div>
+                <div className="flex justify-between font-bold text-sm border-t border-slate-900 pt-2 text-emerald-400">
+                  <span>TOTAL DA PROPOSTA:</span>
+                  <span className="font-mono text-base">R$ {totalLiquidoOrcamento.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalNovoOrcamento(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold">Cancelar</button>
+                <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold cursor-pointer shadow-lg shadow-indigo-600/30">
+                  Salvar & Reservar Estoque WMS
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Conversão em Venda Faturada */}
+      {modalConverter && orcamentoSelecionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Check className="h-4 w-4 text-emerald-400" /> Converter Orçamento #{orcamentoSelecionado.numero_pedido}
+              </h3>
+              <button type="button" onClick={() => setModalConverter(false)} className="p-1 cursor-pointer"><X className="h-4 w-4 text-slate-400" /></button>
+            </div>
+
+            <form onSubmit={handleConfirmarConversao} className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                <div className="text-slate-400">Cliente: <strong className="text-white">{orcamentoSelecionado.cliente?.nome_razao_social}</strong></div>
+                <div className="text-slate-400">Total a Faturar: <strong className="text-emerald-400 font-mono text-sm">R$ {parseFloat(orcamentoSelecionado.valor_total_liquido).toFixed(2)}</strong></div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-400 mb-1">Forma de Pagamento de Liquidação *</label>
+                <select
+                  value={formaPagamentoConversao}
+                  onChange={(e) => setFormaPagamentoConversao(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white"
+                >
+                  <option value="DINHEIRO">Dinheiro</option>
+                  <option value="PIX">PIX Nativo</option>
+                  <option value="CARTAO_DEBITO">Cartão de Débito</option>
+                  <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button type="button" onClick={() => setModalConverter(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">Cancelar</button>
+                <button type="submit" className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Confirmar Faturamento</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\wms\DrawerKardex.jsx
+========================================
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../services/api';
+import { X, ArrowDownRight, ArrowUpRight, History } from 'lucide-react';
+
+export default function DrawerKardex({ item, onClose }) {
+  if (!item) return null;
+
+  const { data: movimentos, isLoading } = useQuery({
+    queryKey: ['kardex', item.id],
+    queryFn: async () => {
+      const res = await api.get(`/itens/${item.id}/kardex`);
+      return res.data.data;
+    }
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-xs">
+      <div className="w-full max-w-2xl bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl">
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white leading-tight">{item.nome}</h3>
+              <p className="text-xs text-slate-400 font-mono">SKU: {item.codigo_sku}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Linha do Tempo de Movimentações (Kardex)
+          </h4>
+
+          {isLoading ? (
+            <div className="text-center py-10 text-slate-500 text-sm">Carregando histórico...</div>
+          ) : movimentos?.length === 0 ? (
+            <div className="text-center py-10 text-slate-500 text-sm">Nenhuma movimentação registrada para este item.</div>
+          ) : (
+            <div className="space-y-3">
+              {movimentos?.map((mov) => {
+                const isEntrada = mov.tipo_movimento.startsWith('ENTRADA');
+                return (
+                  <div key={mov.id} className="p-4 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${isEntrada ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {isEntrada ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{mov.tipo_movimento}</p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(mov.data_movimento).toLocaleDateString('pt-BR')} • Depósito: {mov.deposito?.nome}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-mono font-bold ${isEntrada ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {isEntrada ? '+' : '-'}{parseFloat(mov.quantidade).toFixed(2)} {item.unidade_medida}
+                      </p>
+                      <p className="text-xs font-mono text-slate-500">
+                        Saldo: {parseFloat(mov.saldo_posterior).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\wms\ItensWms.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { 
+  Package, Plus, Search, UploadCloud, RefreshCw, 
+  Warehouse, FileText, CheckCircle2, AlertTriangle, X 
+} from 'lucide-react';
+
+const api = axios.create({
+  baseURL: '/api',
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
+  }
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token') || localStorage.getItem('scalle_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default function ItensWms() {
+  const [itens, setItens] = useState([]);
+  const [depositos, setDepositos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [tipoFilter, setTipoFilter] = useState('');
+  
+  // Modais de Controle
+  const [modalCadastro, setModalCadastro] = useState(false);
+  const [modalKardex, setModalKardex] = useState(false);
+  const [modalXml, setModalXml] = useState(false);
+  
+  // Seleção e Histórico
+  const [itemSelecionado, setItemSelecionado] = useState(null);
+  const [kardexList, setKardexList] = useState([]);
+  const [xmlFile, setXmlFile] = useState(null);
+  const [depositoXmlId, setDepositoXmlId] = useState('');
+  const [feedback, setFeedback] = useState(null);
+
+  // Formulário de Cadastro
+  const [formData, setFormData] = useState({
+    nome: '',
+    codigo_sku: '',
+    tipo_item: 'PRODUTO',
+    preco_venda: '',
+    preco_custo: '',
+    unidade_medida: 'UN',
+    ncm: '',
+    controla_estoque: true
+  });
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      const [resItens, resDeps] = await Promise.all([
+        api.get('/itens', { params: { search, tipo: tipoFilter } }),
+        api.get('/wms/depositos')
+      ]);
+      setItens(resItens.data.data || resItens.data || []);
+      const deps = resDeps.data.data || resDeps.data || [];
+      setDepositos(deps);
+      if (deps.length > 0 && !depositoXmlId) {
+        setDepositoXmlId(deps[0].id);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, [search, tipoFilter]);
+
+  const abrirKardex = async (item) => {
+    setItemSelecionado(item);
+    setModalKardex(true);
+    try {
+      const res = await api.get(`/itens/${item.id}/kardex`);
+      setKardexList(res.data.data || []);
+    } catch (err) {
+      setKardexList([]);
+    }
+  };
+
+  const handleSalvarItem = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/itens', formData);
+      setModalCadastro(false);
+      setFormData({
+        nome: '',
+        codigo_sku: '',
+        tipo_item: 'PRODUTO',
+        preco_venda: '',
+        preco_custo: '',
+        unidade_medida: 'UN',
+        ncm: '',
+        controla_estoque: true
+      });
+      setFeedback({ tipo: 'sucesso', msg: 'Item cadastrado com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.message || 'Erro ao cadastrar item.' });
+    }
+  };
+
+  const handleImportarXml = async (e) => {
+    e.preventDefault();
+    if (!xmlFile || !depositoXmlId) return;
+
+    const data = new FormData();
+    data.append('xml_file', xmlFile);
+    data.append('deposito_id', depositoXmlId);
+
+    try {
+      await api.post('/itens/importar-xml', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setModalXml(false);
+      setXmlFile(null);
+      setFeedback({ tipo: 'sucesso', msg: 'XML importado e estoque provisionado com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Falha ao importar XML.' });
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6 max-w-7xl mx-auto relative z-10">
+      {/* Header Corporativo */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
+            <Package className="h-7 w-7 text-indigo-500" />
+            Catálogo de Itens & WMS Estoque
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Gestão unificada de produtos, insumos, serviços, almoxarifados e trilha de auditoria Kardex.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <button 
+            type="button"
+            onClick={() => setModalXml(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 cursor-pointer transition"
+          >
+            <UploadCloud className="h-4 w-4 text-indigo-400" />
+            Importar XML NF-e
+          </button>
+          <button 
+            type="button"
+            onClick={() => {
+              setModalCadastro(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Item
+          </button>
+        </div>
+      </div>
+
+      {/* Alerta de Feedback */}
+      {feedback && (
+        <div className={`p-4 rounded-lg flex items-center justify-between ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+            <span className="text-sm font-medium">{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Barra de Filtros Rápidos */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="md:col-span-3 relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Buscar por nome, código SKU ou barras..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+        <div>
+          <select 
+            value={tipoFilter}
+            onChange={(e) => setTipoFilter(e.target.value)}
+            className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-300 focus:outline-none focus:border-indigo-500"
+          >
+            <option value="">Todos os Tipos</option>
+            <option value="PRODUTO">Produtos</option>
+            <option value="SERVICO">Serviços</option>
+            <option value="MATERIA_PRIMA">Matérias-Primas</option>
+            <option value="INSUMO">Insumos</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Tabela Corporativa Densa */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">SKU</th>
+                <th className="py-3 px-4">Descrição do Item</th>
+                <th className="py-3 px-4">Tipo</th>
+                <th className="py-3 px-4">Unidade</th>
+                <th className="py-3 px-4 text-right">Preço Custo</th>
+                <th className="py-3 px-4 text-right">Preço Venda</th>
+                <th className="py-3 px-4 text-right">Saldo Físico</th>
+                <th className="py-3 px-4 text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
+              {loading ? (
+                <tr>
+                  <td colSpan="8" className="text-center py-8 text-slate-500">
+                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-indigo-500" />
+                    Carregando estoque e catálogo...
+                  </td>
+                </tr>
+              ) : itens.length === 0 ? (
+                <tr>
+                  <td colSpan="8" className="text-center py-8 text-slate-500 font-sans">
+                    Nenhum item cadastrado no catálogo.
+                  </td>
+                </tr>
+              ) : (
+                itens.map((item) => {
+                  const saldoTotal = item.saldos_por_deposito?.reduce((acc, s) => acc + parseFloat(s.quantidade_saldo || 0), 0) ?? 0;
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 text-indigo-400 font-semibold">{item.codigo_sku || '-'}</td>
+                      <td className="py-3 px-4 font-sans text-white font-medium text-sm">{item.nome}</td>
+                      <td className="py-3 px-4 font-sans">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                          {item.tipo_item}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-400">{item.unidade_medida}</td>
+                      <td className="py-3 px-4 text-right text-slate-400">R$ {parseFloat(item.preco_custo || 0).toFixed(2)}</td>
+                      <td className="py-3 px-4 text-right text-emerald-400 font-semibold">R$ {parseFloat(item.preco_venda || 0).toFixed(2)}</td>
+                      <td className="py-3 px-4 text-right font-bold text-white">
+                        {item.controla_estoque ? (
+                          <span className={saldoTotal <= 5 ? 'text-amber-400' : 'text-emerald-400'}>
+                            {saldoTotal.toFixed(2)} {item.unidade_medida}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 font-sans">N/A</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center font-sans">
+                        {item.controla_estoque && (
+                          <button
+                            type="button"
+                            onClick={() => abrirKardex(item)}
+                            className="px-2.5 py-1 text-xs rounded bg-indigo-950/60 text-indigo-400 border border-indigo-800 hover:bg-indigo-900/80 cursor-pointer transition"
+                          >
+                            Kardex
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal de Cadastro com z-index alto e foco garantido */}
+      {modalCadastro && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto animate-in fade-in duration-150">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Package className="h-5 w-5 text-indigo-400" />
+                Novo Item no Catálogo
+              </h2>
+              <button 
+                type="button" 
+                onClick={() => setModalCadastro(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSalvarItem} className="p-6 space-y-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Nome / Descrição *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={formData.nome}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    placeholder="Ex: Sensor de Temperatura NTC 10k"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Código SKU *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={formData.codigo_sku}
+                    onChange={(e) => setFormData({ ...formData, codigo_sku: e.target.value })}
+                    placeholder="Ex: SEN-001"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Tipo</label>
+                  <select 
+                    value={formData.tipo_item}
+                    onChange={(e) => setFormData({ ...formData, tipo_item: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="PRODUTO">Produto</option>
+                    <option value="SERVICO">Serviço</option>
+                    <option value="MATERIA_PRIMA">Matéria-Prima</option>
+                    <option value="INSUMO">Insumo</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Unidade</label>
+                  <input 
+                    type="text" 
+                    value={formData.unidade_medida}
+                    onChange={(e) => setFormData({ ...formData, unidade_medida: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white uppercase focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">NCM</label>
+                  <input 
+                    type="text" 
+                    value={formData.ncm}
+                    onChange={(e) => setFormData({ ...formData, ncm: e.target.value })}
+                    placeholder="Ex: 85414032"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Preço Custo (R$)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={formData.preco_custo}
+                    onChange={(e) => setFormData({ ...formData, preco_custo: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Preço Venda (R$) *</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    required 
+                    value={formData.preco_venda}
+                    onChange={(e) => setFormData({ ...formData, preco_venda: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button 
+                  type="button" 
+                  onClick={() => setModalCadastro(false)} 
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer"
+                >
+                  Salvar Registro
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Kardex */}
+      {modalKardex && itemSelecionado && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
+              <div>
+                <h2 className="text-lg font-bold text-white">Extrato de Movimentação (Kardex)</h2>
+                <p className="text-xs text-indigo-400 mt-0.5">{itemSelecionado.nome} (SKU: {itemSelecionado.codigo_sku})</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setModalKardex(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-5 max-h-96 overflow-y-auto">
+              {kardexList.length === 0 ? (
+                <p className="text-center py-6 text-slate-500 text-sm">Nenhuma movimentação registrada no Kardex.</p>
+              ) : (
+                <table className="w-full text-left text-xs font-mono text-slate-300">
+                  <thead className="bg-slate-950 text-slate-400 uppercase font-semibold">
+                    <tr>
+                      <th className="p-2.5">Data</th>
+                      <th className="p-2.5">Tipo</th>
+                      <th className="p-2.5 text-right">Qtd</th>
+                      <th className="p-2.5 text-right">Saldo Ant.</th>
+                      <th className="p-2.5 text-right">Saldo Atual</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {kardexList.map((m) => (
+                      <tr key={m.id} className="hover:bg-slate-800/30">
+                        <td className="p-2.5 text-slate-400">{new Date(m.created_at).toLocaleDateString('pt-BR')}</td>
+                        <td className="p-2.5 font-sans font-medium text-slate-200">{m.tipo_movimento}</td>
+                        <td className={`p-2.5 text-right font-bold ${m.tipo_movimento.includes('ENTRADA') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {m.tipo_movimento.includes('ENTRADA') ? '+' : '-'}{parseFloat(m.quantidade).toFixed(2)}
+                        </td>
+                        <td className="p-2.5 text-right text-slate-400">{parseFloat(m.saldo_anterior).toFixed(2)}</td>
+                        <td className="p-2.5 text-right font-bold text-white">{parseFloat(m.saldo_posterior).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Importar XML */}
+      {modalXml && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <UploadCloud className="h-5 w-5 text-indigo-400" />
+                Importar XML de NF-e
+              </h2>
+              <button 
+                type="button" 
+                onClick={() => setModalXml(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleImportarXml} className="p-6 space-y-4 text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Depósito de Destino *</label>
+                <select 
+                  required
+                  value={depositoXmlId}
+                  onChange={(e) => setDepositoXmlId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {depositos.map(d => (
+                    <option key={d.id} value={d.id}>{d.nome} ({d.codigo})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Arquivo XML da Nota Fiscal *</label>
+                <input 
+                  type="file" 
+                  required 
+                  accept=".xml"
+                  onChange={(e) => setXmlFile(e.target.files[0])}
+                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button 
+                  type="button" 
+                  onClick={() => setModalXml(false)} 
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer"
+                >
+                  Processar Entrada
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\wms\ModalImportarXml.jsx
+========================================
+import React, { useState } from 'react';
+import { api } from '../../services/api';
+import { UploadCloud, CheckCircle2, AlertCircle, X, FileCode } from 'lucide-react';
+
+export default function ModalImportarXml({ isOpen, onClose, depositos, onSucesso }) {
+  const [file, setFile] = useState(null);
+  const [depositoId, setDepositoId] = useState(depositos[0]?.id || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [sucesso, setSucesso] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!file) {
+      setError('Por favor, selecione um arquivo XML válido.');
+      return;
+    }
+    if (!depositoId) {
+      setError('Selecione o almoxarifado de destino para as mercadorias.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSucesso('');
+
+    const formData = new FormData();
+    formData.append('xml_file', file);
+    formData.append('deposito_id', depositoId);
+
+    try {
+      const response = await api.post('/wms/importar-xml', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSucesso(response.data.data.message);
+      setTimeout(() => {
+        onSucesso();
+        onClose();
+      }, 1500);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || err.response?.data?.message || 'Falha ao processar arquivo XML.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20">
+              <FileCode className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Importar NF-e (XML)</h3>
+              <p className="text-xs text-slate-400">Entrada automática de estoque e compras</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {sucesso && (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-sm flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              <span>{sucesso}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Depósito / Almoxarifado de Entrada
+            </label>
+            <select
+              value={depositoId}
+              onChange={(e) => setDepositoId(e.target.value)}
+              required
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              {depositos.map((d) => (
+                <option key={d.id} value={d.id}>{d.nome} ({d.codigo})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Arquivo da Nota Fiscal (.XML)
+            </label>
+            <label className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-950/40">
+              <UploadCloud className="w-8 h-8 text-slate-500 mb-2" />
+              <span className="text-sm font-medium text-slate-300">
+                {file ? file.name : 'Selecione ou arraste o XML aqui'}
+              </span>
+              <span className="text-xs text-slate-500 mt-1">Formato oficial NF-e padrão SEFAZ</span>
+              <input
+                type="file"
+                accept=".xml"
+                onChange={(e) => setFile(e.target.files[0])}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800 text-sm font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl shadow-lg shadow-indigo-600/20"
+            >
+              {loading ? 'Processando XML...' : 'Importar Nota'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+========================================
+ARQUIVO: src\pages\wms\WmsPage.jsx
+========================================
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+import { 
+  Boxes, Plus, Search, ArrowRightLeft, Upload, CheckCircle2, 
+  AlertTriangle, X, Check, TrendingUp, Warehouse, Package, MapPin, Edit3, Power
+} from 'lucide-react';
+
+export default function WmsPage() {
+  const [abaAtiva, setAbaAtiva] = useState('saldos'); // 'saldos' | 'itens' | 'transferencias' | 'depositos' | 'abc'
+  const [saldos, setSaldos] = useState([]);
+  const [depositos, setDepositos] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [transferencias, setTransferencias] = useState([]);
+  const [curvaAbc, setCurvaAbc] = useState({ valor_total_saidas_90d: 0, itens: [] });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [depositoFiltro, setDepositoFiltro] = useState('');
+  const [feedback, setFeedback] = useState(null);
+
+  // Modais
+  const [modalAjuste, setModalAjuste] = useState(false);
+  const [modalTransf, setModalTransf] = useState(false);
+  const [modalConferir, setModalConferir] = useState(false);
+  const [modalXml, setModalXml] = useState(false);
+  const [modalDeposito, setModalDeposito] = useState(false);
+  const [modalItem, setModalItem] = useState(false);
+  
+  const [transfSelecionada, setTransfSelecionada] = useState(null);
+  const [depositoEditando, setDepositoEditando] = useState(null);
+  const [itemEditando, setItemEditando] = useState(null);
+
+  // Formulários
+  const [formAjuste, setFormAjuste] = useState({ 
+    deposito_id: '', item_id: '', novo_saldo: '', motivo: 'Inventário Físico', lote: '', data_validade: '', localizacao_rua: '', localizacao_predio: ''
+  });
+  const [formTransf, setFormTransf] = useState({ deposito_origem_id: '', deposito_destino_id: '', item_id: '', quantidade: '', modalidade: 'EM_TRANSITO', lote: '', observacoes: '' });
+  const [formConferencia, setFormConferencia] = useState({ quantidade_recebida: '', motivo_divergencia: '' });
+  const [formDeposito, setFormDeposito] = useState({ nome: '', codigo: '', descricao: '', is_padrao: false, is_ativo: true });
+  
+  const [formItem, setFormItem] = useState({
+    nome: '', codigo_sku: '', tipo_item: 'PRODUTO', preco_venda: 0, preco_custo: 0, unidade_medida: 'UN', ncm: '', controla_estoque: true, is_ativo: true
+  });
+
+  const [arquivoXml, setArquivoXml] = useState(null);
+  const [depositoXml, setDepositoXml] = useState('');
+
+  const carregarDados = async () => {
+    setLoading(true);
+    try {
+      const [resSaldos, resDeps, resItens, resTransfs, resAbc] = await Promise.all([
+        api.get('/wms/saldos', { params: { search, deposito_id: depositoFiltro } }),
+        api.get('/wms/depositos'),
+        api.get('/itens', { params: { search } }),
+        api.get('/wms/transferencias').catch(() => ({ data: { data: [] } })),
+        api.get('/wms/curva-abc').catch(() => ({ data: { data: { valor_total_saidas_90d: 0, itens: [] } } }))
+      ]);
+
+      const rawSaldos = resSaldos.data?.data;
+      setSaldos(Array.isArray(rawSaldos) ? rawSaldos : (rawSaldos?.data || []));
+
+      const deps = resDeps.data?.data || [];
+      setDepositos(deps);
+
+      const rawItens = resItens.data?.data;
+      setItens(Array.isArray(rawItens) ? rawItens : (rawItens?.data || []));
+
+      setTransferencias(resTransfs.data?.data || []);
+      setCurvaAbc(resAbc.data?.data || { valor_total_saidas_90d: 0, itens: [] });
+
+      if (deps.length > 0 && !depositoXml) {
+        setDepositoXml(deps[0].id);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, [search, depositoFiltro]);
+
+  const handleSalvarAjuste = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/wms/ajustar-saldo', formAjuste);
+      setModalAjuste(false);
+      setFeedback({ tipo: 'sucesso', msg: 'Saldo ajustado e endereçamento gravado com sucesso!' });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao ajustar saldo.' });
+    }
+  };
+
+  const handleSalvarTransferencia = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/wms/transferir', formTransf);
+      setModalTransf(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao realizar transferência.' });
+    }
+  };
+
+  const handleConferirTransferencia = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.put(`/wms/transferencias/${transfSelecionada.id}/conferir`, formConferencia);
+      setModalConferir(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao conferir transferência.' });
+    }
+  };
+
+  const handleSalvarDeposito = async (e) => {
+    e.preventDefault();
+    try {
+      if (depositoEditando) {
+        await api.put(`/wms/depositos/${depositoEditando.id}`, formDeposito);
+        setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado atualizado com sucesso!' });
+      } else {
+        await api.post('/wms/depositos', formDeposito);
+        setFeedback({ tipo: 'sucesso', msg: 'Almoxarifado cadastrado com sucesso!' });
+      }
+      setModalDeposito(false);
+      setDepositoEditando(null);
+      setFormDeposito({ nome: '', codigo: '', descricao: '', is_padrao: false, is_ativo: true });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar depósito.' });
+    }
+  };
+
+  const handleSalvarItem = async (e) => {
+    e.preventDefault();
+    try {
+      if (itemEditando) {
+        await api.put(`/itens/${itemEditando.id}`, formItem);
+        setFeedback({ tipo: 'sucesso', msg: 'Item do catálogo atualizado com sucesso!' });
+      } else {
+        await api.post('/itens', formItem);
+        setFeedback({ tipo: 'sucesso', msg: 'Item cadastrado no catálogo com sucesso!' });
+      }
+      setModalItem(false);
+      setItemEditando(null);
+      setFormItem({ nome: '', codigo_sku: '', tipo_item: 'PRODUTO', preco_venda: 0, preco_custo: 0, unidade_medida: 'UN', ncm: '', controla_estoque: true, is_ativo: true });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: err.response?.data?.error?.message || 'Erro ao salvar item.' });
+    }
+  };
+
+  const handleToggleAtivoItem = async (item) => {
+    try {
+      await api.put(`/itens/${item.id}`, { ...item, is_ativo: !item.is_ativo });
+      setFeedback({ tipo: 'sucesso', msg: `Item ${!item.is_ativo ? 'ativado' : 'inativado'} com sucesso!` });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao alterar status do item.' });
+    }
+  };
+
+  const handleToggleAtivoDeposito = async (dep) => {
+    try {
+      await api.put(`/wms/depositos/${dep.id}`, { ...dep, is_ativo: !dep.is_ativo });
+      setFeedback({ tipo: 'sucesso', msg: `Almoxarifado ${!dep.is_ativo ? 'ativado' : 'inativado'} com sucesso!` });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Erro ao alterar status do almoxarifado.' });
+    }
+  };
+
+  const handleUploadXml = async (e) => {
+    e.preventDefault();
+    if (!arquivoXml) return;
+    const data = new FormData();
+    data.append('xml_file', arquivoXml);
+    data.append('deposito_id', depositoXml);
+
+    try {
+      const res = await api.post('/itens/importar-xml', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setModalXml(false);
+      setFeedback({ tipo: 'sucesso', msg: res.data.data.message });
+      carregarDados();
+    } catch (err) {
+      setFeedback({ tipo: 'erro', msg: 'Falha na importação do XML.' });
+    }
+  };
+
+  return (
+    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto text-slate-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
+            <Warehouse className="h-6 w-6 sm:h-7 sm:w-7 text-indigo-500" />
+            Almoxarifado & WMS
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+            Gestão de almoxarifados, catálogo de itens, FEFO, Lotes e Curva ABC
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setDepositoEditando(null);
+              setFormDeposito({ nome: '', codigo: '', descricao: '', is_padrao: false, is_ativo: true });
+              setModalDeposito(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4 text-indigo-400" /> Novo Almoxarifado
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setItemEditando(null);
+              setFormItem({ nome: '', codigo_sku: '', tipo_item: 'PRODUTO', preco_venda: 0, preco_custo: 0, unidade_medida: 'UN', ncm: '', controla_estoque: true, is_ativo: true });
+              setModalItem(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Package className="h-4 w-4 text-indigo-400" /> Novo Item
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalXml(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <Upload className="h-4 w-4 text-indigo-400" /> Importar XML
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFormTransf({ deposito_origem_id: depositos[0]?.id || '', deposito_destino_id: '', item_id: '', quantidade: '', modalidade: 'EM_TRANSITO', lote: '', observacoes: '' });
+              setModalTransf(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 text-xs font-bold cursor-pointer transition"
+          >
+            <ArrowRightLeft className="h-4 w-4" /> Transferência
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFormAjuste({ deposito_id: depositos[0]?.id || '', item_id: '', novo_saldo: '', motivo: 'Inventário Físico', lote: '', data_validade: '', localizacao_rua: '', localizacao_predio: '' });
+              setModalAjuste(true);
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 cursor-pointer transition"
+          >
+            <Plus className="h-4 w-4" /> Ajustar Saldo
+          </button>
+        </div>
+      </div>
+
+      {/* Navegação entre Abas */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('saldos')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'saldos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Posições de Estoque
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('itens')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'itens' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Catálogo de Itens ({itens.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('transferencias')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'transferencias' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Transferências em Trânsito ({transferencias.filter(t => t.status === 'EM_TRANSITO').length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('depositos')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'depositos' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Almoxarifados ({depositos.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('abc')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+              abaAtiva === 'abc' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            }`}
+          >
+            Curva ABC (80/15/5)
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {abaAtiva === 'saldos' && (
+            <select
+              value={depositoFiltro}
+              onChange={(e) => setDepositoFiltro(e.target.value)}
+              className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white"
+            >
+              <option value="">Todos os Almoxarifados</option>
+              {depositos.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+            </select>
+          )}
+          <div className="relative w-full sm:w-60">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar item, SKU, lote..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className={`p-3.5 rounded-xl flex items-center justify-between text-xs sm:text-sm ${
+          feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            {feedback.tipo === 'sucesso' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span>{feedback.msg}</span>
+          </div>
+          <button type="button" onClick={() => setFeedback(null)} className="p-1 cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Aba 1: Posições de Estoque */}
+      {abaAtiva === 'saldos' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">ITEM / DESCRIÇÃO</th>
+                <th className="py-3 px-4">ALMOXARIFADO</th>
+                <th className="py-3 px-4">LOTE / VALIDADE (FEFO)</th>
+                <th className="py-3 px-4">ENDEREÇAMENTO LOGÍSTICO</th>
+                <th className="py-3 px-4 text-right">SALDO FÍSICO</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {saldos.length === 0 ? (
+                <tr><td colSpan="5" className="text-center py-10 text-slate-500">Nenhum item localizado no catálogo.</td></tr>
+              ) : (
+                saldos.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-medium text-white">
+                      <div>{s.item?.nome}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">SKU: {s.item?.codigo_sku} | UN: {s.item?.unidade_medida}</div>
+                    </td>
+                    <td className="py-3 px-4 text-indigo-400 font-semibold">{s.deposito?.nome}</td>
+                    <td className="py-3 px-4 font-mono">
+                      {s.lote ? (
+                        <div>
+                          <span className="text-slate-200">Lote: {s.lote}</span>
+                          {s.data_validade && (
+                            <span className="block text-[10px] text-amber-400 font-bold">Val: {new Date(s.data_validade).toLocaleDateString('pt-BR')}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">Sem lote</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-slate-400 text-[11px] font-mono flex items-center gap-1">
+                      <MapPin className="h-3 w-3 text-indigo-400" />
+                      {s.localizacao_rua ? `Rua ${s.localizacao_rua} / Prédio ${s.localizacao_predio || 'P01'}` : 'Não Endereçado'}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-sm font-bold text-emerald-400">
+                      {parseFloat(s.quantidade_saldo || 0).toFixed(2)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aba 2: Catálogo de Itens */}
+      {abaAtiva === 'itens' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">SKU / CÓDIGO</th>
+                <th className="py-3 px-4">NOME DO ITEM</th>
+                <th className="py-3 px-4">TIPO</th>
+                <th className="py-3 px-4 text-right">PREÇO VENDA</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+                <th className="py-3 px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {itens.length === 0 ? (
+                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhum item cadastrado.</td></tr>
+              ) : (
+                itens.map((i) => (
+                  <tr key={i.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-mono font-bold text-indigo-400">{i.codigo_sku}</td>
+                    <td className="py-3 px-4 font-medium text-white">{i.nome}</td>
+                    <td className="py-3 px-4 text-slate-400">{i.tipo_item}</td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">R$ {parseFloat(i.preco_venda || 0).toFixed(2)}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        i.is_ativo ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
+                      }`}>
+                        {i.is_ativo ? 'ATIVO' : 'INATIVO'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItemEditando(i);
+                          setFormItem({
+                            nome: i.nome,
+                            codigo_sku: i.codigo_sku,
+                            tipo_item: i.tipo_item,
+                            preco_venda: i.preco_venda,
+                            preco_custo: i.preco_custo || 0,
+                            unidade_medida: i.unidade_medida,
+                            ncm: i.ncm || '',
+                            controla_estoque: i.controla_estoque,
+                            is_ativo: i.is_ativo
+                          });
+                          setModalItem(true);
+                        }}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-400 font-bold cursor-pointer"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAtivoItem(i)}
+                        className={`px-2.5 py-1 rounded font-bold cursor-pointer ${
+                          i.is_ativo ? 'bg-rose-950/60 text-rose-300 hover:bg-rose-900' : 'bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900'
+                        }`}
+                      >
+                        {i.is_ativo ? 'Inativar' : 'Ativar'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aba 3: Transferências em Trânsito */}
+      {abaAtiva === 'transferencias' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">ITEM TRANSFERIDO</th>
+                <th className="py-3 px-4">ORIGEM ➔ DESTINO</th>
+                <th className="py-3 px-4 text-center">QTD ENVIADA</th>
+                <th className="py-3 px-4 text-center">QTD RECEBIDA</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+                <th className="py-3 px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {transferencias.length === 0 ? (
+                <tr><td colSpan="6" className="text-center py-10 text-slate-500">Nenhuma transferência em trânsito.</td></tr>
+              ) : (
+                transferencias.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3 px-4 font-medium text-white">{t.item?.nome}</td>
+                    <td className="py-3 px-4 text-slate-300">
+                      <span className="text-rose-400">{t.origem?.nome}</span> ➔ <span className="text-emerald-400 font-bold">{t.destino?.nome}</span>
+                    </td>
+                    <td className="py-3 px-4 text-center font-mono font-bold text-white">{parseFloat(t.quantidade_enviada).toFixed(2)}</td>
+                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-400">{t.quantidade_recebida !== null ? parseFloat(t.quantidade_recebida).toFixed(2) : '-'}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        t.status === 'CONCLUIDA' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                        t.status === 'DIVERGENCIA' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+                        'bg-amber-950 text-amber-300 border border-amber-800 animate-pulse'
+                      }`}>
+                        {t.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {t.status === 'EM_TRANSITO' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTransfSelecionada(t);
+                            setFormConferencia({ quantidade_recebida: t.quantidade_enviada, motivo_divergencia: '' });
+                            setModalConferir(true);
+                          }}
+                          className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer shadow-md"
+                        >
+                          Conferir & Receber
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Aba 4: Almoxarifados Cadastrados */}
+      {abaAtiva === 'depositos' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-950/70 border-b border-slate-800 text-xs uppercase font-semibold text-slate-400">
+              <tr>
+                <th className="py-3 px-4">CÓDIGO</th>
+                <th className="py-3 px-4">NOME DO ALMOXARIFADO</th>
+                <th className="py-3 px-4">DESCRIÇÃO</th>
+                <th className="py-3 px-4 text-center">TIPO</th>
+                <th className="py-3 px-4 text-center">STATUS</th>
+                <th className="py-3 px-4 text-center">AÇÕES</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs">
+              {depositos.map((d) => (
+                <tr key={d.id} className="hover:bg-slate-800/40 transition">
+                  <td className="py-3 px-4 font-mono font-bold text-indigo-400">{d.codigo}</td>
+                  <td className="py-3 px-4 font-medium text-white">{d.nome}</td>
+                  <td className="py-3 px-4 text-slate-400">{d.descricao || '-'}</td>
+                  <td className="py-3 px-4 text-center">
+                    {d.is_padrao ? (
+                      <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold text-[10px]">PADRÃO MATRIZ</span>
+                    ) : (
+                      <span className="text-slate-500 text-[11px]">Secundário</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      d.is_ativo !== false ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
+               

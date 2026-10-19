@@ -3,11 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Assinatura;
+use App\Models\Perfil;
 use App\Models\User;
 use App\Services\TotpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -20,7 +26,6 @@ class AuthController extends Controller
             'mfa_code' => 'nullable|string|size:6',
         ]);
 
-        // Consulta o usuário ignorando escopos globais e respeitando soft deletes
         $user = User::withoutGlobalScopes()
             ->whereNull('deleted_at')
             ->where('email', $request->email)
@@ -64,16 +69,17 @@ class AuthController extends Controller
             }
         }
 
-        // Injeta temporariamente o tenant do usuário autenticado no container
         if (!empty($user->tenant_id)) {
-            \Illuminate\Support\Facades\App::instance('current_tenant_id', $user->tenant_id);
+            App::instance('current_tenant_id', $user->tenant_id);
         }
 
-        // Carrega o perfil contornando a trava estrita antes da emissão do token
-        $perfil = null;
-        if (!empty($user->perfil_id)) {
-            $perfil = \App\Models\Perfil::withoutGlobalScopes()->find($user->perfil_id);
-        }
+        $perfil = !empty($user->perfil_id)
+            ? Perfil::withoutGlobalScopes()->find($user->perfil_id)
+            : null;
+
+        $assinatura = !empty($user->tenant_id)
+            ? Assinatura::withoutGlobalScopes()->where('tenant_id', $user->tenant_id)->with('plano')->first()
+            : null;
 
         $token = $user->createToken('scalle_auth_token')->plainTextToken;
 
@@ -87,7 +93,10 @@ class AuthController extends Controller
                     'tenant_id' => $user->tenant_id,
                     'perfil' => $perfil?->nome,
                     'is_admin' => $perfil?->is_admin ?? false,
+                    'is_master' => (bool) $user->is_master,
                     'mfa_ativo' => (bool) $user->mfa_ativo,
+                    'plano_slug' => $assinatura?->plano?->slug ?? 'enterprise',
+                    'modulos_habilitados' => $assinatura?->plano?->modulos_habilitados ?? ['*'],
                 ]
             ]
         ]);
@@ -106,9 +115,16 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json([
-            'data' => $request->user()->load('perfil', 'empresaPadrao')
-        ]);
+        $user = $request->user()->load('perfil', 'empresaPadrao');
+        $assinatura = !empty($user->tenant_id)
+            ? Assinatura::withoutGlobalScopes()->where('tenant_id', $user->tenant_id)->with('plano')->first()
+            : null;
+
+        $userData = $user->toArray();
+        $userData['plano_slug'] = $assinatura?->plano?->slug ?? 'enterprise';
+        $userData['modulos_habilitados'] = $assinatura?->plano?->modulos_habilitados ?? ['*'];
+
+        return response()->json(['data' => $userData]);
     }
 
     public function mfaSetup(Request $request): JsonResponse
@@ -129,10 +145,7 @@ class AuthController extends Controller
 
     public function mfaConfirmar(Request $request): JsonResponse
     {
-        $request->validate([
-            'codigo' => 'required|string|size:6',
-        ]);
-
+        $request->validate(['codigo' => 'required|string|size:6']);
         $user = $request->user();
 
         if (empty($user->mfa_secret)) {
@@ -155,10 +168,7 @@ class AuthController extends Controller
 
     public function mfaDesativar(Request $request): JsonResponse
     {
-        $request->validate([
-            'password' => 'required|string',
-        ]);
-
+        $request->validate(['password' => 'required|string']);
         $user = $request->user();
 
         if (!Hash::check($request->password, $user->password)) {
@@ -187,28 +197,30 @@ class AuthController extends Controller
 
         $user = $request->user();
 
-        if (!\Illuminate\Support\Facades\Hash::check($validated['senha_atual'], $user->password)) {
+        if (!Hash::check($validated['senha_atual'], $user->password)) {
             return response()->json(['error' => ['message' => 'A senha atual informada está incorreta.']], 422);
         }
 
-$user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['nova_senha'])]);
+        // Sem Hash::make() manual pois o Model User possui cast 'password' => 'hashed'
+        $user->update(['password' => $validated['nova_senha']]);
         $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
 
         return response()->json(['data' => ['message' => 'Senha atualizada com sucesso. Demais dispositivos foram desconectados.']]);
     }
+
     public function solicitarRecuperacaoSenha(Request $request): JsonResponse
     {
         $request->validate(['email' => 'required|email']);
         $user = User::withoutGlobalScopes()->where('email', $request->email)->first();
 
         if ($user) {
-            $token = \Illuminate\Support\Str::upper(\Illuminate\Support\Str::random(6));
-            \Illuminate\Support\Facades\DB::table('password_reset_tokens')->updateOrInsert(
+            $token = Str::upper(Str::random(6));
+            DB::table('password_reset_tokens')->updateOrInsert(
                 ['email' => $user->email],
                 ['token' => Hash::make($token), 'created_at' => now()]
             );
 
-            \Illuminate\Support\Facades\Log::info("[RECUPERAÇÃO DE SENHA SCALLE] E-mail: {$user->email} | Código: {$token}");
+            Log::info("[RECUPERAÇÃO DE SENHA SCALLE] E-mail: {$user->email} | Código: {$token}");
         }
 
         return response()->json([
@@ -226,7 +238,7 @@ $user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['
             'nova_senha' => 'required|string|min:6',
         ]);
 
-        $registro = \Illuminate\Support\Facades\DB::table('password_reset_tokens')
+        $registro = DB::table('password_reset_tokens')
             ->where('email', $validated['email'])
             ->first();
 
@@ -237,7 +249,7 @@ $user->update(['password' => \Illuminate\Support\Facades\Hash::make($validated['
         $user = User::withoutGlobalScopes()->where('email', $validated['email'])->firstOrFail();
         $user->update(['password' => $validated['nova_senha']]);
 
-        \Illuminate\Support\Facades\DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+        DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
 
         return response()->json(['data' => ['message' => 'Senha redefinida com sucesso! Você já pode acessar o sistema.']]);
     }

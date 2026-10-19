@@ -54,6 +54,15 @@ class EmpresaController extends Controller
             'cnpj' => 'required|string|max:20',
             'inscricao_estadual' => 'nullable|string|max:30',
             'regime_tributario' => 'required|string',
+            'csc_token' => 'nullable|string|max:100',
+            'csc_id' => 'nullable|string|max:20',
+            'cep' => 'nullable|string|max:10',
+            'logradouro' => 'nullable|string|max:150',
+            'numero' => 'nullable|string|max:20',
+            'bairro' => 'nullable|string|max:100',
+            'cidade' => 'nullable|string|max:100',
+            'uf' => 'nullable|string|max:2',
+            'codigo_ibge' => 'nullable|string|max:10',
             'is_matriz' => 'boolean',
         ]);
 
@@ -76,6 +85,15 @@ class EmpresaController extends Controller
             'cnpj' => 'required|string|max:20',
             'inscricao_estadual' => 'nullable|string|max:30',
             'regime_tributario' => 'required|string',
+            'csc_token' => 'nullable|string|max:100',
+            'csc_id' => 'nullable|string|max:20',
+            'cep' => 'nullable|string|max:10',
+            'logradouro' => 'nullable|string|max:150',
+            'numero' => 'nullable|string|max:20',
+            'bairro' => 'nullable|string|max:100',
+            'cidade' => 'nullable|string|max:100',
+            'uf' => 'nullable|string|max:2',
+            'codigo_ibge' => 'nullable|string|max:10',
         ]);
 
         $empresa->update($validated);
