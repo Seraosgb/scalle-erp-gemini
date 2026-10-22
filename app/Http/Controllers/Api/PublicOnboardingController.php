@@ -26,7 +26,7 @@ class PublicOnboardingController extends Controller
                     'id' => (string) Str::uuid(),
                     'nome' => 'MEI / Básico',
                     'slug' => 'mei',
-                    'valor_mensal' => 49.90,
+                    'valor_mensal' => 29.90, // Preço Popular Lançamento
                     'limite_usuarios' => 2,
                     'limite_empresas' => 1,
                     'cota_storage_bytes' => 3221225472,
@@ -37,7 +37,7 @@ class PublicOnboardingController extends Controller
                     'id' => (string) Str::uuid(),
                     'nome' => 'Plano Pro (PMEs)',
                     'slug' => 'pro',
-                    'valor_mensal' => 199.00,
+                    'valor_mensal' => 89.90, // Preço Popular Lançamento
                     'limite_usuarios' => 10,
                     'limite_empresas' => 2,
                     'cota_storage_bytes' => 21474836480,
@@ -48,7 +48,7 @@ class PublicOnboardingController extends Controller
                     'id' => (string) Str::uuid(),
                     'nome' => 'Enterprise B2B',
                     'slug' => 'enterprise',
-                    'valor_mensal' => 599.00,
+                    'valor_mensal' => 299.90, // Preço Popular Lançamento
                     'limite_usuarios' => 100,
                     'limite_empresas' => 10,
                     'cota_storage_bytes' => 107374182400,
@@ -63,15 +63,6 @@ class PublicOnboardingController extends Controller
         }
 
         return response()->json(['data' => $planos]);
-    }
-
-    public function consultarCnpjPublico(string $cnpj): JsonResponse
-    {
-        $dados = DocumentoService::consultarCnpjReceitaWs($cnpj);
-        if (!$dados) {
-            return response()->json(['error' => ['message' => 'CNPJ não localizado ou inválido.']], 404);
-        }
-        return response()->json(['data' => $dados]);
     }
 
     public function registrarTrial(Request $request, AsaasGatewayService $asaasService): JsonResponse

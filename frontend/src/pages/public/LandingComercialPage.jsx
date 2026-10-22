@@ -166,35 +166,54 @@ export default function LandingComercialPage() {
       {/* Matriz de Planos */}
       <section id="planos" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-900">
         <div className="text-center space-y-2 mb-12">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-800 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">
+            Oferta Especial de Lançamento
+          </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Escolha o Plano Ideal para sua Operação</h2>
-          <p className="text-xs sm:text-sm text-slate-400">Liberação instantânea com 14 dias de avaliação gratuita. Sem fidelidade.</p>
+          <p className="text-xs sm:text-sm text-slate-400">Preços reduzidos válidos apenas para os primeiros assinantes. Liberação instantânea com 14 dias grátis.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {planos.map((plano) => {
             const isPro = plano.slug === 'pro';
             const gb = Math.round((plano.cota_storage_bytes || 3221225472) / 1073741824);
+
+            // Lógica para gerar a âncora do preço antigo rasurado
+            const valorAtual = Number(plano.valor_mensal);
+            let valorOriginal = "49,90";
+            if (plano.slug === 'pro') valorOriginal = "199,00";
+            if (plano.slug === 'enterprise') valorOriginal = "599,00";
+
             return (
               <div
                 key={plano.id}
-                className={`rounded-3xl p-6 sm:p-8 flex flex-col justify-between border transition ${
+                className={`rounded-3xl p-6 sm:p-8 flex flex-col justify-between border transition relative overflow-hidden ${
                   isPro
-                    ? 'bg-slate-900 border-indigo-500 shadow-2xl shadow-indigo-600/15 relative'
+                    ? 'bg-slate-900 border-indigo-500 shadow-2xl shadow-indigo-600/15'
                     : 'bg-slate-900/60 border-slate-800'
                 }`}
               >
+                {/* Efeito de Fita Promocional */}
+                <div className="absolute top-5 -right-12 bg-emerald-600 text-white text-[9px] font-extrabold uppercase py-1 px-12 rotate-45 shadow-lg">
+                  Lançamento
+                </div>
+
                 {isPro && (
-                  <span className="absolute -top-3 right-6 px-3 py-1 bg-indigo-600 text-white text-[10px] font-extrabold uppercase rounded-full">
+                  <span className="absolute top-4 left-6 px-3 py-1 bg-indigo-600 text-white text-[10px] font-extrabold uppercase rounded-full">
                     Mais Escolhido
                   </span>
                 )}
-                <div>
+
+                <div className={isPro ? "mt-6" : ""}>
                   <h3 className="text-lg font-bold text-white">{plano.nome}</h3>
-                  <div className="mt-4 flex items-baseline gap-1">
-                    <span className="text-3xl sm:text-4xl font-extrabold text-white">
-                      R$ {Number(plano.valor_mensal).toFixed(2).replace('.', ',')}
-                    </span>
-                    <span className="text-xs text-slate-400">/mês após trial</span>
+                  <div className="mt-4 flex flex-col">
+                    <span className="text-slate-500 line-through text-sm font-medium">De R$ {valorOriginal}</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl sm:text-4xl font-extrabold text-emerald-400">
+                        R$ {valorAtual.toFixed(2).replace('.', ',')}
+                      </span>
+                      <span className="text-xs text-slate-400">/mês após trial</span>
+                    </div>
                   </div>
 
                   <ul className="mt-6 space-y-3 text-xs text-slate-300">
@@ -241,10 +260,10 @@ export default function LandingComercialPage() {
                   className={`mt-8 w-full py-3.5 rounded-xl font-bold text-xs cursor-pointer transition ${
                     isPro
                       ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30'
-                      : 'bg-slate-800 hover:bg-slate-700 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'
                   }`}
                 >
-                  Iniciar 14 Dias Grátis no {plano.nome}
+                  Garantir Preço Fixo + 14 Dias Grátis
                 </button>
               </div>
             );
