@@ -67,6 +67,15 @@ export default function MasterPage() {
     }
   };
 
+  const alterarPlanoTenant = async (id, novoPlanoId) => {
+    try {
+      await api.put(`/master/tenants/${id}/plano`, { plano_id: novoPlanoId });
+      carregarDados();
+    } catch (e) {
+      alert(e.response?.data?.error?.message || 'Erro ao alterar plano do cliente.');
+    }
+  };
+
   const handleSalvarPlano = async (e) => {
     e.preventDefault();
     try {
@@ -120,7 +129,6 @@ export default function MasterPage() {
     } else {
       mods.push(modId);
     }
-    // Remove o '*' se o usuário estiver selecionando manualmente
     if (modId !== '*') {
       mods = mods.filter(m => m !== '*');
     }
@@ -166,16 +174,16 @@ export default function MasterPage() {
       </div>
 
       {/* Navegação de Abas */}
-      <div className="flex border-b border-slate-800 pt-4">
+      <div className="flex border-b border-slate-800 pt-4 overflow-x-auto">
         <button
           onClick={() => setAbaAtiva('TENANTS')}
-          className={`px-6 py-2.5 text-sm font-bold border-b-2 transition ${abaAtiva === 'TENANTS' ? 'border-rose-500 text-rose-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          className={`px-6 py-2.5 text-sm font-bold border-b-2 transition whitespace-nowrap ${abaAtiva === 'TENANTS' ? 'border-rose-500 text-rose-400' : 'border-transparent text-slate-400 hover:text-white'}`}
         >
           Carteira de Clientes (Tenants)
         </button>
         <button
           onClick={() => setAbaAtiva('PLANOS')}
-          className={`px-6 py-2.5 text-sm font-bold border-b-2 transition ${abaAtiva === 'PLANOS' ? 'border-rose-500 text-rose-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          className={`px-6 py-2.5 text-sm font-bold border-b-2 transition whitespace-nowrap ${abaAtiva === 'PLANOS' ? 'border-rose-500 text-rose-400' : 'border-transparent text-slate-400 hover:text-white'}`}
         >
           Pacotes & Planos (Builder)
         </button>
@@ -205,14 +213,15 @@ export default function MasterPage() {
                   <th className="px-6 py-4 text-center">Filiais</th>
                   <th className="px-6 py-4 text-center">Usuários</th>
                   <th className="px-6 py-4 text-center">Status</th>
-                  <th className="px-6 py-4 text-right">Ações</th>
+                  <th className="px-6 py-4 text-right">Plano Atual</th>
+                  <th className="px-6 py-4 text-right">Ações (Status)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {loading ? (
-                  <tr><td colSpan="6" className="text-center py-8 text-slate-500">Carregando carteira de tenants...</td></tr>
+                  <tr><td colSpan="7" className="text-center py-8 text-slate-500">Carregando carteira de tenants...</td></tr>
                 ) : tenants.length === 0 ? (
-                  <tr><td colSpan="6" className="text-center py-8 text-slate-500">Nenhum tenant localizado.</td></tr>
+                  <tr><td colSpan="7" className="text-center py-8 text-slate-500">Nenhum tenant localizado.</td></tr>
                 ) : (
                   tenants.map(t => (
                     <tr key={t.id} className="hover:bg-slate-800/40">
@@ -234,13 +243,25 @@ export default function MasterPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <select
+                          value={t.assinaturas?.[0]?.plano_id || ''}
+                          onChange={(e) => alterarPlanoTenant(t.id, e.target.value)}
+                          className="bg-slate-950 border border-slate-700 rounded-lg text-xs text-white px-2 py-1.5 focus:border-rose-500 cursor-pointer w-32"
+                        >
+                          <option value="" disabled>Selecione...</option>
+                          {planos.map(p => (
+                            <option key={p.id} value={p.id}>{p.nome}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <select
                           value={t.status}
                           onChange={(e) => alterarStatusTenant(t.id, e.target.value)}
-                          className="bg-slate-950 border border-slate-700 rounded-lg text-xs text-white px-2 py-1.5 focus:border-rose-500 cursor-pointer"
+                          className="bg-slate-950 border border-slate-700 rounded-lg text-xs text-white px-2 py-1.5 focus:border-rose-500 cursor-pointer w-28"
                         >
                           <option value="ativo">Ativo</option>
                           <option value="trial">Trial</option>
-                          <option value="soft_lock">Soft-Lock (Bloqueio Fina.)</option>
+                          <option value="soft_lock">Soft-Lock (Bloq.)</option>
                           <option value="suspenso">Suspenso</option>
                           <option value="cancelado">Cancelado</option>
                         </select>

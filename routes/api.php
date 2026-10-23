@@ -121,6 +121,7 @@ Route::middleware([
         Route::post('/planos', [MasterController::class, 'storePlano']);
         Route::put('/planos/{id}', [MasterController::class, 'updatePlano']);
         Route::put('/planos/{id}/toggle', [MasterController::class, 'togglePlano']);
+        Route::put('/tenants/{id}/plano', [MasterController::class, 'alterarPlanoTenant']);
     });
 
     // Auditoria E2E (Acesso via MasterController)

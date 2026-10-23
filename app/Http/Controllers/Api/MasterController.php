@@ -240,4 +240,18 @@ class MasterController extends Controller
         $plano->update(['is_ativo' => !$plano->is_ativo]);
         return response()->json(['data' => ['message' => 'Status do plano alterado.', 'plano' => $plano]]);
     }
+    public function alterarPlanoTenant(Request $request, string $id): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'plano_id' => 'required|uuid|exists:sis_planos,id'
+        ]);
+
+        $assinatura = \App\Models\Assinatura::withoutGlobalScopes()
+            ->where('tenant_id', $id)
+            ->firstOrFail();
+
+        $assinatura->update(['plano_id' => $validated['plano_id']]);
+
+        return response()->json(['data' => ['message' => 'Plano do cliente atualizado com sucesso!']]);
+    }
 }
