@@ -173,27 +173,26 @@ export default function LandingComercialPage() {
           <p className="text-xs sm:text-sm text-slate-400">Preços reduzidos válidos apenas para os primeiros assinantes. Liberação instantânea com 14 dias grátis.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Alterado para grid-cols-1 md:grid-cols-2 lg:grid-cols-4 para caber os 4 cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {planos.map((plano) => {
             const isPro = plano.slug === 'pro';
             const gb = Math.round((plano.cota_storage_bytes || 3221225472) / 1073741824);
 
-            // Lógica para gerar a âncora do preço antigo rasurado
             const valorAtual = Number(plano.valor_mensal);
             let valorOriginal = "49,90";
             if (plano.slug === 'pro') valorOriginal = "199,00";
-            if (plano.slug === 'enterprise') valorOriginal = "599,00";
+            if (plano.slug === 'enterprise') valorOriginal = "299,00"; // Ajustado para refletir a nova ancoragem
 
             return (
               <div
                 key={plano.id}
-                className={`rounded-3xl p-6 sm:p-8 flex flex-col justify-between border transition relative overflow-hidden ${
+                className={`rounded-3xl p-6 flex flex-col justify-between border transition relative overflow-hidden ${
                   isPro
                     ? 'bg-slate-900 border-indigo-500 shadow-2xl shadow-indigo-600/15'
                     : 'bg-slate-900/60 border-slate-800'
                 }`}
               >
-                {/* Efeito de Fita Promocional */}
                 <div className="absolute top-5 -right-12 bg-emerald-600 text-white text-[9px] font-extrabold uppercase py-1 px-12 rotate-45 shadow-lg">
                   Lançamento
                 </div>
@@ -209,47 +208,20 @@ export default function LandingComercialPage() {
                   <div className="mt-4 flex flex-col">
                     <span className="text-slate-500 line-through text-sm font-medium">De R$ {valorOriginal}</span>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-3xl sm:text-4xl font-extrabold text-emerald-400">
+                      <span className="text-3xl font-extrabold text-emerald-400">
                         R$ {valorAtual.toFixed(2).replace('.', ',')}
                       </span>
-                      <span className="text-xs text-slate-400">/mês após trial</span>
+                      <span className="text-[10px] text-slate-400">/mês após trial</span>
                     </div>
                   </div>
 
                   <ul className="mt-6 space-y-3 text-xs text-slate-300">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                      Até <strong>{plano.limite_usuarios} usuários</strong> simultâneos
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                      Até <strong>{plano.limite_empresas} empresa(s)/CNPJ</strong>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                      <strong>{gb} GB</strong> de Cofre Digital (GED) e Fotos
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                      Ordens de Serviço, Vendas, PDV e Financeiro PIX
-                    </li>
+                    <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" /> Até {plano.limite_usuarios} usuários</li>
+                    <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" /> Até {plano.limite_empresas} empresa(s)/CNPJ</li>
+                    <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" /> {gb} GB de Cofre (GED)</li>
+                    <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" /> Ordens de Serviço, Vendas, PDV e Financeiro PIX</li>
                     {plano.slug !== 'mei' && (
-                      <>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                          Motor Fiscal SEFAZ (NF-e / NFC-e) + SPED
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                          WMS Completo, Frotas, CRM e RH Ponto GPS
-                        </li>
-                      </>
-                    )}
-                    {plano.slug === 'enterprise' && (
-                      <li className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-indigo-400 shrink-0" />
-                        Indústria (PCP/MRP), PMO Completo e Multi-Filiais
-                      </li>
+                      <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" /> Motor Fiscal SEFAZ (NF-e/NFC-e) + SPED</li>
                     )}
                   </ul>
                 </div>
@@ -257,17 +229,49 @@ export default function LandingComercialPage() {
                 <button
                   type="button"
                   onClick={() => setPlanoSelecionado(plano)}
-                  className={`mt-8 w-full py-3.5 rounded-xl font-bold text-xs cursor-pointer transition ${
-                    isPro
-                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'
+                  className={`mt-8 w-full py-3 rounded-xl font-bold text-xs cursor-pointer transition ${
+                    isPro ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
                 >
-                  Garantir Preço Fixo + 14 Dias Grátis
+                  Testar 14 Dias Grátis
                 </button>
               </div>
             );
           })}
+
+          {/* O 4º CARD: White Label / Sob Medida */}
+          <div className="rounded-3xl p-6 flex flex-col justify-between border bg-slate-900/40 border-slate-800 border-dashed relative overflow-hidden">
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center mb-4">
+                <Building2 className="h-5 w-5 text-slate-300" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Plano Sob Medida</h3>
+              <div className="mt-4 flex flex-col">
+                <span className="text-slate-400 text-sm font-medium">Preço sob consulta</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-2xl font-extrabold text-slate-300">
+                    White Label
+                  </span>
+                </div>
+              </div>
+
+              <ul className="mt-6 space-y-3 text-xs text-slate-400">
+                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" /> Módulos à la carte (Só paga o que usar)</li>
+                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" /> Usuários, Filiais e GBs personalizados</li>
+                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" /> Domínio Personalizado (erp.suaempresa.com.br)</li>
+                <li className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" /> Suporte dedicado</li>
+              </ul>
+            </div>
+
+            <a
+              href="https://wa.me/5521975280464?text=Olá, tenho interesse no Plano Sob Medida do Scalle ERP."
+              target="_blank"
+              rel="noreferrer"
+              className="mt-8 w-full py-3 rounded-xl font-bold text-xs text-center cursor-pointer transition bg-slate-800 hover:bg-slate-700 text-white"
+            >
+              Falar com Consultor (WhatsApp)
+            </a>
+          </div>
         </div>
       </section>
 

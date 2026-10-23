@@ -116,6 +116,11 @@ Route::middleware([
         Route::get('/tenants', [MasterController::class, 'tenants']);
         Route::post('/tenants', [MasterController::class, 'storeTenant']);
         Route::put('/tenants/{id}/status', [MasterController::class, 'alterarStatusTenant']);
+        // Gestão de Planos (SaaS Owner)
+        Route::get('/planos', [MasterController::class, 'listarPlanos']);
+        Route::post('/planos', [MasterController::class, 'storePlano']);
+        Route::put('/planos/{id}', [MasterController::class, 'updatePlano']);
+        Route::put('/planos/{id}/toggle', [MasterController::class, 'togglePlano']);
     });
 
     // Auditoria E2E (Acesso via MasterController)

@@ -187,4 +187,57 @@ class MasterController extends Controller
             ], 500);
         }
     }
+    public function listarPlanos(): JsonResponse
+    {
+        $planos = Plano::orderByDesc('is_ativo')->orderBy('valor_mensal')->get();
+        return response()->json(['data' => $planos]);
+    }
+
+    public function storePlano(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'valor_mensal' => 'required|numeric|min:0',
+            'limite_usuarios' => 'required|integer|min:1',
+            'limite_empresas' => 'required|integer|min:1',
+            'cota_storage_bytes' => 'required|numeric|min:1048576', // Mínimo 1MB
+            'modulos_habilitados' => 'required|array',
+        ]);
+
+        // Gera um slug único
+        $slug = \Illuminate\Support\Str::slug($validated['nome']) . '-' . rand(100, 999);
+
+        $plano = Plano::create(array_merge($validated, [
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'slug' => $slug,
+            'is_ativo' => true,
+        ]));
+
+        return response()->json(['data' => ['message' => 'Plano criado com sucesso!', 'plano' => $plano]], 201);
+    }
+
+    public function updatePlano(Request $request, string $id): JsonResponse
+    {
+        $plano = Plano::findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'valor_mensal' => 'required|numeric|min:0',
+            'limite_usuarios' => 'required|integer|min:1',
+            'limite_empresas' => 'required|integer|min:1',
+            'cota_storage_bytes' => 'required|numeric|min:1048576',
+            'modulos_habilitados' => 'required|array',
+        ]);
+
+        $plano->update($validated);
+
+        return response()->json(['data' => ['message' => 'Plano atualizado com sucesso!', 'plano' => $plano]]);
+    }
+
+    public function togglePlano(Request $request, string $id): JsonResponse
+    {
+        $plano = Plano::findOrFail($id);
+        $plano->update(['is_ativo' => !$plano->is_ativo]);
+        return response()->json(['data' => ['message' => 'Status do plano alterado.', 'plano' => $plano]]);
+    }
 }
