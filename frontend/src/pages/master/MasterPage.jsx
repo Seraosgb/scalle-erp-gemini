@@ -31,6 +31,20 @@ export default function MasterPage() {
   const [modalPlano, setModalPlano] = useState(false);
   const [formPlano, setFormPlano] = useState(getBlankPlanoForm());
 
+  // Modal Provisionamento de Tenant
+  const [modalTenant, setModalTenant] = useState(false);
+  const [provisionando, setProvisionando] = useState(false);
+  const [formTenant, setFormTenant] = useState({
+    tenant_nome_fantasia: '',
+    tenant_razao_social: '',
+    tenant_documento: '',
+    plano_slug: '',
+    admin_name: '',
+    admin_email: '',
+    admin_password: '',
+    admin_telefone: ''
+  });
+
   function getBlankPlanoForm() {
     return { id: null, nome: '', valor_mensal: 0, limite_usuarios: 5, limite_empresas: 1, cota_storage_gb: 5, modulos_habilitados: [] };
   }
@@ -135,6 +149,24 @@ export default function MasterPage() {
     setFormPlano({ ...formPlano, modulos_habilitados: mods });
   };
 
+  const handleProvisionarTenant = async (e) => {
+    e.preventDefault();
+    setProvisionando(true);
+    try {
+      await api.post('/master/tenants', formTenant);
+      setModalTenant(false);
+      setFormTenant({
+        tenant_nome_fantasia: '', tenant_razao_social: '', tenant_documento: '',
+        plano_slug: '', admin_name: '', admin_email: '', admin_password: '', admin_telefone: ''
+      });
+      carregarDados();
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Erro ao provisionar Tenant.');
+    } finally {
+      setProvisionando(false);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto text-slate-200 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-rose-900/50 pb-4">
@@ -144,6 +176,13 @@ export default function MasterPage() {
           </h1>
           <p className="text-sm text-slate-400 mt-1">Gestão global de contas contratantes, planos, provisionamento e governança</p>
         </div>
+
+        <button
+          onClick={() => setModalTenant(true)}
+          className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-lg shadow-rose-600/30 cursor-pointer"
+        >
+          <Plus className="h-4 w-4" /> Provisionar Novo Tenant
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -386,6 +425,74 @@ export default function MasterPage() {
                 <button type="button" onClick={() => setModalPlano(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition cursor-pointer">Cancelar</button>
                 <button type="submit" className="flex items-center gap-2 px-5 py-2 bg-rose-600 hover:bg-rose-500 rounded-xl text-white font-bold transition shadow-lg shadow-rose-600/30 cursor-pointer">
                   <Save className="h-4 w-4" /> Salvar Pacote
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Provisionar Novo Tenant */}
+      {modalTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-3xl shadow-2xl my-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-rose-500" /> Provisionar Novo Cliente (Tenant)
+              </h2>
+              <button onClick={() => setModalTenant(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+
+            <form onSubmit={handleProvisionarTenant} className="p-6 space-y-5 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2 text-rose-400 font-bold border-b border-slate-800 pb-2 mb-2">Dados da Empresa Matriz</div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">CNPJ / CPF *</label>
+                  <input type="text" required value={formTenant.tenant_documento} onChange={(e) => setFormTenant({ ...formTenant, tenant_documento: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:border-rose-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Plano Base *</label>
+                  <select required value={formTenant.plano_slug} onChange={(e) => setFormTenant({ ...formTenant, plano_slug: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 cursor-pointer">
+                    <option value="" disabled>Selecione um plano...</option>
+                    {planos.filter(p => p.is_ativo).map(p => (
+                      <option key={p.id} value={p.slug}>{p.nome} - R$ {Number(p.valor_mensal).toFixed(2)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Razão Social *</label>
+                  <input type="text" required value={formTenant.tenant_razao_social} onChange={(e) => setFormTenant({ ...formTenant, tenant_razao_social: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Nome Fantasia *</label>
+                  <input type="text" required value={formTenant.tenant_nome_fantasia} onChange={(e) => setFormTenant({ ...formTenant, tenant_nome_fantasia: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500" />
+                </div>
+
+                <div className="sm:col-span-2 text-rose-400 font-bold border-b border-slate-800 pb-2 mb-2 mt-2">Dados do Administrador</div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Nome do Responsável *</label>
+                  <input type="text" required value={formTenant.admin_name} onChange={(e) => setFormTenant({ ...formTenant, admin_name: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Telefone (WhatsApp)</label>
+                  <input type="text" value={formTenant.admin_telefone} onChange={(e) => setFormTenant({ ...formTenant, admin_telefone: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">E-mail de Acesso (Login) *</label>
+                  <input type="email" required value={formTenant.admin_email} onChange={(e) => setFormTenant({ ...formTenant, admin_email: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Senha Inicial *</label>
+                  <input type="password" required minLength={6} value={formTenant.admin_password} onChange={(e) => setFormTenant({ ...formTenant, admin_password: e.target.value })} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500" />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setModalTenant(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={provisionando} className="flex items-center gap-2 px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 rounded-xl text-white font-bold transition shadow-lg shadow-rose-600/30 cursor-pointer">
+                  {provisionando ? 'Provisionando...' : 'Criar Conta (Isolamento)'}
                 </button>
               </div>
             </form>
