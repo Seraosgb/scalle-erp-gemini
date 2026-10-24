@@ -16,7 +16,6 @@ export default function UsuariosPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  // Modais
   const [modalUsuario, setModalUsuario] = useState(false);
   const [modalEmpresa, setModalEmpresa] = useState(false);
   const [modalPerfil, setModalPerfil] = useState(false);
@@ -25,33 +24,19 @@ export default function UsuariosPage() {
   const [editandoId, setEditandoId] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
-  // Formulários
   const [formUsuario, setFormUsuario] = useState({
-    name: '',
-    email: '',
-    password: '',
-    telefone: '',
-    perfil_id: '',
-    empresa_padrao_id: '',
-    is_ativo: true,
+    name: '', email: '', password: '', telefone: '', perfil_id: '', empresa_padrao_id: '', is_ativo: true,
   });
 
   const [formEmpresa, setFormEmpresa] = useState({
-    nome_fantasia: '',
-    razao_social: '',
-    cnpj: '',
-    inscricao_estadual: '',
-    csc_id: '',
-    csc_token: '',
-    regime_tributario: 'simples_nacional',
+    nome_fantasia: '', razao_social: '', cnpj: '', inscricao_estadual: '',
+    csc_id: '', csc_token: '', regime_tributario: 'simples_nacional',
+    cep: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', codigo_ibge: '',
     is_matriz: false,
   });
 
   const [formPerfil, setFormPerfil] = useState({
-    nome: '',
-    descricao: '',
-    is_admin: false,
-    permissoes: [],
+    nome: '', descricao: '', is_admin: false, permissoes: [],
   });
 
   const carregarDados = async () => {
@@ -83,16 +68,11 @@ export default function UsuariosPage() {
     carregarDados();
   }, [search]);
 
-  // Abertura de Modais de Edição
   const abrirEdicaoUsuario = (u) => {
     setEditandoId(u.id);
     setFormUsuario({
-      name: u.name || '',
-      email: u.email || '',
-      password: '',
-      telefone: u.telefone || '',
-      perfil_id: u.perfil_id || '',
-      empresa_padrao_id: u.empresa_padrao_id || (empresas[0]?.id ?? ''),
+      name: u.name || '', email: u.email || '', password: '', telefone: u.telefone || '',
+      perfil_id: u.perfil_id || '', empresa_padrao_id: u.empresa_padrao_id || (empresas[0]?.id ?? ''),
       is_ativo: u.is_ativo ?? true,
     });
     setModalUsuario(true);
@@ -101,14 +81,12 @@ export default function UsuariosPage() {
   const abrirEdicaoEmpresa = (emp) => {
     setEditandoId(emp.id);
     setFormEmpresa({
-      nome_fantasia: emp.nome_fantasia,
-      razao_social: emp.razao_social,
-      cnpj: emp.cnpj,
-      inscricao_estadual: emp.inscricao_estadual || '',
-      csc_id: emp.csc_id || '',
-      csc_token: emp.csc_token || '',
+      nome_fantasia: emp.nome_fantasia || '', razao_social: emp.razao_social || '', cnpj: emp.cnpj || '',
+      inscricao_estadual: emp.inscricao_estadual || '', csc_id: emp.csc_id || '', csc_token: emp.csc_token || '',
       regime_tributario: emp.regime_tributario || 'simples_nacional',
-      is_matriz: emp.is_matriz,
+      cep: emp.cep || '', logradouro: emp.logradouro || '', numero: emp.numero || '',
+      bairro: emp.bairro || '', cidade: emp.cidade || '', uf: emp.uf || '', codigo_ibge: emp.codigo_ibge || '',
+      is_matriz: emp.is_matriz || false,
     });
     setModalEmpresa(true);
   };
@@ -116,9 +94,7 @@ export default function UsuariosPage() {
   const abrirEdicaoPerfil = (p) => {
     setEditandoId(p.id);
     setFormPerfil({
-      nome: p.nome,
-      descricao: p.descricao || '',
-      is_admin: p.is_admin,
+      nome: p.nome, descricao: p.descricao || '', is_admin: p.is_admin,
       permissoes: p.permissoes ? p.permissoes.map(perm => perm.id) : [],
     });
     setModalPerfil(true);
@@ -129,14 +105,11 @@ export default function UsuariosPage() {
     setModalMfa(true);
   };
 
-  // Submits
   const handleSalvarUsuario = async (e) => {
     e.preventDefault();
     try {
       const payload = { ...formUsuario };
-      if (editandoId && !payload.password) {
-        delete payload.password;
-      }
+      if (editandoId && !payload.password) delete payload.password;
 
       if (editandoId) {
         await api.put(`/usuarios/${editandoId}`, payload);
@@ -189,7 +162,6 @@ export default function UsuariosPage() {
     }
   };
 
-  // Exclusões
   const handleExcluirUsuario = async (id) => {
     if (!window.confirm('Deseja realmente inativar/remover este usuário?')) return;
     try {
@@ -226,17 +198,13 @@ export default function UsuariosPage() {
   const togglePermissao = (permId) => {
     const list = [...formPerfil.permissoes];
     const index = list.indexOf(permId);
-    if (index > -1) {
-      list.splice(index, 1);
-    } else {
-      list.push(permId);
-    }
+    if (index > -1) list.splice(index, 1);
+    else list.push(permId);
     setFormPerfil({ ...formPerfil, permissoes: list });
   };
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto text-slate-200">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
@@ -266,7 +234,7 @@ export default function UsuariosPage() {
               type="button"
               onClick={() => {
                 setEditandoId(null);
-                setFormEmpresa({ nome_fantasia: '', razao_social: '', cnpj: '', inscricao_estadual: '', csc_id: '', csc_token: '', regime_tributario: 'simples_nacional', is_matriz: false });
+                setFormEmpresa({ nome_fantasia: '', razao_social: '', cnpj: '', inscricao_estadual: '', csc_id: '', csc_token: '', regime_tributario: 'simples_nacional', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', codigo_ibge: '', is_matriz: false });
                 setModalEmpresa(true);
               }}
               className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
@@ -290,7 +258,6 @@ export default function UsuariosPage() {
         </div>
       </div>
 
-      {/* Navegação por Abas e Barra de Busca */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
         <div className="flex items-center gap-2">
           <button
@@ -333,7 +300,6 @@ export default function UsuariosPage() {
         </div>
       </div>
 
-      {/* Feedback Toast */}
       {feedback && (
         <div className={`p-3.5 rounded-lg flex items-center justify-between text-xs sm:text-sm ${feedback.tipo === 'sucesso' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
           <div className="flex items-center gap-2 min-w-0">
@@ -344,7 +310,6 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Aba 1: Usuários */}
       {activeTab === 'usuarios' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {usuarios.map((user) => (
@@ -417,7 +382,6 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Aba 2: Empresas e Filiais */}
       {activeTab === 'empresas' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {empresas.map((emp) => (
@@ -460,7 +424,6 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Aba 3: Perfis ACL */}
       {activeTab === 'perfis' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {perfis.map((p) => (
@@ -522,9 +485,7 @@ export default function UsuariosPage() {
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Nome Completo *</label>
                 <input
-                  type="text"
-                  required
-                  value={formUsuario.name}
+                  type="text" required value={formUsuario.name}
                   onChange={(e) => setFormUsuario({ ...formUsuario, name: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -532,9 +493,7 @@ export default function UsuariosPage() {
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">E-mail de Acesso *</label>
                 <input
-                  type="email"
-                  required
-                  value={formUsuario.email}
+                  type="email" required value={formUsuario.email}
                   onChange={(e) => setFormUsuario({ ...formUsuario, email: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -544,9 +503,7 @@ export default function UsuariosPage() {
                   {editandoId ? 'Nova Senha (deixe em branco para manter)' : 'Senha de Acesso *'}
                 </label>
                 <input
-                  type="password"
-                  required={!editandoId}
-                  value={formUsuario.password}
+                  type="password" required={!editandoId} value={formUsuario.password}
                   onChange={(e) => setFormUsuario({ ...formUsuario, password: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -554,8 +511,7 @@ export default function UsuariosPage() {
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Telefone / WhatsApp</label>
                 <input
-                  type="text"
-                  value={formUsuario.telefone}
+                  type="text" value={formUsuario.telefone}
                   onChange={(e) => setFormUsuario({ ...formUsuario, telefone: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -590,9 +546,7 @@ export default function UsuariosPage() {
               {editandoId && (
                 <div className="flex items-center gap-2 pt-1">
                   <input
-                    type="checkbox"
-                    id="user_ativo"
-                    checked={formUsuario.is_ativo}
+                    type="checkbox" id="user_ativo" checked={formUsuario.is_ativo}
                     onChange={(e) => setFormUsuario({ ...formUsuario, is_ativo: e.target.checked })}
                     className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0"
                   />
@@ -610,11 +564,11 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Modal Filial */}
+      {/* Modal Filial Expandido */}
       {modalEmpresa && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md flex flex-col shadow-2xl overflow-hidden my-auto">
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl my-auto overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-800 bg-slate-950/50 shrink-0">
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <Building2 className="h-5 w-5 text-indigo-400" />
                 {editandoId ? 'Editar Filial' : 'Nova Filial'}
@@ -623,34 +577,40 @@ export default function UsuariosPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleSalvarEmpresa} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Nome Fantasia *</label>
-                <input
-                  type="text"
-                  required
-                  value={formEmpresa.nome_fantasia}
-                  onChange={(e) => setFormEmpresa({ ...formEmpresa, nome_fantasia: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Razão Social *</label>
-                <input
-                  type="text"
-                  required
-                  value={formEmpresa.razao_social}
-                  onChange={(e) => setFormEmpresa({ ...formEmpresa, razao_social: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSalvarEmpresa} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Razão Social *</label>
+                  <input
+                    type="text" required value={formEmpresa.razao_social}
+                    onChange={(e) => setFormEmpresa({ ...formEmpresa, razao_social: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Nome Fantasia *</label>
+                  <input
+                    type="text" required value={formEmpresa.nome_fantasia}
+                    onChange={(e) => setFormEmpresa({ ...formEmpresa, nome_fantasia: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Regime Tributário *</label>
+                  <select
+                    required value={formEmpresa.regime_tributario}
+                    onChange={(e) => setFormEmpresa({ ...formEmpresa, regime_tributario: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="simples_nacional">Simples Nacional</option>
+                    <option value="lucro_presumido">Lucro Presumido</option>
+                    <option value="lucro_real">Lucro Real</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">CNPJ *</label>
                   <input
-                    type="text"
-                    required
-                    value={formEmpresa.cnpj}
+                    type="text" required value={formEmpresa.cnpj}
                     onChange={(e) => setFormEmpresa({ ...formEmpresa, cnpj: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
@@ -658,23 +618,87 @@ export default function UsuariosPage() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Inscrição Estadual</label>
                   <input
-                    type="text"
-                    value={formEmpresa.inscricao_estadual}
+                    type="text" value={formEmpresa.inscricao_estadual}
                     onChange={(e) => setFormEmpresa({ ...formEmpresa, inscricao_estadual: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
 
-              {/* BLOCO DO CSC ADICIONADO AQUI */}
+              {/* BLOCO ENDEREÇO DA EMPRESA */}
+              <div className="sm:col-span-2 border-t border-slate-800 pt-4 mt-2">
+                <h4 className="text-xs font-bold text-rose-400 mb-3">Endereço do Emitente (Obrigatório SEFAZ)</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">Logradouro / Rua</label>
+                    <input
+                      type="text" value={formEmpresa.logradouro}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, logradouro: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">Número</label>
+                    <input
+                      type="text" value={formEmpresa.numero}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, numero: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">CEP</label>
+                    <input
+                      type="text" value={formEmpresa.cep}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, cep: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">Bairro</label>
+                    <input
+                      type="text" value={formEmpresa.bairro}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, bairro: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">Cidade</label>
+                    <input
+                      type="text" value={formEmpresa.cidade}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, cidade: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">UF (Ex: RJ)</label>
+                    <input
+                      type="text" value={formEmpresa.uf} maxLength={2}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, uf: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">Cód. IBGE Município</label>
+                    <input
+                      type="text" value={formEmpresa.codigo_ibge}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, codigo_ibge: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                      placeholder="Ex: 3304557"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOCO CSC */}
               <div className="sm:col-span-2 border-t border-slate-800 pt-4 mt-2">
                 <h4 className="text-xs font-bold text-rose-400 mb-3">Credenciais NFC-e (Código de Segurança do Contribuinte)</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 mb-1">ID do CSC (Ex: 000001)</label>
                     <input
-                      type="text"
-                      value={formEmpresa.csc_id}
+                      type="text" value={formEmpresa.csc_id}
                       onChange={(e) => setFormEmpresa({ ...formEmpresa, csc_id: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
                       placeholder="000001"
@@ -683,8 +707,7 @@ export default function UsuariosPage() {
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 mb-1">Token CSC (Alfanumérico)</label>
                     <input
-                      type="text"
-                      value={formEmpresa.csc_token}
+                      type="text" value={formEmpresa.csc_token}
                       onChange={(e) => setFormEmpresa({ ...formEmpresa, csc_token: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
                       placeholder="Token gerado na SEFAZ"
@@ -693,7 +716,7 @@ export default function UsuariosPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800 shrink-0">
                 <button type="button" onClick={() => setModalEmpresa(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
                 <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Salvar</button>
               </div>
@@ -719,9 +742,7 @@ export default function UsuariosPage() {
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Nome do Perfil *</label>
                 <input
-                  type="text"
-                  required
-                  value={formPerfil.nome}
+                  type="text" required value={formPerfil.nome}
                   onChange={(e) => setFormPerfil({ ...formPerfil, nome: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
@@ -729,17 +750,14 @@ export default function UsuariosPage() {
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Descrição</label>
                 <input
-                  type="text"
-                  value={formPerfil.descricao}
+                  type="text" value={formPerfil.descricao}
                   onChange={(e) => setFormPerfil({ ...formPerfil, descricao: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div className="flex items-center gap-2 pt-1">
                 <input
-                  type="checkbox"
-                  id="perfil_admin_modal"
-                  checked={formPerfil.is_admin}
+                  type="checkbox" id="perfil_admin_modal" checked={formPerfil.is_admin}
                   onChange={(e) => setFormPerfil({ ...formPerfil, is_admin: e.target.checked })}
                   className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0"
                 />
@@ -757,8 +775,7 @@ export default function UsuariosPage() {
                     {permissoesDisponiveis.map((perm) => (
                       <label key={perm.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-900 rounded-lg cursor-pointer">
                         <input
-                          type="checkbox"
-                          checked={formPerfil.permissoes.includes(perm.id)}
+                          type="checkbox" checked={formPerfil.permissoes.includes(perm.id)}
                           onChange={() => togglePermissao(perm.id)}
                           className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0"
                         />
