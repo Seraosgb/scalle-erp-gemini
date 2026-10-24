@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import { 
-  Building2, Users, Plus, RefreshCw, CheckCircle2, 
+import {
+  Building2, Users, Plus, RefreshCw, CheckCircle2,
   AlertTriangle, X, Shield, Mail, Check, Edit2, Trash2, Search, Power,
   ShieldCheck, KeyRound, Phone, UserCheck
 } from 'lucide-react';
@@ -15,7 +15,7 @@ export default function UsuariosPage() {
   const [permissoesDisponiveis, setPermissoesDisponiveis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  
+
   // Modais
   const [modalUsuario, setModalUsuario] = useState(false);
   const [modalEmpresa, setModalEmpresa] = useState(false);
@@ -41,6 +41,8 @@ export default function UsuariosPage() {
     razao_social: '',
     cnpj: '',
     inscricao_estadual: '',
+    csc_id: '',
+    csc_token: '',
     regime_tributario: 'simples_nacional',
     is_matriz: false,
   });
@@ -103,6 +105,8 @@ export default function UsuariosPage() {
       razao_social: emp.razao_social,
       cnpj: emp.cnpj,
       inscricao_estadual: emp.inscricao_estadual || '',
+      csc_id: emp.csc_id || '',
+      csc_token: emp.csc_token || '',
       regime_tributario: emp.regime_tributario || 'simples_nacional',
       is_matriz: emp.is_matriz,
     });
@@ -245,7 +249,7 @@ export default function UsuariosPage() {
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'usuarios' && (
-            <button 
+            <button
               type="button"
               onClick={() => {
                 setEditandoId(null);
@@ -258,11 +262,11 @@ export default function UsuariosPage() {
             </button>
           )}
           {activeTab === 'empresas' && (
-            <button 
+            <button
               type="button"
               onClick={() => {
                 setEditandoId(null);
-                setFormEmpresa({ nome_fantasia: '', razao_social: '', cnpj: '', inscricao_estadual: '', regime_tributario: 'simples_nacional', is_matriz: false });
+                setFormEmpresa({ nome_fantasia: '', razao_social: '', cnpj: '', inscricao_estadual: '', csc_id: '', csc_token: '', regime_tributario: 'simples_nacional', is_matriz: false });
                 setModalEmpresa(true);
               }}
               className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 cursor-pointer transition"
@@ -271,7 +275,7 @@ export default function UsuariosPage() {
             </button>
           )}
           {activeTab === 'perfis' && (
-            <button 
+            <button
               type="button"
               onClick={() => {
                 setEditandoId(null);
@@ -319,10 +323,10 @@ export default function UsuariosPage() {
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Pesquisar..." 
-            value={search} 
+          <input
+            type="text"
+            placeholder="Pesquisar..."
+            value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
           />
@@ -517,9 +521,9 @@ export default function UsuariosPage() {
             <form onSubmit={handleSalvarUsuario} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Nome Completo *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   value={formUsuario.name}
                   onChange={(e) => setFormUsuario({ ...formUsuario, name: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -527,9 +531,9 @@ export default function UsuariosPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">E-mail de Acesso *</label>
-                <input 
-                  type="email" 
-                  required 
+                <input
+                  type="email"
+                  required
                   value={formUsuario.email}
                   onChange={(e) => setFormUsuario({ ...formUsuario, email: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -539,8 +543,8 @@ export default function UsuariosPage() {
                 <label className="block text-xs font-semibold text-slate-400 mb-1">
                   {editandoId ? 'Nova Senha (deixe em branco para manter)' : 'Senha de Acesso *'}
                 </label>
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   required={!editandoId}
                   value={formUsuario.password}
                   onChange={(e) => setFormUsuario({ ...formUsuario, password: e.target.value })}
@@ -549,8 +553,8 @@ export default function UsuariosPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Telefone / WhatsApp</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={formUsuario.telefone}
                   onChange={(e) => setFormUsuario({ ...formUsuario, telefone: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -559,7 +563,7 @@ export default function UsuariosPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Perfil de Acesso</label>
-                  <select 
+                  <select
                     value={formUsuario.perfil_id}
                     onChange={(e) => setFormUsuario({ ...formUsuario, perfil_id: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -572,7 +576,7 @@ export default function UsuariosPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Filial Vinculada</label>
-                  <select 
+                  <select
                     value={formUsuario.empresa_padrao_id}
                     onChange={(e) => setFormUsuario({ ...formUsuario, empresa_padrao_id: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -585,8 +589,8 @@ export default function UsuariosPage() {
               </div>
               {editandoId && (
                 <div className="flex items-center gap-2 pt-1">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     id="user_ativo"
                     checked={formUsuario.is_ativo}
                     onChange={(e) => setFormUsuario({ ...formUsuario, is_ativo: e.target.checked })}
@@ -622,9 +626,9 @@ export default function UsuariosPage() {
             <form onSubmit={handleSalvarEmpresa} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Nome Fantasia *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   value={formEmpresa.nome_fantasia}
                   onChange={(e) => setFormEmpresa({ ...formEmpresa, nome_fantasia: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -632,9 +636,9 @@ export default function UsuariosPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Razão Social *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   value={formEmpresa.razao_social}
                   onChange={(e) => setFormEmpresa({ ...formEmpresa, razao_social: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -643,9 +647,9 @@ export default function UsuariosPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">CNPJ *</label>
-                  <input 
-                    type="text" 
-                    required 
+                  <input
+                    type="text"
+                    required
                     value={formEmpresa.cnpj}
                     onChange={(e) => setFormEmpresa({ ...formEmpresa, cnpj: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -653,14 +657,42 @@ export default function UsuariosPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Inscrição Estadual</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={formEmpresa.inscricao_estadual}
                     onChange={(e) => setFormEmpresa({ ...formEmpresa, inscricao_estadual: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
+
+              {/* BLOCO DO CSC ADICIONADO AQUI */}
+              <div className="sm:col-span-2 border-t border-slate-800 pt-4 mt-2">
+                <h4 className="text-xs font-bold text-rose-400 mb-3">Credenciais NFC-e (Código de Segurança do Contribuinte)</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">ID do CSC (Ex: 000001)</label>
+                    <input
+                      type="text"
+                      value={formEmpresa.csc_id}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, csc_id: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                      placeholder="000001"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">Token CSC (Alfanumérico)</label>
+                    <input
+                      type="text"
+                      value={formEmpresa.csc_token}
+                      onChange={(e) => setFormEmpresa({ ...formEmpresa, csc_token: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                      placeholder="Token gerado na SEFAZ"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-800">
                 <button type="button" onClick={() => setModalEmpresa(false)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium cursor-pointer">Cancelar</button>
                 <button type="submit" className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer">Salvar</button>
@@ -686,9 +718,9 @@ export default function UsuariosPage() {
             <form onSubmit={handleSalvarPerfil} className="p-4 sm:p-6 space-y-4 text-xs sm:text-sm overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Nome do Perfil *</label>
-                <input 
-                  type="text" 
-                  required 
+                <input
+                  type="text"
+                  required
                   value={formPerfil.nome}
                   onChange={(e) => setFormPerfil({ ...formPerfil, nome: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -696,16 +728,16 @@ export default function UsuariosPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Descrição</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={formPerfil.descricao}
                   onChange={(e) => setFormPerfil({ ...formPerfil, descricao: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="perfil_admin_modal"
                   checked={formPerfil.is_admin}
                   onChange={(e) => setFormPerfil({ ...formPerfil, is_admin: e.target.checked })}
@@ -724,7 +756,7 @@ export default function UsuariosPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-slate-950/60 rounded-xl border border-slate-800">
                     {permissoesDisponiveis.map((perm) => (
                       <label key={perm.id} className="flex items-center gap-2 p-1.5 hover:bg-slate-900 rounded-lg cursor-pointer">
-                        <input 
+                        <input
                           type="checkbox"
                           checked={formPerfil.permissoes.includes(perm.id)}
                           onChange={() => togglePermissao(perm.id)}
