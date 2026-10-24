@@ -4,16 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Assinatura;
-use App\Models\Perfil;
 use App\Models\User;
 use App\Services\TotpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -70,16 +65,24 @@ class AuthController extends Controller
         }
 
         if (!empty($user->tenant_id)) {
-            App::instance('current_tenant_id', $user->tenant_id);
+            \Illuminate\Support\Facades\App::instance('current_tenant_id', $user->tenant_id);
         }
 
-        $perfil = !empty($user->perfil_id)
-            ? Perfil::withoutGlobalScopes()->find($user->perfil_id)
-            : null;
+        $perfil = null;
+        if (!empty($user->perfil_id)) {
+            $perfil = \App\Models\Perfil::withoutGlobalScopes()->find($user->perfil_id);
+        }
 
-        $assinatura = !empty($user->tenant_id)
-            ? Assinatura::withoutGlobalScopes()->where('tenant_id', $user->tenant_id)->with('plano')->first()
-            : null;
+        // CARREGA OS MÓDULOS DO PLANO ATUAL DO TENANT
+        $modulosHabilitados = ['*'];
+        if (!$user->is_master) {
+            $assinatura = Assinatura::withoutGlobalScopes()
+                ->where('tenant_id', $user->tenant_id)
+                ->with('plano')
+                ->first();
+
+            $modulosHabilitados = $assinatura?->plano?->modulos_habilitados ?? [];
+        }
 
         $token = $user->createToken('scalle_auth_token')->plainTextToken;
 
@@ -93,10 +96,9 @@ class AuthController extends Controller
                     'tenant_id' => $user->tenant_id,
                     'perfil' => $perfil?->nome,
                     'is_admin' => $perfil?->is_admin ?? false,
-                    'is_master' => (bool) $user->is_master,
                     'mfa_ativo' => (bool) $user->mfa_ativo,
-                    'plano_slug' => $assinatura?->plano?->slug ?? 'enterprise',
-                    'modulos_habilitados' => $assinatura?->plano?->modulos_habilitados ?? ['*'],
+                    'is_master' => (bool) $user->is_master,
+                    'modulos_habilitados' => $modulosHabilitados,
                 ]
             ]
         ]);
@@ -116,15 +118,24 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user()->load('perfil', 'empresaPadrao');
-        $assinatura = !empty($user->tenant_id)
-            ? Assinatura::withoutGlobalScopes()->where('tenant_id', $user->tenant_id)->with('plano')->first()
-            : null;
+
+        // CARREGA OS MÓDULOS NO REFRESH DE PÁGINA (F5)
+        $modulosHabilitados = ['*'];
+        if (!$user->is_master) {
+            $assinatura = Assinatura::withoutGlobalScopes()
+                ->where('tenant_id', $user->tenant_id)
+                ->with('plano')
+                ->first();
+
+            $modulosHabilitados = $assinatura?->plano?->modulos_habilitados ?? [];
+        }
 
         $userData = $user->toArray();
-        $userData['plano_slug'] = $assinatura?->plano?->slug ?? 'enterprise';
-        $userData['modulos_habilitados'] = $assinatura?->plano?->modulos_habilitados ?? ['*'];
+        $userData['modulos_habilitados'] = $modulosHabilitados;
 
-        return response()->json(['data' => $userData]);
+        return response()->json([
+            'data' => $userData
+        ]);
     }
 
     public function mfaSetup(Request $request): JsonResponse
@@ -145,7 +156,10 @@ class AuthController extends Controller
 
     public function mfaConfirmar(Request $request): JsonResponse
     {
-        $request->validate(['codigo' => 'required|string|size:6']);
+        $request->validate([
+            'codigo' => 'required|string|size:6',
+        ]);
+
         $user = $request->user();
 
         if (empty($user->mfa_secret)) {
@@ -168,7 +182,10 @@ class AuthController extends Controller
 
     public function mfaDesativar(Request $request): JsonResponse
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate([
+            'password' => 'required|string',
+        ]);
+
         $user = $request->user();
 
         if (!Hash::check($request->password, $user->password)) {
@@ -201,7 +218,6 @@ class AuthController extends Controller
             return response()->json(['error' => ['message' => 'A senha atual informada está incorreta.']], 422);
         }
 
-        // Sem Hash::make() manual pois o Model User possui cast 'password' => 'hashed'
         $user->update(['password' => $validated['nova_senha']]);
         $user->tokens()->where('id', '!=', $user->currentAccessToken()->id)->delete();
 
@@ -214,13 +230,13 @@ class AuthController extends Controller
         $user = User::withoutGlobalScopes()->where('email', $request->email)->first();
 
         if ($user) {
-            $token = Str::upper(Str::random(6));
-            DB::table('password_reset_tokens')->updateOrInsert(
+            $token = \Illuminate\Support\Str::upper(\Illuminate\Support\Str::random(6));
+            \Illuminate\Support\Facades\DB::table('password_reset_tokens')->updateOrInsert(
                 ['email' => $user->email],
                 ['token' => Hash::make($token), 'created_at' => now()]
             );
 
-            Log::info("[RECUPERAÇÃO DE SENHA SCALLE] E-mail: {$user->email} | Código: {$token}");
+            \Illuminate\Support\Facades\Log::info("[RECUPERAÇÃO DE SENHA SCALLE] E-mail: {$user->email} | Código: {$token}");
         }
 
         return response()->json([
@@ -238,7 +254,7 @@ class AuthController extends Controller
             'nova_senha' => 'required|string|min:6',
         ]);
 
-        $registro = DB::table('password_reset_tokens')
+        $registro = \Illuminate\Support\Facades\DB::table('password_reset_tokens')
             ->where('email', $validated['email'])
             ->first();
 
@@ -249,7 +265,7 @@ class AuthController extends Controller
         $user = User::withoutGlobalScopes()->where('email', $validated['email'])->firstOrFail();
         $user->update(['password' => $validated['nova_senha']]);
 
-        DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+        \Illuminate\Support\Facades\DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
 
         return response()->json(['data' => ['message' => 'Senha redefinida com sucesso! Você já pode acessar o sistema.']]);
     }
