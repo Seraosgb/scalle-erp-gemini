@@ -27,6 +27,8 @@ export default function AppLayout() {
 
       if (resMe.status === 'fulfilled' && resMe.value.data?.data) {
         setUsuario(resMe.value.data.data);
+        // Atualiza o Cache Local com as permissões e módulos mais recentes da API
+        localStorage.setItem('scalle_user', JSON.stringify(resMe.value.data.data));
       } else {
         const localUser = localStorage.getItem('scalle_user');
         if (localUser) {
@@ -113,11 +115,11 @@ export default function AppLayout() {
   ];
 
   // Filtro de Módulos (Feature Flags)
-  const modulosPlano = usuario?.modulos_habilitados || ['*']; // Fallback seguro
-  const isAdminGlobal = usuario?.is_master || usuario?.is_admin || usuario?.perfil?.is_admin;
+  const isMasterOwner = usuario?.is_master === true;
+  const modulosPlano = Array.isArray(usuario?.modulos_habilitados) ? usuario.modulos_habilitados : [];
 
   const menuFiltrado = menuCompleto.filter(item => {
-    if (isAdminGlobal) return true; // Master vê tudo
+    if (isMasterOwner) return true; // Master vê tudo (SaaS Owner)
     if (item.moduleCode === '*') return true; // Módulos core sempre visíveis
     if (modulosPlano.includes('*')) return true; // Plano Enterprise full access
     return modulosPlano.includes(item.moduleCode);
@@ -125,9 +127,9 @@ export default function AppLayout() {
 
   // Acrescenta as rotas de Master Owner no topo e fim, se for o dono do SaaS
   const menuFinal = [
-    ...(usuario?.is_master ? [{ name: 'Painel Master SaaS', path: '/app/master', icon: ShieldAlert, isMaster: true }] : []),
+    ...(isMasterOwner ? [{ name: 'Painel Master SaaS', path: '/app/master', icon: ShieldAlert, isMaster: true }] : []),
     ...menuFiltrado,
-    ...(usuario?.is_master ? [{ name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }] : [])
+    ...(isMasterOwner ? [{ name: 'Auditoria E2E', path: '/app/master/auditoria', icon: FileCheck, isMaster: true }] : [])
   ];
 
   return (
@@ -142,13 +144,13 @@ export default function AppLayout() {
         <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-950/40">
           <div className="flex items-center gap-2.5">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-lg ${
-              usuario?.is_master ? 'bg-rose-600 shadow-rose-600/30' : 'bg-indigo-600 shadow-indigo-600/30'
+              isMasterOwner ? 'bg-rose-600 shadow-rose-600/30' : 'bg-indigo-600 shadow-indigo-600/30'
             }`}>
               S
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-base text-white tracking-wide leading-none">Scalle ERP</span>
-              {usuario?.is_master && (
+              {isMasterOwner && (
                 <span className="text-[9px] font-bold text-rose-400 font-mono tracking-wider mt-0.5">SaaS Owner</span>
               )}
             </div>
@@ -229,12 +231,12 @@ export default function AppLayout() {
 
             <div className="text-right hidden sm:block">
               <div className="text-xs font-bold text-white">{usuario?.name || 'Operador Conectado'}</div>
-              <div className={`text-[11px] font-medium ${usuario?.is_master ? 'text-rose-400 font-bold' : 'text-indigo-400'}`}>
-                {usuario?.is_master ? 'SaaS Owner (Global)' : (usuario?.perfil?.nome || 'Operador')}
+              <div className={`text-[11px] font-medium ${isMasterOwner ? 'text-rose-400 font-bold' : 'text-indigo-400'}`}>
+                {isMasterOwner ? 'SaaS Owner (Global)' : (usuario?.perfil?.nome || 'Operador')}
               </div>
             </div>
             <div className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold text-xs shadow-inner ${
-              usuario?.is_master ? 'bg-rose-600/20 border-rose-500/30 text-rose-400' : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
+              isMasterOwner ? 'bg-rose-600/20 border-rose-500/30 text-rose-400' : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
             }`}>
               {usuario?.name?.charAt(0) || 'U'}
             </div>
